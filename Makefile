@@ -6,10 +6,18 @@ COREV_REF ?= master
 VERILATOR ?= verilator
 PYTHON ?= python3
 SIM_DIR ?= $(ROOT_DIR)/work/sim
+COREV_RTL_FLIST := $(ROOT_DIR)/work/corev_rtl.f
+RISCV_AS ?= riscv64-linux-gnu-as
+RISCV_LD ?= riscv64-linux-gnu-ld
+RISCV_OBJCOPY ?= riscv64-linux-gnu-objcopy
+HELLO_BUILD_DIR ?= $(ROOT_DIR)/work/hello
+HELLO_ELF := $(HELLO_BUILD_DIR)/sap_vpu_hello.elf
+HELLO_BIN := $(HELLO_BUILD_DIR)/sap_vpu_hello.bin
+HELLO_HEX := $(HELLO_BUILD_DIR)/sap_vpu_hello.hex
 
 .DEFAULT_GOAL := help
 
-.PHONY: help plan-check corev-fetch lint-adapter lint-core lint sim-adapter sim-core sim encoding-check legacy-summary
+.PHONY: help plan-check corev-fetch lint-adapter lint-core lint lint-corev-soc sim-adapter sim-core sim encoding-check legacy-summary hello-build hello-smoke
 
 help:
 	@printf '%s\n' \
@@ -17,17 +25,24 @@ help:
 	  'make corev-fetch [COREV_DIR=third_party/cv32e40x] [COREV_REF=master]' \
 	  'make lint-adapter' \
 	  'make lint-core' \
+	  'make lint-corev-soc' \
 	  'make sim-adapter' \
 	  'make sim-core' \
 	  'make encoding-check' \
-	  'make legacy-summary [LEGACY_RESULTS_DIR=../nutvpu/results]'
+	  'make legacy-summary [LEGACY_RESULTS_DIR=../nutvpu/results]' \
+	  'make hello-build' \
+	  'make hello-smoke'
 
 plan-check:
 	test -x scripts/fetch_corev_cv32e40x.sh
 	test -f rtl/sap_vpu_pkg.sv
 	test -f rtl/sap_vpu_core.sv
 	test -f platforms/corev/rtl/cvxif_sap_vpu_adapter.sv
+	test -f platforms/corev/rtl/corev_min_soc.sv
 	test -f sw/baremetal/sap_vpu_custom.h
+	test -f sw/baremetal/hello.S
+	test -f sw/baremetal/link.ld
+	test -x scripts/bin_to_verilog_hex.py
 	test -f docs/SAP_VPU_RESEARCH_PLAN.md
 	test -f docs/SAP_VPU_LITERATURE_MATRIX.md
 
@@ -41,6 +56,20 @@ lint-core:
 	$(VERILATOR) --lint-only -sv rtl/sap_vpu_pkg.sv rtl/sap_vpu_core.sv
 
 lint: lint-adapter lint-core
+
+lint-corev-soc:
+	test -d "$(COREV_DIR)/rtl"
+	mkdir -p "$(dir $(COREV_RTL_FLIST))"
+	grep -E '^(\+incdir|\$$\{DESIGN_RTL_DIR\}/)' "$(COREV_DIR)/cv32e40x_manifest.flist" | \
+	  grep -v '\.\./bhv' | grep -v '\.\./sva' > "$(COREV_RTL_FLIST)"
+	printf '%s\n' "$(COREV_DIR)/bhv/cv32e40x_sim_clock_gate.sv" >> "$(COREV_RTL_FLIST)"
+	DESIGN_RTL_DIR="$(COREV_DIR)/rtl" $(VERILATOR) --lint-only -sv \
+	  -DCOREV_ASSERT_OFF --top-module corev_min_soc -Wno-fatal \
+	  -Wno-BLKANDNBLK -Wno-TIMESCALEMOD -Wno-UNOPTFLAT \
+	  -Wno-WIDTHEXPAND -Wno-WIDTHTRUNC -Wno-WIDTHCONCAT \
+	  -Wno-ASCRANGE -Wno-IMPLICIT -Wno-UNSIGNED -Wno-COMBDLY \
+	  -f "$(COREV_RTL_FLIST)" \
+	  platforms/corev/rtl/corev_min_soc.sv
 
 sim-adapter:
 	mkdir -p "$(SIM_DIR)"
@@ -69,3 +98,15 @@ encoding-check:
 
 legacy-summary:
 	$(PYTHON) scripts/summarize_legacy_results.py "$(or $(LEGACY_RESULTS_DIR),../nutvpu/results)"
+
+hello-build:
+	mkdir -p "$(HELLO_BUILD_DIR)"
+	$(RISCV_AS) -march=rv32imc -mabi=ilp32 \
+	  -o "$(HELLO_BUILD_DIR)/hello.o" sw/baremetal/hello.S
+	$(RISCV_LD) -m elf32lriscv -T sw/baremetal/link.ld \
+	  -o "$(HELLO_ELF)" "$(HELLO_BUILD_DIR)/hello.o"
+	$(RISCV_OBJCOPY) -O binary "$(HELLO_ELF)" "$(HELLO_BIN)"
+	$(PYTHON) scripts/bin_to_verilog_hex.py "$(HELLO_BIN)" "$(HELLO_HEX)"
+
+hello-smoke: hello-build lint-corev-soc
+	test -s "$(HELLO_HEX)"

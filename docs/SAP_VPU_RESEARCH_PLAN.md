@@ -35,6 +35,12 @@ The legacy NutShell-bound prototype remains in `~/Program/nutvpu` and is used on
 - Initially support `VSET`, `VMOV`, `VDOT`, and `VREADCNT`.
 - Extend the first slice with `VSETPREC`, `VSETSPARSE_BMP`, `VSETLANE`, and `VCLEARCNT` once adapter/core smoke tests cover the base path.
 
+## Current CORE-V Bring-Up Slice
+
+- `corev_min_soc` instantiates `cv32e40x_core` directly and connects a minimal ROM/RAM/UART/exit memory map.
+- `hello-build` produces an RV32IMC ELF/bin/hex image with the installed RISC-V binutils.
+- `hello-smoke` verifies image generation plus SoC lint/elaboration; it is not yet a UART transcript simulation.
+
 ## Paper Evidence Ladder
 
 1. Adapter/core lint and simulation.

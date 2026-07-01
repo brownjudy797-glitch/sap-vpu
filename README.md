@@ -25,8 +25,11 @@ make plan-check
 make corev-fetch
 make lint-adapter
 make lint
+make lint-corev-soc
 make sim
 make encoding-check
+make hello-build
+make hello-smoke
 make legacy-summary
 ```
 
@@ -36,5 +39,11 @@ make legacy-summary
 - `rtl/sap_vpu_core.sv`: first front-door SAP-VPU execution model for adapter and software bring-up.
 - `platforms/corev/rtl/cvxif_sap_vpu_adapter.sv`: flattened CV-X-IF-to-SAP-VPU command adapter.
 - `sw/baremetal/sap_vpu_custom.h`: bare-metal custom-0 encoding helpers.
+- `platforms/corev/rtl/corev_min_soc.sv`: minimal CV32E40X ROM/RAM/UART/exit wrapper for bring-up.
+- `sw/baremetal/hello.S`: RV32IMC assembly hello program for the minimal SoC.
 - `docs/SAP_VPU_PAPER_ROADMAP.md`: IEEE-hardware-paper evidence plan.
 - `docs/SAP_VPU_BASELINE_LEDGER.md`: traceable legacy `nutvpu` evidence map.
+
+`make hello-smoke` currently checks that the RV32 hello image builds and that
+the minimal SoC elaborates/lints with CV32E40X RTL. UART transcript simulation
+is the next bring-up step.
