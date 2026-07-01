@@ -1,6 +1,6 @@
 # SAP-VPU Codex Instructions
 
-- 默认使用中文回复。
+- 默认使用中文回复，叫我凇。
 - 修改代码前先说明准备改哪些文件。
 - 执行 Linux/WSL 命令时，首选通过 SSH 连接 WSL：
   `ssh -i C:\Users\Lenovo\.ssh\codex_wsl_ed25519 rime@127.0.0.1 '<command>'`。
