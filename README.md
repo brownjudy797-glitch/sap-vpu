@@ -44,6 +44,5 @@ make legacy-summary
 - `docs/SAP_VPU_PAPER_ROADMAP.md`: IEEE-hardware-paper evidence plan.
 - `docs/SAP_VPU_BASELINE_LEDGER.md`: traceable legacy `nutvpu` evidence map.
 
-`make hello-smoke` currently checks that the RV32 hello image builds and that
-the minimal SoC elaborates/lints with CV32E40X RTL. UART transcript simulation
-is the next bring-up step.
+`make hello-smoke` builds the RV32 hello image, runs the minimal SoC under
+CV32E40X RTL, checks the UART transcript, and lints the SoC wrapper.

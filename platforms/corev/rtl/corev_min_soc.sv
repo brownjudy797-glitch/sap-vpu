@@ -53,6 +53,26 @@ module corev_min_soc #(
   logic [31:0] rom [0:ROM_WORDS-1];
   logic [31:0] ram [0:RAM_WORDS-1];
 
+  function automatic logic [31:0] read_rom(input logic [31:0] addr);
+    begin
+      read_rom = 32'h0000_0013;
+      if ((addr >= BOOT_ADDR) && (((addr - BOOT_ADDR) >> 2) < ROM_WORDS)) begin
+        read_rom = rom[(addr - BOOT_ADDR) >> 2];
+      end
+    end
+  endfunction
+
+  function automatic logic [31:0] read_data(input logic [31:0] addr);
+    begin
+      read_data = 32'h0000_0000;
+      if ((addr >= RAM_BASE) && (((addr - RAM_BASE) >> 2) < RAM_WORDS)) begin
+        read_data = ram[(addr - RAM_BASE) >> 2];
+      end else if ((addr >= BOOT_ADDR) && (((addr - BOOT_ADDR) >> 2) < ROM_WORDS)) begin
+        read_data = rom[(addr - BOOT_ADDR) >> 2];
+      end
+    end
+  endfunction
+
   cv32e40x_if_xif xif();
 
   assign xif.compressed_ready       = 1'b1;
@@ -73,33 +93,26 @@ module corev_min_soc #(
   end
 
   assign instr_gnt    = instr_req;
-  assign instr_rvalid = instr_req;
-
-  always_comb begin
-    instr_rdata = 32'h0000_0013;
-    if ((instr_addr >= BOOT_ADDR) && (((instr_addr - BOOT_ADDR) >> 2) < ROM_WORDS)) begin
-      instr_rdata = rom[(instr_addr - BOOT_ADDR) >> 2];
-    end
-  end
 
   assign data_gnt    = data_req;
-  assign data_rvalid = data_req;
-
-  always_comb begin
-    data_rdata = 32'h0000_0000;
-    if ((data_addr >= RAM_BASE) && (((data_addr - RAM_BASE) >> 2) < RAM_WORDS)) begin
-      data_rdata = ram[(data_addr - RAM_BASE) >> 2];
-    end
-  end
 
   always_ff @(posedge clk_i or negedge rst_ni) begin
     if (!rst_ni) begin
+      instr_rvalid    <= 1'b0;
+      instr_rdata     <= 32'h0000_0013;
+      data_rvalid     <= 1'b0;
+      data_rdata      <= 32'h0000_0000;
       uart_tx_valid_o <= 1'b0;
       uart_tx_data_o  <= 8'h00;
       exit_valid_o    <= 1'b0;
       exit_code_o     <= 32'h0000_0000;
     end else begin
+      instr_rvalid    <= instr_req && instr_gnt;
+      instr_rdata     <= read_rom(instr_addr);
+      data_rvalid     <= data_req && data_gnt;
+      data_rdata      <= read_data(data_addr);
       uart_tx_valid_o <= 1'b0;
+      exit_valid_o    <= 1'b0;
       if (data_req && data_gnt && data_we) begin
         if ((data_addr >= RAM_BASE) && (((data_addr - RAM_BASE) >> 2) < RAM_WORDS)) begin
           for (int unsigned i = 0; i < 4; i++) begin

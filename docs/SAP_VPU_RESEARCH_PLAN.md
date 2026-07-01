@@ -39,7 +39,7 @@ The legacy NutShell-bound prototype remains in `~/Program/nutvpu` and is used on
 
 - `corev_min_soc` instantiates `cv32e40x_core` directly and connects a minimal ROM/RAM/UART/exit memory map.
 - `hello-build` produces an RV32IMC ELF/bin/hex image with the installed RISC-V binutils.
-- `hello-smoke` verifies image generation plus SoC lint/elaboration; it is not yet a UART transcript simulation.
+- `hello-smoke` runs the hello image through the minimal SoC, checks the UART transcript, verifies exit code `1`, and lints the wrapper.
 
 ## Paper Evidence Ladder
 
