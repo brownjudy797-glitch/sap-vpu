@@ -13,6 +13,7 @@ The legacy NutShell-bound prototype remains in `~/Program/nutvpu` and is used on
 1. **Portable RISC-V coprocessor attachment**
    - Use CV-X-IF instead of editing the scalar core.
    - Keep the scalar core as host, not the paper contribution.
+   - Keep legacy NutShell results as baseline evidence, not as the paper-facing platform.
 
 2. **Adaptive precision**
    - INT8/INT4/INT2 execution modes.
@@ -32,6 +33,16 @@ The legacy NutShell-bound prototype remains in `~/Program/nutvpu` and is used on
 - Build a minimal CV32E40X SoC with ROM, RAM, UART, and OBI interconnect.
 - Connect `cvxif_sap_vpu_adapter` to the CV-X-IF issue/result path.
 - Initially support `VSET`, `VMOV`, `VDOT`, and `VREADCNT`.
+- Extend the first slice with `VSETPREC`, `VSETSPARSE_BMP`, `VSETLANE`, and `VCLEARCNT` once adapter/core smoke tests cover the base path.
+
+## Paper Evidence Ladder
+
+1. Adapter/core lint and simulation.
+2. RV32 bare-metal `hello`.
+3. SAP-VPU precision and counter probes.
+4. TinyViT MLP/GEMM kernel measurements.
+5. Precision, sparse, and gating ablations.
+6. FPGA timing and ASIC PPA/power tables.
 
 ## Non-Goals
 
@@ -39,4 +50,3 @@ The legacy NutShell-bound prototype remains in `~/Program/nutvpu` and is used on
 - No CV32E40X core-source modification.
 - No cache coherence in the first slice.
 - No 200 MHz FPGA claim before timing and board evidence.
-

@@ -30,6 +30,7 @@ module cvxif_sap_vpu_adapter #(
 
   output logic                    vpu_cmd_valid_o,
   input  logic                    vpu_cmd_ready_i,
+  output logic [X_ID_WIDTH-1:0]   vpu_cmd_id_o,
   output logic [6:0]              vpu_cmd_op_o,
   output logic [XLEN-1:0]         vpu_cmd_rs1_o,
   output logic [XLEN-1:0]         vpu_cmd_rs2_o,
@@ -37,14 +38,12 @@ module cvxif_sap_vpu_adapter #(
 
   input  logic                    vpu_rsp_valid_i,
   output logic                    vpu_rsp_ready_o,
+  input  logic [X_ID_WIDTH-1:0]   vpu_rsp_id_i,
   input  logic [XLEN-1:0]         vpu_rsp_data_i
+  ,
+  input  logic                    vpu_rsp_exc_i
 );
-
-  localparam logic [6:0] OPCODE_CUSTOM0  = 7'b0001011;
-  localparam logic [6:0] SAP_OP_VDOT     = 7'h10;
-  localparam logic [6:0] SAP_OP_VSET     = 7'h11;
-  localparam logic [6:0] SAP_OP_VMOV     = 7'h12;
-  localparam logic [6:0] SAP_OP_VREADCNT = 7'h1a;
+  import sap_vpu_pkg::*;
 
   logic [X_ID_WIDTH-1:0] pending_id_q;
   logic                  pending_q;
@@ -59,7 +58,7 @@ module cvxif_sap_vpu_adapter #(
 
   assign funct7     = issue_instr_i[31:25];
   assign funct3     = issue_instr_i[14:12];
-  assign is_custom0 = issue_instr_i[6:0] == OPCODE_CUSTOM0;
+  assign is_custom0 = issue_instr_i[6:0] == SAP_OPCODE_CUSTOM0;
 
   always_comb begin
     decoded_op   = 7'h00;
@@ -67,23 +66,39 @@ module cvxif_sap_vpu_adapter #(
     scalar_write = 1'b0;
 
     unique case ({funct7, funct3})
-      {7'h09, 3'b000}: begin
+      {SAP_FUNCT7_VSET, SAP_FUNCT3_VSET}: begin
         decoded_op   = SAP_OP_VSET;
         is_supported = 1'b1;
       end
-      {7'h09, 3'b001}: begin
+      {SAP_FUNCT7_VMOV, SAP_FUNCT3_VMOV}: begin
         decoded_op   = SAP_OP_VMOV;
         is_supported = 1'b1;
         scalar_write = 1'b1;
       end
-      {7'h10, 3'b000}: begin
+      {SAP_FUNCT7_VDOT, 3'b000}: begin
         decoded_op   = SAP_OP_VDOT;
         is_supported = 1'b1;
       end
-      {7'h1a, 3'b000}: begin
+      {SAP_FUNCT7_VSETPREC, 3'b000}: begin
+        decoded_op   = SAP_OP_VSETPREC;
+        is_supported = 1'b1;
+      end
+      {SAP_FUNCT7_VREADCNT, 3'b000}: begin
         decoded_op   = SAP_OP_VREADCNT;
         is_supported = 1'b1;
         scalar_write = 1'b1;
+      end
+      {SAP_FUNCT7_VSETLANE, 3'b000}: begin
+        decoded_op   = SAP_OP_VSETLANE;
+        is_supported = 1'b1;
+      end
+      {SAP_FUNCT7_VSETSPARSE_BMP, 3'b000}: begin
+        decoded_op   = SAP_OP_VSETSPARSE_BMP;
+        is_supported = 1'b1;
+      end
+      {SAP_FUNCT7_VCLEARCNT, 3'b000}: begin
+        decoded_op   = SAP_OP_VCLEARCNT;
+        is_supported = 1'b1;
       end
       default: begin
       end
@@ -95,16 +110,17 @@ module cvxif_sap_vpu_adapter #(
   // ponytail: one in-flight op; add an ID scoreboard only when tests need it.
   assign issue_ready_o   = !pending_q && (!is_supported || vpu_cmd_ready_i);
   assign vpu_cmd_valid_o = issue_valid_i && issue_ready_o && is_supported;
+  assign vpu_cmd_id_o    = issue_id_i;
   assign vpu_cmd_op_o    = decoded_op;
   assign vpu_cmd_rs1_o   = issue_rs1_i;
   assign vpu_cmd_rs2_o   = issue_rs2_i;
   assign vpu_cmd_instr_o = issue_instr_i;
 
   assign result_valid_o  = pending_q && vpu_rsp_valid_i;
-  assign result_id_o     = pending_id_q;
+  assign result_id_o     = vpu_rsp_id_i;
   assign result_data_o   = vpu_rsp_data_i;
   assign result_we_o     = pending_we_q;
-  assign result_exc_o    = 1'b0;
+  assign result_exc_o    = vpu_rsp_exc_i;
   assign vpu_rsp_ready_o = pending_q && result_ready_i;
 
   always_ff @(posedge clk_i or negedge rst_ni) begin
@@ -126,4 +142,3 @@ module cvxif_sap_vpu_adapter #(
   end
 
 endmodule
-

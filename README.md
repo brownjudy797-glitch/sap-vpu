@@ -24,5 +24,17 @@ This is the clean project workspace for the CV32E40X/CV-X-IF based SAP-VPU resea
 make plan-check
 make corev-fetch
 make lint-adapter
+make lint
+make sim
+make encoding-check
+make legacy-summary
 ```
 
+## Current Engineering Slice
+
+- `rtl/sap_vpu_pkg.sv`: shared SAP-VPU opcode, operation, precision, and counter constants.
+- `rtl/sap_vpu_core.sv`: first front-door SAP-VPU execution model for adapter and software bring-up.
+- `platforms/corev/rtl/cvxif_sap_vpu_adapter.sv`: flattened CV-X-IF-to-SAP-VPU command adapter.
+- `sw/baremetal/sap_vpu_custom.h`: bare-metal custom-0 encoding helpers.
+- `docs/SAP_VPU_PAPER_ROADMAP.md`: IEEE-hardware-paper evidence plan.
+- `docs/SAP_VPU_BASELINE_LEDGER.md`: traceable legacy `nutvpu` evidence map.
