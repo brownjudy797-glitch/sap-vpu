@@ -1,0 +1,33 @@
+# Build artifacts
+build/
+out/
+work/
+reports/
+results/
+logs/
+netlist/
+
+# External dependencies fetched on demand
+third_party/
+
+# Editor and OS files
+.vscode/
+.idea/
+*.swp
+*~
+.DS_Store
+
+# Python / generated
+__pycache__/
+*.pyc
+
+# EDA / waveforms
+*.vcd
+*.vpd
+*.fsdb
+*.saif
+*.sdf
+*.spef
+*.ddc
+*.svf
+

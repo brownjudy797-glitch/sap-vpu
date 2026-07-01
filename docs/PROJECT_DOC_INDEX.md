@@ -1,0 +1,11 @@
+# SAP-VPU Document Index
+
+## Core Documents
+
+- [SAP_VPU_RESEARCH_PLAN.md](SAP_VPU_RESEARCH_PLAN.md)
+- [SAP_VPU_LITERATURE_MATRIX.md](SAP_VPU_LITERATURE_MATRIX.md)
+
+## Work Records
+
+- [records/2026-07-01.md](records/2026-07-01.md) - Project bootstrap
+
