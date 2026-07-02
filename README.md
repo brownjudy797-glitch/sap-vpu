@@ -20,6 +20,10 @@ This is the clean project workspace for the CV32E40X/CV-X-IF based SAP-VPU resea
 
 ## Useful Commands
 
+`make hello-smoke` uses Verilator timing support and defaults to `clang++-12`
+for generated C++ because Ubuntu 20.04 `g++-9` lacks `<coroutine>` and
+`g++-10` ICEs on the CV32E40X model.
+
 ```bash
 make plan-check
 make corev-fetch

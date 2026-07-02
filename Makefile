@@ -4,6 +4,10 @@ ROOT_DIR := $(abspath .)
 COREV_DIR ?= $(ROOT_DIR)/third_party/cv32e40x
 COREV_REF ?= master
 VERILATOR ?= verilator
+# ponytail: Ubuntu 20.04's default g++-9 lacks <coroutine>; clang avoids GCC ICEs here.
+VERILATOR_CXX ?= clang++-12
+VERILATOR_TIMING_CFLAGS ?= -std=c++20 -O0 -Wno-unknown-warning-option
+VERILATOR_TIMING_LDFLAGS ?= -no-pie
 PYTHON ?= python3
 SIM_DIR ?= $(ROOT_DIR)/work/sim
 COREV_RTL_FLIST := $(ROOT_DIR)/work/corev_rtl.f
@@ -41,7 +45,6 @@ plan-check:
 	test -f platforms/corev/rtl/cvxif_sap_vpu_adapter.sv
 	test -f platforms/corev/rtl/corev_min_soc.sv
 	test -f tb/corev_min_soc_hello_tb.sv
-	test -f tb/corev_min_soc_hello_tb.cpp
 	test -f sw/baremetal/sap_vpu_custom.h
 	test -f sw/baremetal/hello.S
 	test -f sw/baremetal/link.ld
@@ -98,17 +101,19 @@ sim-core:
 
 sim-hello: hello-build corev-rtl-flist
 	mkdir -p "$(SIM_DIR)"
-	DESIGN_RTL_DIR="$(COREV_DIR)/rtl" $(VERILATOR) --cc --exe --build -sv \
+	DESIGN_RTL_DIR="$(COREV_DIR)/rtl" $(VERILATOR) --binary --timing -sv \
 	  -DCOREV_ASSERT_OFF --top-module corev_min_soc_hello_tb -Wno-fatal \
 	  -Wno-BLKANDNBLK -Wno-TIMESCALEMOD -Wno-UNOPTFLAT \
 	  -Wno-WIDTHEXPAND -Wno-WIDTHTRUNC -Wno-WIDTHCONCAT \
 	  -Wno-ASCRANGE -Wno-IMPLICIT -Wno-UNSIGNED -Wno-COMBDLY \
+	  --output-split 5000 --output-split-cfuncs 5000 \
 	  -f "$(COREV_RTL_FLIST)" \
 	  platforms/corev/rtl/corev_min_soc.sv \
 	  tb/corev_min_soc_hello_tb.sv \
-	  tb/corev_min_soc_hello_tb.cpp \
 	  --Mdir "$(SIM_DIR)/hello_obj" \
-	  -CFLAGS "-O0" \
+	  -MAKEFLAGS "CXX=$(VERILATOR_CXX)" \
+	  -CFLAGS "$(VERILATOR_TIMING_CFLAGS)" \
+	  -LDFLAGS "$(VERILATOR_TIMING_LDFLAGS)" \
 	  -o corev_min_soc_hello_tb
 	"$(SIM_DIR)/hello_obj/corev_min_soc_hello_tb"
 
