@@ -18,10 +18,14 @@ HELLO_BUILD_DIR ?= $(ROOT_DIR)/work/hello
 HELLO_ELF := $(HELLO_BUILD_DIR)/sap_vpu_hello.elf
 HELLO_BIN := $(HELLO_BUILD_DIR)/sap_vpu_hello.bin
 HELLO_HEX := $(HELLO_BUILD_DIR)/sap_vpu_hello.hex
+VPU_BUILD_DIR ?= $(ROOT_DIR)/work/vpu_smoke
+VPU_ELF := $(VPU_BUILD_DIR)/sap_vpu_vpu.elf
+VPU_BIN := $(VPU_BUILD_DIR)/sap_vpu_vpu.bin
+VPU_HEX := $(VPU_BUILD_DIR)/sap_vpu_vpu.hex
 
 .DEFAULT_GOAL := help
 
-.PHONY: help plan-check corev-fetch corev-rtl-flist lint-adapter lint-core lint lint-corev-soc sim-adapter sim-core sim-hello sim encoding-check legacy-summary hello-build hello-smoke
+.PHONY: help plan-check corev-fetch corev-rtl-flist lint-adapter lint-core lint lint-corev-soc sim-adapter sim-core sim-hello sim-vpu sim encoding-check legacy-summary hello-build hello-smoke vpu-build vpu-smoke
 
 help:
 	@printf '%s\n' \
@@ -36,7 +40,8 @@ help:
 	  'make encoding-check' \
 	  'make legacy-summary [LEGACY_RESULTS_DIR=../nutvpu/results]' \
 	  'make hello-build' \
-	  'make hello-smoke'
+	  'make hello-smoke' \
+	  'make vpu-smoke'
 
 plan-check:
 	test -x scripts/fetch_corev_cv32e40x.sh
@@ -45,8 +50,10 @@ plan-check:
 	test -f platforms/corev/rtl/cvxif_sap_vpu_adapter.sv
 	test -f platforms/corev/rtl/corev_min_soc.sv
 	test -f tb/corev_min_soc_hello_tb.sv
+	test -f tb/corev_min_soc_vpu_tb.sv
 	test -f sw/baremetal/sap_vpu_custom.h
 	test -f sw/baremetal/hello.S
+	test -f sw/baremetal/vpu_smoke.S
 	test -f sw/baremetal/link.ld
 	test -x scripts/bin_to_verilog_hex.py
 	test -f docs/SAP_VPU_RESEARCH_PLAN.md
@@ -77,6 +84,9 @@ lint-corev-soc: corev-rtl-flist
 	  -Wno-WIDTHEXPAND -Wno-WIDTHTRUNC -Wno-WIDTHCONCAT \
 	  -Wno-ASCRANGE -Wno-IMPLICIT -Wno-UNSIGNED -Wno-COMBDLY \
 	  -f "$(COREV_RTL_FLIST)" \
+	  rtl/sap_vpu_pkg.sv \
+	  rtl/sap_vpu_core.sv \
+	  platforms/corev/rtl/cvxif_sap_vpu_adapter.sv \
 	  platforms/corev/rtl/corev_min_soc.sv
 
 sim-adapter:
@@ -108,6 +118,9 @@ sim-hello: hello-build corev-rtl-flist
 	  -Wno-ASCRANGE -Wno-IMPLICIT -Wno-UNSIGNED -Wno-COMBDLY \
 	  --output-split 5000 --output-split-cfuncs 5000 \
 	  -f "$(COREV_RTL_FLIST)" \
+	  rtl/sap_vpu_pkg.sv \
+	  rtl/sap_vpu_core.sv \
+	  platforms/corev/rtl/cvxif_sap_vpu_adapter.sv \
 	  platforms/corev/rtl/corev_min_soc.sv \
 	  tb/corev_min_soc_hello_tb.sv \
 	  --Mdir "$(SIM_DIR)/hello_obj" \
@@ -116,6 +129,27 @@ sim-hello: hello-build corev-rtl-flist
 	  -LDFLAGS "$(VERILATOR_TIMING_LDFLAGS)" \
 	  -o corev_min_soc_hello_tb
 	"$(SIM_DIR)/hello_obj/corev_min_soc_hello_tb"
+
+sim-vpu: vpu-build corev-rtl-flist
+	mkdir -p "$(SIM_DIR)"
+	DESIGN_RTL_DIR="$(COREV_DIR)/rtl" $(VERILATOR) --binary --timing -sv \
+	  -DCOREV_ASSERT_OFF --top-module corev_min_soc_vpu_tb -Wno-fatal \
+	  -Wno-BLKANDNBLK -Wno-TIMESCALEMOD -Wno-UNOPTFLAT \
+	  -Wno-WIDTHEXPAND -Wno-WIDTHTRUNC -Wno-WIDTHCONCAT \
+	  -Wno-ASCRANGE -Wno-IMPLICIT -Wno-UNSIGNED -Wno-COMBDLY \
+	  --output-split 5000 --output-split-cfuncs 5000 \
+	  -f "$(COREV_RTL_FLIST)" \
+	  rtl/sap_vpu_pkg.sv \
+	  rtl/sap_vpu_core.sv \
+	  platforms/corev/rtl/cvxif_sap_vpu_adapter.sv \
+	  platforms/corev/rtl/corev_min_soc.sv \
+	  tb/corev_min_soc_vpu_tb.sv \
+	  --Mdir "$(SIM_DIR)/vpu_obj" \
+	  -MAKEFLAGS "CXX=$(VERILATOR_CXX)" \
+	  -CFLAGS "$(VERILATOR_TIMING_CFLAGS)" \
+	  -LDFLAGS "$(VERILATOR_TIMING_LDFLAGS)" \
+	  -o corev_min_soc_vpu_tb
+	"$(SIM_DIR)/vpu_obj/corev_min_soc_vpu_tb"
 
 sim: sim-adapter sim-core
 
@@ -136,3 +170,15 @@ hello-build:
 
 hello-smoke: sim-hello lint-corev-soc
 	test -s "$(HELLO_HEX)"
+
+vpu-build:
+	mkdir -p "$(VPU_BUILD_DIR)"
+	$(RISCV_AS) -march=rv32imc -mabi=ilp32 \
+	  -o "$(VPU_BUILD_DIR)/vpu_smoke.o" sw/baremetal/vpu_smoke.S
+	$(RISCV_LD) -m elf32lriscv -T sw/baremetal/link.ld \
+	  -o "$(VPU_ELF)" "$(VPU_BUILD_DIR)/vpu_smoke.o"
+	$(RISCV_OBJCOPY) -O binary "$(VPU_ELF)" "$(VPU_BIN)"
+	$(PYTHON) scripts/bin_to_verilog_hex.py "$(VPU_BIN)" "$(VPU_HEX)"
+
+vpu-smoke: sim-vpu lint-corev-soc
+	test -s "$(VPU_HEX)"

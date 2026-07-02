@@ -20,6 +20,8 @@ module corev_min_soc #(
 );
   import cv32e40x_pkg::*;
 
+  localparam int unsigned X_ID_WIDTH = 4;
+
   logic instr_req;
   logic instr_gnt;
   logic instr_rvalid;
@@ -53,6 +55,29 @@ module corev_min_soc #(
   logic [31:0] rom [0:ROM_WORDS-1];
   logic [31:0] ram [0:RAM_WORDS-1];
 
+  logic                  xif_issue_ready;
+  logic                  xif_issue_accept;
+  logic                  xif_issue_writeback;
+  logic                  xif_result_valid;
+  logic [X_ID_WIDTH-1:0] xif_result_id;
+  logic [31:0]           xif_result_data;
+  logic                  xif_result_we;
+  logic [4:0]            xif_result_rd;
+  logic                  xif_result_exc;
+
+  logic                  vpu_cmd_valid;
+  logic                  vpu_cmd_ready;
+  logic [X_ID_WIDTH-1:0] vpu_cmd_id;
+  logic [6:0]            vpu_cmd_op;
+  logic [31:0]           vpu_cmd_rs1;
+  logic [31:0]           vpu_cmd_rs2;
+  logic [31:0]           vpu_cmd_instr;
+  logic                  vpu_rsp_valid;
+  logic                  vpu_rsp_ready;
+  logic [X_ID_WIDTH-1:0] vpu_rsp_id;
+  logic [31:0]           vpu_rsp_data;
+  logic                  vpu_rsp_exc;
+
   function automatic logic [31:0] read_rom(input logic [31:0] addr);
     begin
       read_rom = 32'h0000_0013;
@@ -75,16 +100,86 @@ module corev_min_soc #(
 
   cv32e40x_if_xif xif();
 
-  assign xif.compressed_ready       = 1'b1;
-  assign xif.compressed_resp        = '0;
-  assign xif.issue_ready            = 1'b1;
-  assign xif.issue_resp             = '0;
-  assign xif.mem_valid              = 1'b0;
-  assign xif.mem_req                = '0;
-  assign xif.mem_result_valid       = 1'b0;
-  assign xif.mem_result             = '0;
-  assign xif.result_valid           = 1'b0;
-  assign xif.result                 = '0;
+  assign xif.compressed_ready        = 1'b1;
+  assign xif.compressed_resp         = '0;
+  assign xif.issue_ready             = xif_issue_ready;
+  assign xif.issue_resp.accept       = xif_issue_accept;
+  assign xif.issue_resp.writeback    = xif_issue_writeback;
+  assign xif.issue_resp.dualwrite    = 1'b0;
+  assign xif.issue_resp.dualread     = 3'b000;
+  assign xif.issue_resp.loadstore    = 1'b0;
+  assign xif.issue_resp.ecswrite     = 1'b0;
+  assign xif.issue_resp.exc          = 1'b0;
+  assign xif.mem_valid               = 1'b0;
+  assign xif.mem_req                 = '0;
+  assign xif.result_valid            = xif_result_valid;
+  assign xif.result.id               = xif_result_id;
+  assign xif.result.data             = xif_result_data;
+  assign xif.result.rd               = xif_result_rd;
+  assign xif.result.we               = xif_result_we;
+  assign xif.result.ecsdata          = '0;
+  assign xif.result.ecswe            = '0;
+  assign xif.result.exc              = xif_result_exc;
+  assign xif.result.exccode          = xif_result_exc ? 6'd2 : 6'd0;
+  assign xif.result.err              = 1'b0;
+  assign xif.result.dbg              = 1'b0;
+
+  cvxif_sap_vpu_adapter #(
+    .XLEN(32),
+    .X_ID_WIDTH(X_ID_WIDTH)
+  ) xif_adapter_i (
+    .clk_i(clk_i),
+    .rst_ni(rst_ni),
+    .issue_valid_i(xif.issue_valid),
+    .issue_ready_o(xif_issue_ready),
+    .issue_accept_o(xif_issue_accept),
+    .issue_writeback_o(xif_issue_writeback),
+    .issue_id_i(xif.issue_req.id),
+    .issue_instr_i(xif.issue_req.instr),
+    .issue_rs1_i(xif.issue_req.rs[0]),
+    .issue_rs2_i(xif.issue_req.rs[1]),
+    .commit_valid_i(xif.commit_valid),
+    .commit_kill_i(xif.commit.commit_kill),
+    .result_valid_o(xif_result_valid),
+    .result_ready_i(xif.result_ready),
+    .result_id_o(xif_result_id),
+    .result_data_o(xif_result_data),
+    .result_we_o(xif_result_we),
+    .result_rd_o(xif_result_rd),
+    .result_exc_o(xif_result_exc),
+    .vpu_cmd_valid_o(vpu_cmd_valid),
+    .vpu_cmd_ready_i(vpu_cmd_ready),
+    .vpu_cmd_id_o(vpu_cmd_id),
+    .vpu_cmd_op_o(vpu_cmd_op),
+    .vpu_cmd_rs1_o(vpu_cmd_rs1),
+    .vpu_cmd_rs2_o(vpu_cmd_rs2),
+    .vpu_cmd_instr_o(vpu_cmd_instr),
+    .vpu_rsp_valid_i(vpu_rsp_valid),
+    .vpu_rsp_ready_o(vpu_rsp_ready),
+    .vpu_rsp_id_i(vpu_rsp_id),
+    .vpu_rsp_data_i(vpu_rsp_data),
+    .vpu_rsp_exc_i(vpu_rsp_exc)
+  );
+
+  sap_vpu_core #(
+    .XLEN(32),
+    .X_ID_WIDTH(X_ID_WIDTH)
+  ) vpu_i (
+    .clk_i(clk_i),
+    .rst_ni(rst_ni),
+    .cmd_valid_i(vpu_cmd_valid),
+    .cmd_ready_o(vpu_cmd_ready),
+    .cmd_id_i(vpu_cmd_id),
+    .cmd_op_i(vpu_cmd_op),
+    .cmd_rs1_i(vpu_cmd_rs1),
+    .cmd_rs2_i(vpu_cmd_rs2),
+    .cmd_instr_i(vpu_cmd_instr),
+    .rsp_valid_o(vpu_rsp_valid),
+    .rsp_ready_i(vpu_rsp_ready),
+    .rsp_id_o(vpu_rsp_id),
+    .rsp_data_o(vpu_rsp_data),
+    .rsp_exc_o(vpu_rsp_exc)
+  );
 
   initial begin
     if (ROM_INIT_FILE != "") begin
@@ -133,7 +228,7 @@ module corev_min_soc #(
 
   cv32e40x_core #(
     .DEBUG(0),
-    .X_EXT(0)
+    .X_EXT(1)
   ) core_i (
     .clk_i(clk_i),
     .rst_ni(rst_ni),

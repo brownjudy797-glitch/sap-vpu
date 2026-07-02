@@ -13,6 +13,8 @@ module cvxif_sap_vpu_adapter #(
 
   input  logic                    issue_valid_i,
   output logic                    issue_ready_o,
+  output logic                    issue_accept_o,
+  output logic                    issue_writeback_o,
   input  logic [X_ID_WIDTH-1:0]   issue_id_i,
   input  logic [31:0]             issue_instr_i,
   input  logic [XLEN-1:0]         issue_rs1_i,
@@ -26,6 +28,7 @@ module cvxif_sap_vpu_adapter #(
   output logic [X_ID_WIDTH-1:0]   result_id_o,
   output logic [XLEN-1:0]         result_data_o,
   output logic                    result_we_o,
+  output logic [4:0]              result_rd_o,
   output logic                    result_exc_o,
 
   output logic                    vpu_cmd_valid_o,
@@ -39,8 +42,7 @@ module cvxif_sap_vpu_adapter #(
   input  logic                    vpu_rsp_valid_i,
   output logic                    vpu_rsp_ready_o,
   input  logic [X_ID_WIDTH-1:0]   vpu_rsp_id_i,
-  input  logic [XLEN-1:0]         vpu_rsp_data_i
-  ,
+  input  logic [XLEN-1:0]         vpu_rsp_data_i,
   input  logic                    vpu_rsp_exc_i
 );
   import sap_vpu_pkg::*;
@@ -48,6 +50,7 @@ module cvxif_sap_vpu_adapter #(
   logic [X_ID_WIDTH-1:0] pending_id_q;
   logic                  pending_q;
   logic                  pending_we_q;
+  logic [4:0]            pending_rd_q;
 
   logic [6:0] funct7;
   logic [2:0] funct3;
@@ -78,6 +81,7 @@ module cvxif_sap_vpu_adapter #(
       {SAP_FUNCT7_VDOT, 3'b000}: begin
         decoded_op   = SAP_OP_VDOT;
         is_supported = 1'b1;
+        scalar_write = 1'b1;
       end
       {SAP_FUNCT7_VSETPREC, 3'b000}: begin
         decoded_op   = SAP_OP_VSETPREC;
@@ -109,6 +113,8 @@ module cvxif_sap_vpu_adapter #(
 
   // ponytail: one in-flight op; add an ID scoreboard only when tests need it.
   assign issue_ready_o   = !pending_q && (!is_supported || vpu_cmd_ready_i);
+  assign issue_accept_o  = is_supported && issue_ready_o;
+  assign issue_writeback_o = is_supported && scalar_write;
   assign vpu_cmd_valid_o = issue_valid_i && issue_ready_o && is_supported;
   assign vpu_cmd_id_o    = issue_id_i;
   assign vpu_cmd_op_o    = decoded_op;
@@ -120,6 +126,7 @@ module cvxif_sap_vpu_adapter #(
   assign result_id_o     = vpu_rsp_id_i;
   assign result_data_o   = vpu_rsp_data_i;
   assign result_we_o     = pending_we_q;
+  assign result_rd_o     = pending_rd_q;
   assign result_exc_o    = vpu_rsp_exc_i;
   assign vpu_rsp_ready_o = pending_q && result_ready_i;
 
@@ -128,6 +135,7 @@ module cvxif_sap_vpu_adapter #(
       pending_q    <= 1'b0;
       pending_id_q <= '0;
       pending_we_q <= 1'b0;
+      pending_rd_q <= '0;
     end else begin
       if (commit_valid_i && commit_kill_i) begin
         pending_q <= 1'b0;
@@ -137,6 +145,7 @@ module cvxif_sap_vpu_adapter #(
         pending_q    <= 1'b1;
         pending_id_q <= issue_id_i;
         pending_we_q <= scalar_write;
+        pending_rd_q <= issue_instr_i[11:7];
       end
     end
   end
