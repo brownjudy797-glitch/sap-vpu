@@ -8,6 +8,9 @@ VERILATOR ?= verilator
 VERILATOR_CXX ?= clang++-12
 VERILATOR_TIMING_CFLAGS ?= -std=c++20 -O0 -Wno-unknown-warning-option
 VERILATOR_TIMING_LDFLAGS ?= -no-pie
+# ponytail: smaller generated C++ chunks avoid WSL/compiler stalls; raise if build time dominates.
+VERILATOR_OUTPUT_SPLIT ?= 1000
+VERILATOR_OUTPUT_SPLIT_CFUNCS ?= 1000
 PYTHON ?= python3
 SIM_DIR ?= $(ROOT_DIR)/work/sim
 COREV_RTL_FLIST := $(ROOT_DIR)/work/corev_rtl.f
@@ -22,10 +25,14 @@ VPU_BUILD_DIR ?= $(ROOT_DIR)/work/vpu_smoke
 VPU_ELF := $(VPU_BUILD_DIR)/sap_vpu_vpu.elf
 VPU_BIN := $(VPU_BUILD_DIR)/sap_vpu_vpu.bin
 VPU_HEX := $(VPU_BUILD_DIR)/sap_vpu_vpu.hex
+TINYVIT_BUILD_DIR ?= $(ROOT_DIR)/work/tinyvit
+TINYVIT_ELF := $(TINYVIT_BUILD_DIR)/sap_vpu_tinyvit.elf
+TINYVIT_BIN := $(TINYVIT_BUILD_DIR)/sap_vpu_tinyvit.bin
+TINYVIT_HEX := $(TINYVIT_BUILD_DIR)/sap_vpu_tinyvit.hex
 
 .DEFAULT_GOAL := help
 
-.PHONY: help plan-check corev-fetch corev-rtl-flist lint-adapter lint-core lint lint-corev-soc sim-adapter sim-core sim-hello sim-vpu sim encoding-check legacy-summary hello-build hello-smoke vpu-build vpu-smoke
+.PHONY: help plan-check corev-fetch corev-rtl-flist lint-adapter lint-core lint lint-corev-soc sim-adapter sim-core sim-hello sim-vpu sim-tinyvit sim encoding-check legacy-summary hello-build hello-smoke vpu-build vpu-smoke tinyvit-build tinyvit-smoke
 
 help:
 	@printf '%s\n' \
@@ -41,7 +48,8 @@ help:
 	  'make legacy-summary [LEGACY_RESULTS_DIR=../nutvpu/results]' \
 	  'make hello-build' \
 	  'make hello-smoke' \
-	  'make vpu-smoke'
+	  'make vpu-smoke' \
+	  'make tinyvit-smoke'
 
 plan-check:
 	test -x scripts/fetch_corev_cv32e40x.sh
@@ -51,9 +59,11 @@ plan-check:
 	test -f platforms/corev/rtl/corev_min_soc.sv
 	test -f tb/corev_min_soc_hello_tb.sv
 	test -f tb/corev_min_soc_vpu_tb.sv
+	test -f tb/corev_min_soc_tinyvit_tb.sv
 	test -f sw/baremetal/sap_vpu_custom.h
 	test -f sw/baremetal/hello.S
 	test -f sw/baremetal/vpu_smoke.S
+	test -f sw/baremetal/tinyvit_mlp_smoke.S
 	test -f sw/baremetal/link.ld
 	test -x scripts/bin_to_verilog_hex.py
 	test -f docs/SAP_VPU_RESEARCH_PLAN.md
@@ -116,7 +126,7 @@ sim-hello: hello-build corev-rtl-flist
 	  -Wno-BLKANDNBLK -Wno-TIMESCALEMOD -Wno-UNOPTFLAT \
 	  -Wno-WIDTHEXPAND -Wno-WIDTHTRUNC -Wno-WIDTHCONCAT \
 	  -Wno-ASCRANGE -Wno-IMPLICIT -Wno-UNSIGNED -Wno-COMBDLY \
-	  --output-split 5000 --output-split-cfuncs 5000 \
+	  --output-split $(VERILATOR_OUTPUT_SPLIT) --output-split-cfuncs $(VERILATOR_OUTPUT_SPLIT_CFUNCS) \
 	  -f "$(COREV_RTL_FLIST)" \
 	  rtl/sap_vpu_pkg.sv \
 	  rtl/sap_vpu_core.sv \
@@ -137,7 +147,7 @@ sim-vpu: vpu-build corev-rtl-flist
 	  -Wno-BLKANDNBLK -Wno-TIMESCALEMOD -Wno-UNOPTFLAT \
 	  -Wno-WIDTHEXPAND -Wno-WIDTHTRUNC -Wno-WIDTHCONCAT \
 	  -Wno-ASCRANGE -Wno-IMPLICIT -Wno-UNSIGNED -Wno-COMBDLY \
-	  --output-split 5000 --output-split-cfuncs 5000 \
+	  --output-split $(VERILATOR_OUTPUT_SPLIT) --output-split-cfuncs $(VERILATOR_OUTPUT_SPLIT_CFUNCS) \
 	  -f "$(COREV_RTL_FLIST)" \
 	  rtl/sap_vpu_pkg.sv \
 	  rtl/sap_vpu_core.sv \
@@ -150,6 +160,27 @@ sim-vpu: vpu-build corev-rtl-flist
 	  -LDFLAGS "$(VERILATOR_TIMING_LDFLAGS)" \
 	  -o corev_min_soc_vpu_tb
 	"$(SIM_DIR)/vpu_obj/corev_min_soc_vpu_tb"
+
+sim-tinyvit: tinyvit-build corev-rtl-flist
+	mkdir -p "$(SIM_DIR)"
+	DESIGN_RTL_DIR="$(COREV_DIR)/rtl" $(VERILATOR) --binary --timing -sv \
+	  -DCOREV_ASSERT_OFF --top-module corev_min_soc_tinyvit_tb -Wno-fatal \
+	  -Wno-BLKANDNBLK -Wno-TIMESCALEMOD -Wno-UNOPTFLAT \
+	  -Wno-WIDTHEXPAND -Wno-WIDTHTRUNC -Wno-WIDTHCONCAT \
+	  -Wno-ASCRANGE -Wno-IMPLICIT -Wno-UNSIGNED -Wno-COMBDLY \
+	  --output-split $(VERILATOR_OUTPUT_SPLIT) --output-split-cfuncs $(VERILATOR_OUTPUT_SPLIT_CFUNCS) \
+	  -f "$(COREV_RTL_FLIST)" \
+	  rtl/sap_vpu_pkg.sv \
+	  rtl/sap_vpu_core.sv \
+	  platforms/corev/rtl/cvxif_sap_vpu_adapter.sv \
+	  platforms/corev/rtl/corev_min_soc.sv \
+	  tb/corev_min_soc_tinyvit_tb.sv \
+	  --Mdir "$(SIM_DIR)/tinyvit_obj" \
+	  -MAKEFLAGS "CXX=$(VERILATOR_CXX)" \
+	  -CFLAGS "$(VERILATOR_TIMING_CFLAGS)" \
+	  -LDFLAGS "$(VERILATOR_TIMING_LDFLAGS)" \
+	  -o corev_min_soc_tinyvit_tb
+	"$(SIM_DIR)/tinyvit_obj/corev_min_soc_tinyvit_tb"
 
 sim: sim-adapter sim-core
 
@@ -182,3 +213,15 @@ vpu-build:
 
 vpu-smoke: sim-vpu lint-corev-soc
 	test -s "$(VPU_HEX)"
+
+tinyvit-build:
+	mkdir -p "$(TINYVIT_BUILD_DIR)"
+	$(RISCV_AS) -march=rv32imc -mabi=ilp32 \
+	  -o "$(TINYVIT_BUILD_DIR)/tinyvit_mlp_smoke.o" sw/baremetal/tinyvit_mlp_smoke.S
+	$(RISCV_LD) -m elf32lriscv -T sw/baremetal/link.ld \
+	  -o "$(TINYVIT_ELF)" "$(TINYVIT_BUILD_DIR)/tinyvit_mlp_smoke.o"
+	$(RISCV_OBJCOPY) -O binary "$(TINYVIT_ELF)" "$(TINYVIT_BIN)"
+	$(PYTHON) scripts/bin_to_verilog_hex.py "$(TINYVIT_BIN)" "$(TINYVIT_HEX)"
+
+tinyvit-smoke: sim-tinyvit lint-corev-soc
+	test -s "$(TINYVIT_HEX)"
