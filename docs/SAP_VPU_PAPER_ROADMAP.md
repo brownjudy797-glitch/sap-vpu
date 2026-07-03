@@ -24,7 +24,7 @@ The paper must keep these boundaries explicit:
 | Minimal CORE-V SoC | CV32E40X wrapper with ROM, RAM, UART, exit MMIO, and OBI timing smoke. | `make hello-smoke` |
 | CV-X-IF attachment | `corev_min_soc` enables `X_EXT` and connects SAP-VPU through the flattened adapter. | `make lint-corev-soc`, `make hello-smoke` |
 | VPU instruction path | Bare-metal custom-0 smoke covers base, precision, sparse, lane, and counter ops. | `make vpu-smoke` |
-| Paper workload | Not started in the new platform. | Next phase |
+| Paper workload | TinyViT MLP smoke exists with policy and ablation counters; current numbers are smoke-only plumbing evidence. | `make tinyvit-summary`, `docs/SAP_VPU_TINYVIT_SMOKE_RECORD.md` |
 
 The next milestone is not another interface feature. The next milestone is a
 TinyViT-style kernel that produces workload-level performance and counter data.
