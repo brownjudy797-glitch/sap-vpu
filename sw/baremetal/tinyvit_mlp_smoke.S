@@ -154,8 +154,8 @@ _start:
   li t0, 0x0f
   sap_r 0x1c, 0x0, 0, 5, 0      /* VSETSPARSE_BMP lanes 0..3 */
 
-  li t0, 8
-  sap_r 0x1b, 0x0, 0, 5, 0      /* VSETLANE 8 */
+  li t0, 4
+  sap_r 0x1b, 0x0, 0, 5, 0      /* VSETLANE 4 */
 
   li t5, 0
   li t0, 0x11111111
@@ -192,7 +192,7 @@ _start:
   li t0, 5
   sap_r 0x1a, 0x0, 28, 5, 0     /* VREADCNT LANE */
   mv s9, t3
-  li t4, 8
+  li t4, 4
   bne s9, t4, fail_policy_lane
 
   read_csr 31, 0xb00             /* t6 = policy cycle delta */
@@ -207,6 +207,203 @@ _start:
   sw s9, 68(s2)
   sw t6, 72(s2)
   sw t2, 76(s2)
+
+  sap_r 0x1d, 0x0, 0, 0, 0      /* VCLEARCNT x0, x0, x0 */
+
+  /* Ablation: no sparse skip, with lane gating still enabled. */
+  read_csr 8, 0xb00              /* s0 = mcycle */
+  read_csr 9, 0xb02              /* s1 = minstret */
+
+  li t0, 1
+  sap_r 0x18, 0x0, 0, 5, 0      /* VSETPREC INT4 */
+
+  li t0, 0xff
+  sap_r 0x1c, 0x0, 0, 5, 0      /* VSETSPARSE_BMP dense INT4 lanes */
+
+  li t0, 4
+  sap_r 0x1b, 0x0, 0, 5, 0      /* VSETLANE 4 */
+
+  li t5, 0
+  li t0, 0x11111111
+  li t1, 0x11111111
+  sap_r 0x10, 0x0, 28, 5, 6     /* 4 active INT4 products => 4 */
+  add t5, t5, t3
+
+  li t0, 0x22222222
+  li t1, 0x11111111
+  sap_r 0x10, 0x0, 28, 5, 6     /* 4 active INT4 products => 8 */
+  add t5, t5, t3
+
+  li t4, 12
+  bne t5, t4, fail_no_sparse_output
+
+  li t0, 2
+  sap_r 0x1a, 0x0, 28, 5, 0     /* VREADCNT MAC_ACTIVE */
+  mv s6, t3
+  li t4, 2
+  bne s6, t4, fail_no_sparse_mac
+
+  li t0, 3
+  sap_r 0x1a, 0x0, 28, 5, 0     /* VREADCNT SKIPPED */
+  mv s7, t3
+  li t4, 8
+  bne s7, t4, fail_no_sparse_skip
+
+  li t0, 4
+  sap_r 0x1a, 0x0, 28, 5, 0     /* VREADCNT SPARSE */
+  mv s8, t3
+  li t4, 0xff
+  bne s8, t4, fail_no_sparse_sparse
+
+  li t0, 5
+  sap_r 0x1a, 0x0, 28, 5, 0     /* VREADCNT LANE */
+  mv s9, t3
+  li t4, 4
+  bne s9, t4, fail_no_sparse_lane
+
+  read_csr 31, 0xb00             /* t6 = no-sparse cycle delta */
+  sub t6, t6, s0
+  read_csr 7, 0xb02              /* t2 = no-sparse instret delta */
+  sub t2, t2, s1
+  li s2, RESULT_BASE
+  sw t5, 80(s2)
+  sw s6, 84(s2)
+  sw s7, 88(s2)
+  sw s8, 92(s2)
+  sw s9, 96(s2)
+  sw t6, 100(s2)
+  sw t2, 104(s2)
+
+  sap_r 0x1d, 0x0, 0, 0, 0      /* VCLEARCNT x0, x0, x0 */
+
+  /* Ablation: no lane gating, with sparse bitmap still enabled. */
+  read_csr 8, 0xb00              /* s0 = mcycle */
+  read_csr 9, 0xb02              /* s1 = minstret */
+
+  li t0, 1
+  sap_r 0x18, 0x0, 0, 5, 0      /* VSETPREC INT4 */
+
+  li t0, 0x0f
+  sap_r 0x1c, 0x0, 0, 5, 0      /* VSETSPARSE_BMP lanes 0..3 */
+
+  li t0, 8
+  sap_r 0x1b, 0x0, 0, 5, 0      /* VSETLANE 8 */
+
+  li t5, 0
+  li t0, 0x11111111
+  li t1, 0x11111111
+  sap_r 0x10, 0x0, 28, 5, 6     /* 4 active INT4 products => 4 */
+  add t5, t5, t3
+
+  li t0, 0x22222222
+  li t1, 0x11111111
+  sap_r 0x10, 0x0, 28, 5, 6     /* 4 active INT4 products => 8 */
+  add t5, t5, t3
+
+  li t4, 12
+  bne t5, t4, fail_no_lane_output
+
+  li t0, 2
+  sap_r 0x1a, 0x0, 28, 5, 0     /* VREADCNT MAC_ACTIVE */
+  mv s6, t3
+  li t4, 2
+  bne s6, t4, fail_no_lane_mac
+
+  li t0, 3
+  sap_r 0x1a, 0x0, 28, 5, 0     /* VREADCNT SKIPPED */
+  mv s7, t3
+  li t4, 8
+  bne s7, t4, fail_no_lane_skip
+
+  li t0, 4
+  sap_r 0x1a, 0x0, 28, 5, 0     /* VREADCNT SPARSE */
+  mv s8, t3
+  li t4, 0x0f
+  bne s8, t4, fail_no_lane_sparse
+
+  li t0, 5
+  sap_r 0x1a, 0x0, 28, 5, 0     /* VREADCNT LANE */
+  mv s9, t3
+  li t4, 8
+  bne s9, t4, fail_no_lane_lane
+
+  read_csr 31, 0xb00             /* t6 = no-lane cycle delta */
+  sub t6, t6, s0
+  read_csr 7, 0xb02              /* t2 = no-lane instret delta */
+  sub t2, t2, s1
+  li s2, RESULT_BASE
+  sw t5, 108(s2)
+  sw s6, 112(s2)
+  sw s7, 116(s2)
+  sw s8, 120(s2)
+  sw s9, 124(s2)
+  sw t6, 128(s2)
+  sw t2, 132(s2)
+
+  sap_r 0x1d, 0x0, 0, 0, 0      /* VCLEARCNT x0, x0, x0 */
+
+  /* Ablation: no precision gating, using an INT8-packed equivalent tile. */
+  read_csr 8, 0xb00              /* s0 = mcycle */
+  read_csr 9, 0xb02              /* s1 = minstret */
+
+  li t0, 0
+  sap_r 0x18, 0x0, 0, 5, 0      /* VSETPREC INT8 */
+
+  li t0, 0x0f
+  sap_r 0x1c, 0x0, 0, 5, 0      /* VSETSPARSE_BMP INT8 lanes 0..3 */
+
+  li t0, 4
+  sap_r 0x1b, 0x0, 0, 5, 0      /* VSETLANE 4 */
+
+  li t5, 0
+  li t0, 0x01010101
+  li t1, 0x01010101
+  sap_r 0x10, 0x0, 28, 5, 6     /* 4 active INT8 products => 4 */
+  add t5, t5, t3
+
+  li t0, 0x02020202
+  li t1, 0x01010101
+  sap_r 0x10, 0x0, 28, 5, 6     /* 4 active INT8 products => 8 */
+  add t5, t5, t3
+
+  li t4, 12
+  bne t5, t4, fail_no_precision_output
+
+  li t0, 2
+  sap_r 0x1a, 0x0, 28, 5, 0     /* VREADCNT MAC_ACTIVE */
+  mv s6, t3
+  li t4, 2
+  bne s6, t4, fail_no_precision_mac
+
+  li t0, 3
+  sap_r 0x1a, 0x0, 28, 5, 0     /* VREADCNT SKIPPED */
+  mv s7, t3
+  bnez s7, fail_no_precision_skip
+
+  li t0, 4
+  sap_r 0x1a, 0x0, 28, 5, 0     /* VREADCNT SPARSE */
+  mv s8, t3
+  li t4, 0x0f
+  bne s8, t4, fail_no_precision_sparse
+
+  li t0, 5
+  sap_r 0x1a, 0x0, 28, 5, 0     /* VREADCNT LANE */
+  mv s9, t3
+  li t4, 4
+  bne s9, t4, fail_no_precision_lane
+
+  read_csr 31, 0xb00             /* t6 = no-precision cycle delta */
+  sub t6, t6, s0
+  read_csr 7, 0xb02              /* t2 = no-precision instret delta */
+  sub t2, t2, s1
+  li s2, RESULT_BASE
+  sw t5, 136(s2)
+  sw s6, 140(s2)
+  sw s7, 144(s2)
+  sw s8, 148(s2)
+  sw s9, 152(s2)
+  sw t6, 156(s2)
+  sw t2, 160(s2)
 
   exit_with 1
 
@@ -248,3 +445,48 @@ fail_policy_sparse:
 
 fail_policy_lane:
   exit_with 35
+
+fail_no_sparse_output:
+  exit_with 41
+
+fail_no_sparse_mac:
+  exit_with 42
+
+fail_no_sparse_skip:
+  exit_with 43
+
+fail_no_sparse_sparse:
+  exit_with 44
+
+fail_no_sparse_lane:
+  exit_with 45
+
+fail_no_lane_output:
+  exit_with 51
+
+fail_no_lane_mac:
+  exit_with 52
+
+fail_no_lane_skip:
+  exit_with 53
+
+fail_no_lane_sparse:
+  exit_with 54
+
+fail_no_lane_lane:
+  exit_with 55
+
+fail_no_precision_output:
+  exit_with 61
+
+fail_no_precision_mac:
+  exit_with 62
+
+fail_no_precision_skip:
+  exit_with 63
+
+fail_no_precision_sparse:
+  exit_with 64
+
+fail_no_precision_lane:
+  exit_with 65

@@ -43,7 +43,10 @@ module corev_min_soc_tinyvit_tb;
       end
       if ((dut.ram[4] == 32'd0) || (dut.ram[5] == 32'd0) ||
           (dut.ram[11] == 32'd0) || (dut.ram[12] == 32'd0) ||
-          (dut.ram[18] == 32'd0) || (dut.ram[19] == 32'd0)) begin
+          (dut.ram[18] == 32'd0) || (dut.ram[19] == 32'd0) ||
+          (dut.ram[25] == 32'd0) || (dut.ram[26] == 32'd0) ||
+          (dut.ram[32] == 32'd0) || (dut.ram[33] == 32'd0) ||
+          (dut.ram[39] == 32'd0) || (dut.ram[40] == 32'd0)) begin
         $fatal(1, "TinyViT cycle/inst counters must be nonzero");
       end
       result_fd = $fopen("work/tinyvit/tinyvit_smoke_counters.csv", "w");
@@ -59,6 +62,15 @@ module corev_min_soc_tinyvit_tb;
       $fdisplay(result_fd, "adaptive,int4,bitmap,%0d,%0d,%0d,%0d,%0d,%0d,%0d",
                 dut.ram[13], dut.ram[14], dut.ram[15], dut.ram[16], dut.ram[17],
                 dut.ram[18], dut.ram[19]);
+      $fdisplay(result_fd, "no_sparse_skip,int4,none,%0d,%0d,%0d,%0d,%0d,%0d,%0d",
+                dut.ram[20], dut.ram[21], dut.ram[22], dut.ram[23], dut.ram[24],
+                dut.ram[25], dut.ram[26]);
+      $fdisplay(result_fd, "no_lane_gating,int4,bitmap,%0d,%0d,%0d,%0d,%0d,%0d,%0d",
+                dut.ram[27], dut.ram[28], dut.ram[29], dut.ram[30], dut.ram[31],
+                dut.ram[32], dut.ram[33]);
+      $fdisplay(result_fd, "no_precision_gating,int8,bitmap,%0d,%0d,%0d,%0d,%0d,%0d,%0d",
+                dut.ram[34], dut.ram[35], dut.ram[36], dut.ram[37], dut.ram[38],
+                dut.ram[39], dut.ram[40]);
       $fclose(result_fd);
       $display("TinyViT smoke exit code: %0d", exit_code);
       $finish;
