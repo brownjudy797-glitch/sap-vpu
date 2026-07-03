@@ -79,7 +79,72 @@ _start:
 
   sap_r 0x1d, 0x0, 0, 0, 0      /* VCLEARCNT x0, x0, x0 */
 
-  /* Low-bit sparse/lane policy tile, standing in for a pruned MLP tile. */
+  /* Static low-bit INT4 dense tile. */
+  read_csr 8, 0xb00              /* s0 = mcycle */
+  read_csr 9, 0xb02              /* s1 = minstret */
+
+  li t0, 1
+  sap_r 0x18, 0x0, 0, 5, 0      /* VSETPREC INT4 */
+
+  li t0, 0xff
+  sap_r 0x1c, 0x0, 0, 5, 0      /* VSETSPARSE_BMP dense INT4 lanes */
+
+  li t0, 8
+  sap_r 0x1b, 0x0, 0, 5, 0      /* VSETLANE 8 */
+
+  li t5, 0
+  li t0, 0x11111111
+  li t1, 0x11111111
+  sap_r 0x10, 0x0, 28, 5, 6     /* 8 active INT4 products => 8 */
+  add t5, t5, t3
+
+  li t0, 0x22222222
+  li t1, 0x11111111
+  sap_r 0x10, 0x0, 28, 5, 6     /* 8 active INT4 products => 16 */
+  add t5, t5, t3
+
+  li t4, 24
+  bne t5, t4, fail_static_output
+
+  li t0, 2
+  sap_r 0x1a, 0x0, 28, 5, 0     /* VREADCNT MAC_ACTIVE */
+  mv s6, t3
+  li t4, 2
+  bne s6, t4, fail_static_mac
+
+  li t0, 3
+  sap_r 0x1a, 0x0, 28, 5, 0     /* VREADCNT SKIPPED */
+  mv s7, t3
+  bnez s7, fail_static_skip
+
+  li t0, 4
+  sap_r 0x1a, 0x0, 28, 5, 0     /* VREADCNT SPARSE */
+  mv s8, t3
+  li t4, 0xff
+  bne s8, t4, fail_static_sparse
+
+  li t0, 5
+  sap_r 0x1a, 0x0, 28, 5, 0     /* VREADCNT LANE */
+  mv s9, t3
+  li t4, 8
+  bne s9, t4, fail_static_lane
+
+  read_csr 31, 0xb00             /* t6 = static low-bit cycle delta */
+  sub t6, t6, s0
+  read_csr 7, 0xb02              /* t2 = static low-bit instret delta */
+  sub t2, t2, s1
+  li s2, RESULT_BASE
+  sw t5, 24(s2)
+  sw s6, 28(s2)
+  sw s7, 32(s2)
+  sw s8, 36(s2)
+  sw s9, 40(s2)
+  sw t6, 44(s2)
+  sw t2, 48(s2)
+
+  sap_r 0x1d, 0x0, 0, 0, 0      /* VCLEARCNT x0, x0, x0 */
+
+  /* Adaptive low-bit sparse/lane policy tile, standing in for a pruned MLP tile. */
   read_csr 8, 0xb00              /* s0 = mcycle */
   read_csr 9, 0xb02              /* s1 = minstret */
 
@@ -135,13 +200,13 @@ _start:
   read_csr 7, 0xb02              /* t2 = policy instret delta */
   sub t2, t2, s1
   li s2, RESULT_BASE
-  sw t5, 24(s2)
-  sw s6, 28(s2)
-  sw s7, 32(s2)
-  sw s8, 36(s2)
-  sw s9, 40(s2)
-  sw t6, 44(s2)
-  sw t2, 48(s2)
+  sw t5, 52(s2)
+  sw s6, 56(s2)
+  sw s7, 60(s2)
+  sw s8, 64(s2)
+  sw s9, 68(s2)
+  sw t6, 72(s2)
+  sw t2, 76(s2)
 
   exit_with 1
 
@@ -154,17 +219,32 @@ fail_dense_mac:
 fail_dense_skip:
   exit_with 13
 
-fail_policy_output:
+fail_static_output:
   exit_with 21
 
-fail_policy_mac:
+fail_static_mac:
   exit_with 22
 
-fail_policy_skip:
+fail_static_skip:
   exit_with 23
 
-fail_policy_sparse:
+fail_static_sparse:
   exit_with 24
 
-fail_policy_lane:
+fail_static_lane:
   exit_with 25
+
+fail_policy_output:
+  exit_with 31
+
+fail_policy_mac:
+  exit_with 32
+
+fail_policy_skip:
+  exit_with 33
+
+fail_policy_sparse:
+  exit_with 34
+
+fail_policy_lane:
+  exit_with 35
