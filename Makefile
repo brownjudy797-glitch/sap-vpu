@@ -29,10 +29,11 @@ TINYVIT_BUILD_DIR ?= $(ROOT_DIR)/work/tinyvit
 TINYVIT_ELF := $(TINYVIT_BUILD_DIR)/sap_vpu_tinyvit.elf
 TINYVIT_BIN := $(TINYVIT_BUILD_DIR)/sap_vpu_tinyvit.bin
 TINYVIT_HEX := $(TINYVIT_BUILD_DIR)/sap_vpu_tinyvit.hex
+TINYVIT_COUNTER_CSV ?= $(TINYVIT_BUILD_DIR)/tinyvit_smoke_counters.csv
 
 .DEFAULT_GOAL := help
 
-.PHONY: help plan-check corev-fetch corev-rtl-flist lint-adapter lint-core lint lint-corev-soc sim-adapter sim-core sim-hello sim-vpu sim-tinyvit sim encoding-check legacy-summary hello-build hello-smoke vpu-build vpu-smoke tinyvit-build tinyvit-smoke
+.PHONY: help plan-check corev-fetch corev-rtl-flist lint-adapter lint-core lint lint-corev-soc sim-adapter sim-core sim-hello sim-vpu sim-tinyvit sim encoding-check legacy-summary hello-build hello-smoke vpu-build vpu-smoke tinyvit-build tinyvit-smoke tinyvit-summary
 
 help:
 	@printf '%s\n' \
@@ -49,7 +50,8 @@ help:
 	  'make hello-build' \
 	  'make hello-smoke' \
 	  'make vpu-smoke' \
-	  'make tinyvit-smoke'
+	  'make tinyvit-smoke' \
+	  'make tinyvit-summary'
 
 plan-check:
 	test -x scripts/fetch_corev_cv32e40x.sh
@@ -66,6 +68,7 @@ plan-check:
 	test -f sw/baremetal/tinyvit_mlp_smoke.S
 	test -f sw/baremetal/link.ld
 	test -x scripts/bin_to_verilog_hex.py
+	test -x scripts/summarize_tinyvit_counters.py
 	test -f docs/SAP_VPU_RESEARCH_PLAN.md
 	test -f docs/SAP_VPU_LITERATURE_MATRIX.md
 
@@ -225,3 +228,6 @@ tinyvit-build:
 
 tinyvit-smoke: sim-tinyvit lint-corev-soc
 	test -s "$(TINYVIT_HEX)"
+
+tinyvit-summary: tinyvit-smoke
+	$(PYTHON) scripts/summarize_tinyvit_counters.py "$(TINYVIT_COUNTER_CSV)"
