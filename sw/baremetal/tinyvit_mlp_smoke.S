@@ -2,9 +2,15 @@
   .globl _start
 
   .equ EXIT_ADDR, 0x10000004
+  .equ RESULT_BASE, 0x00010000
+  .equ RESULT_MAGIC, 0x54564954
 
   .macro sap_r funct7, funct3, rd, rs1, rs2
     .word ((\funct7 << 25) | (\rs2 << 20) | (\rs1 << 15) | (\funct3 << 12) | (\rd << 7) | 0x0b)
+  .endm
+
+  .macro read_csr rd, csr
+    .word ((\csr << 20) | (0 << 15) | (0x2 << 12) | (\rd << 7) | 0x73)
   .endm
 
   .macro exit_with code
@@ -22,6 +28,8 @@ _start:
   sap_r 0x1d, 0x0, 0, 0, 0      /* VCLEARCNT x0, x0, x0 */
 
   /* TinyViT MLP/GEMM-like INT8 dense 2x2 tile. */
+  read_csr 8, 0xb00              /* s0 = mcycle */
+  read_csr 9, 0xb02              /* s1 = minstret */
   li t5, 0
 
   li t0, 0x04030201             /* token0: [1, 2, 3, 4] */
@@ -47,16 +55,34 @@ _start:
 
   li t0, 2
   sap_r 0x1a, 0x0, 28, 5, 0     /* VREADCNT MAC_ACTIVE */
+  mv s4, t3
   li t4, 4
-  bne t3, t4, fail_dense_mac
+  bne s4, t4, fail_dense_mac
 
   li t0, 3
   sap_r 0x1a, 0x0, 28, 5, 0     /* VREADCNT SKIPPED */
-  bnez t3, fail_dense_skip
+  mv s5, t3
+  bnez s5, fail_dense_skip
+
+  read_csr 31, 0xb00             /* t6 = dense cycle delta */
+  sub t6, t6, s0
+  read_csr 7, 0xb02              /* t2 = dense instret delta */
+  sub t2, t2, s1
+  li s2, RESULT_BASE
+  li s3, RESULT_MAGIC
+  sw s3, 0(s2)
+  sw t5, 4(s2)
+  sw s4, 8(s2)
+  sw s5, 12(s2)
+  sw t6, 16(s2)
+  sw t2, 20(s2)
 
   sap_r 0x1d, 0x0, 0, 0, 0      /* VCLEARCNT x0, x0, x0 */
 
   /* Low-bit sparse/lane policy tile, standing in for a pruned MLP tile. */
+  read_csr 8, 0xb00              /* s0 = mcycle */
+  read_csr 9, 0xb02              /* s1 = minstret */
+
   li t0, 1
   sap_r 0x18, 0x0, 0, 5, 0      /* VSETPREC INT4 */
 
@@ -82,23 +108,40 @@ _start:
 
   li t0, 2
   sap_r 0x1a, 0x0, 28, 5, 0     /* VREADCNT MAC_ACTIVE */
+  mv s6, t3
   li t4, 2
-  bne t3, t4, fail_policy_mac
+  bne s6, t4, fail_policy_mac
 
   li t0, 3
   sap_r 0x1a, 0x0, 28, 5, 0     /* VREADCNT SKIPPED */
+  mv s7, t3
   li t4, 8
-  bne t3, t4, fail_policy_skip
+  bne s7, t4, fail_policy_skip
 
   li t0, 4
   sap_r 0x1a, 0x0, 28, 5, 0     /* VREADCNT SPARSE */
+  mv s8, t3
   li t4, 0x0f
-  bne t3, t4, fail_policy_sparse
+  bne s8, t4, fail_policy_sparse
 
   li t0, 5
   sap_r 0x1a, 0x0, 28, 5, 0     /* VREADCNT LANE */
+  mv s9, t3
   li t4, 8
-  bne t3, t4, fail_policy_lane
+  bne s9, t4, fail_policy_lane
+
+  read_csr 31, 0xb00             /* t6 = policy cycle delta */
+  sub t6, t6, s0
+  read_csr 7, 0xb02              /* t2 = policy instret delta */
+  sub t2, t2, s1
+  li s2, RESULT_BASE
+  sw t5, 24(s2)
+  sw s6, 28(s2)
+  sw s7, 32(s2)
+  sw s8, 36(s2)
+  sw s9, 40(s2)
+  sw t6, 44(s2)
+  sw t2, 48(s2)
 
   exit_with 1
 
