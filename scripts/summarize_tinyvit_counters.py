@@ -52,6 +52,14 @@ def dense_cycles(rows: list[dict[str, str]]) -> int:
     raise ValueError("missing nonzero dense baseline cycle count")
 
 
+def traffic_bytes(row: dict[str, str]) -> tuple[int, int, int]:
+    dot_ops = as_int(row, "mac_active")
+    operand_bytes = dot_ops * 4
+    weight_bytes = dot_ops * 4
+    partial_sum_bytes = dot_ops * 4
+    return operand_bytes, weight_bytes, partial_sum_bytes
+
+
 def main() -> int:
     csv_path = Path(sys.argv[1] if len(sys.argv) > 1 else "work/tinyvit/tinyvit_smoke_counters.csv")
     if not csv_path.exists():
@@ -90,18 +98,22 @@ def main() -> int:
     print()
     print("## Paper Table Draft")
     print()
-    print("| Kernel | Precision | Sparse | Output | Cycles | Dense speedup | Skip ratio | Active lanes |")
-    print("| --- | --- | --- | ---: | ---: | ---: | ---: | ---: |")
+    print("| Kernel | Precision | Sparse | Output | Cycles | Dense speedup | Skip ratio | Active lanes | Operand bytes | Weight bytes | Partial sum bytes | Total bytes |")
+    print("| --- | --- | --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: |")
     for row in rows:
         cycles = as_int(row, "cycle_delta")
         speedup = baseline_cycles / cycles if cycles else 0.0
+        operand_bytes, weight_bytes, partial_sum_bytes = traffic_bytes(row)
+        total_bytes = operand_bytes + weight_bytes + partial_sum_bytes
         print(
             f"| {row['kernel']} | {row['precision']} | {row['sparse']} | "
             f"{as_int(row, 'output')} | {cycles} | {speedup:.3f} | "
-            f"{skip_ratio(row):.3f} | {as_int(row, 'lane_state')} |"
+            f"{skip_ratio(row):.3f} | {as_int(row, 'lane_state')} | "
+            f"{operand_bytes} | {weight_bytes} | {partial_sum_bytes} | {total_bytes} |"
         )
     print()
     print("Dense speedup is local to this smoke counter run; use this as table plumbing, not as a paper claim.")
+    print("Traffic is a packed-register estimate for the smoke kernel, not a final SRAM/cache traffic model.")
     print()
     print("Use this smoke table as a functional counter sanity check only; paper-facing tables need expanded kernels and policies.")
     return 0
