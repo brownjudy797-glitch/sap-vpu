@@ -15,6 +15,8 @@ Current boundary:
 - The dense speedup is local to this smoke run and should not be cited as a
   final performance claim.
 - The traffic numbers are packed-register estimates, not SRAM/cache traffic.
+- The skip ratio is product-level, computed from issued VDOT lanes and the
+  hardware skipped-products counter rather than raw VDOT issue count.
 - FPGA and ASIC PPA are not covered by this record.
 
 ## Reproduction
@@ -41,10 +43,21 @@ python3 scripts/summarize_tinyvit_counters.py work/tinyvit/tinyvit_smoke_counter
 | --- | --- | --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
 | dense | int8 | none | 2400 | 466 | 1.000 | 0.000 | 4 | 256 | 256 | 256 | 768 |
 | static_lowbit | int4 | none | 384 | 325 | 1.434 | 0.000 | 8 | 128 | 128 | 128 | 384 |
-| adaptive | int4 | bitmap | 192 | 341 | 1.367 | 0.800 | 4 | 128 | 128 | 128 | 384 |
-| no_sparse_skip | int4 | none | 192 | 326 | 1.429 | 0.800 | 4 | 128 | 128 | 128 | 384 |
-| no_lane_gating | int4 | bitmap | 192 | 341 | 1.367 | 0.800 | 8 | 128 | 128 | 128 | 384 |
+| adaptive | int4 | bitmap | 192 | 341 | 1.367 | 0.500 | 4 | 128 | 128 | 128 | 384 |
+| no_sparse_skip | int4 | none | 192 | 326 | 1.429 | 0.500 | 4 | 128 | 128 | 128 | 384 |
+| no_lane_gating | int4 | bitmap | 192 | 341 | 1.367 | 0.500 | 8 | 128 | 128 | 128 | 384 |
 | no_precision_gating | int8 | bitmap | 192 | 340 | 1.371 | 0.000 | 4 | 128 | 128 | 128 | 384 |
+
+## Current Compute Shape Table
+
+| Kernel | Vector lanes | VDOT ops | Active products | Skipped products | Active products/cycle |
+| --- | ---: | ---: | ---: | ---: | ---: |
+| dense | 4 | 64 | 256 | 0 | 0.549 |
+| static_lowbit | 8 | 32 | 256 | 0 | 0.788 |
+| adaptive | 8 | 32 | 128 | 128 | 0.375 |
+| no_sparse_skip | 8 | 32 | 128 | 128 | 0.393 |
+| no_lane_gating | 8 | 32 | 128 | 128 | 0.375 |
+| no_precision_gating | 4 | 32 | 128 | 0 | 0.376 |
 
 ## Evidence Covered
 
@@ -57,6 +70,8 @@ The current smoke covers the next paper-roadmap evidence hooks:
   precision gating.
 - Counter export for cycles, instruction count, MAC active count, skip count,
   sparse state, lane state, and packed-register traffic estimate.
+- Derived compute-shape reporting for vector lanes, issued VDOT ops, active
+  products, skipped products, and active products per cycle.
 
 ## Interpretation
 
