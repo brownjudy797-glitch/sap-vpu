@@ -122,13 +122,23 @@ def self_test() -> int:
             "sparse_state": "15",
             "lane_state": "8",
         },
+        {
+            "kernel": "static_int2",
+            "precision": "int2",
+            "sparse": "none",
+            "mac_active": "32",
+            "sparse_state": "65535",
+            "lane_state": "16",
+        },
     ]
     rows[0]["skip"] = "0"
     rows[1]["skip"] = "128"
     rows[2]["skip"] = "128"
+    rows[3]["skip"] = "0"
     assert product_counts(rows[0]) == ProductCounts(4, 256, 256, 0)
     assert product_counts(rows[1]) == ProductCounts(8, 256, 128, 128)
     assert product_counts(rows[2]) == ProductCounts(8, 256, 128, 128)
+    assert product_counts(rows[3]) == ProductCounts(16, 512, 512, 0)
     assert skip_ratio(rows[1]) == 0.5
     return 0
 

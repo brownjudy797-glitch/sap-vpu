@@ -155,6 +155,76 @@ _start:
 
   sap_r 0x1d, 0x0, 0, 0, 0      /* VCLEARCNT x0, x0, x0 */
 
+  /* Static INT2 dense tile. */
+  read_csr 8, 0xb00              /* s0 = mcycle */
+  read_csr 9, 0xb02              /* s1 = minstret */
+
+  li t0, 2
+  sap_r 0x18, 0x0, 0, 5, 0      /* VSETPREC INT2 */
+
+  li t0, 0xffff
+  sap_r 0x1c, 0x0, 0, 5, 0      /* VSETSPARSE_BMP dense INT2 lanes */
+
+  li t0, 16
+  sap_r 0x1b, 0x0, 0, 5, 0      /* VSETLANE 16 */
+
+  li t5, 0
+  li a0, TINYVIT_ITERS
+1:
+  li t0, 0x55555555
+  li t1, 0x55555555
+  sap_r 0x10, 0x0, 28, 5, 6     /* 16 active INT2 products => 16 */
+  add t5, t5, t3
+
+  li t0, 0x11111111
+  li t1, 0x55555555
+  sap_r 0x10, 0x0, 28, 5, 6     /* 8 active INT2 products => 8 */
+  add t5, t5, t3
+
+  addi a0, a0, -1
+  bnez a0, 1b
+
+  li t4, 384
+  bne t5, t4, fail_static_int2_output
+
+  li t0, 2
+  sap_r 0x1a, 0x0, 28, 5, 0     /* VREADCNT MAC_ACTIVE */
+  mv s6, t3
+  li t4, 32
+  bne s6, t4, fail_static_int2_mac
+
+  li t0, 3
+  sap_r 0x1a, 0x0, 28, 5, 0     /* VREADCNT SKIPPED */
+  mv s7, t3
+  bnez s7, fail_static_int2_skip
+
+  li t0, 4
+  sap_r 0x1a, 0x0, 28, 5, 0     /* VREADCNT SPARSE */
+  mv s8, t3
+  li t4, 0xffff
+  bne s8, t4, fail_static_int2_sparse
+
+  li t0, 5
+  sap_r 0x1a, 0x0, 28, 5, 0     /* VREADCNT LANE */
+  mv s9, t3
+  li t4, 16
+  bne s9, t4, fail_static_int2_lane
+
+  read_csr 31, 0xb00             /* t6 = static INT2 cycle delta */
+  sub t6, t6, s0
+  read_csr 7, 0xb02              /* t2 = static INT2 instret delta */
+  sub t2, t2, s1
+  li s2, RESULT_BASE
+  sw t5, 164(s2)
+  sw s6, 168(s2)
+  sw s7, 172(s2)
+  sw s8, 176(s2)
+  sw s9, 180(s2)
+  sw t6, 184(s2)
+  sw t2, 188(s2)
+
+  sap_r 0x1d, 0x0, 0, 0, 0      /* VCLEARCNT x0, x0, x0 */
+
   /* Adaptive low-bit sparse/lane policy tile, standing in for a pruned MLP tile. */
   read_csr 8, 0xb00              /* s0 = mcycle */
   read_csr 9, 0xb02              /* s1 = minstret */
@@ -461,6 +531,21 @@ fail_static_sparse:
 
 fail_static_lane:
   exit_with 25
+
+fail_static_int2_output:
+  exit_with 71
+
+fail_static_int2_mac:
+  exit_with 72
+
+fail_static_int2_skip:
+  exit_with 73
+
+fail_static_int2_sparse:
+  exit_with 74
+
+fail_static_int2_lane:
+  exit_with 75
 
 fail_policy_output:
   exit_with 31
