@@ -10,6 +10,8 @@ Current boundary:
 
 - The workload is a small deterministic bare-metal smoke kernel, not full
   TinyViT end-to-end inference.
+- Each row repeats the same micro-tile 16 times to reduce one-time setup
+  overhead, but the kernel is still a smoke workload.
 - The dense speedup is local to this smoke run and should not be cited as a
   final performance claim.
 - The traffic numbers are packed-register estimates, not SRAM/cache traffic.
@@ -37,12 +39,12 @@ python3 scripts/summarize_tinyvit_counters.py work/tinyvit/tinyvit_smoke_counter
 
 | Kernel | Precision | Sparse | Output | Cycles | Dense speedup | Skip ratio | Active lanes | Operand bytes | Weight bytes | Partial sum bytes | Total bytes |
 | --- | --- | --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
-| dense | int8 | none | 150 | 42 | 1.000 | 0.000 | 4 | 16 | 16 | 16 | 48 |
-| static_lowbit | int4 | none | 24 | 52 | 0.808 | 0.000 | 8 | 8 | 8 | 8 | 24 |
-| adaptive | int4 | bitmap | 12 | 53 | 0.792 | 0.800 | 4 | 8 | 8 | 8 | 24 |
-| no_sparse_skip | int4 | none | 12 | 53 | 0.792 | 0.800 | 4 | 8 | 8 | 8 | 24 |
-| no_lane_gating | int4 | bitmap | 12 | 53 | 0.792 | 0.800 | 8 | 8 | 8 | 8 | 24 |
-| no_precision_gating | int8 | bitmap | 12 | 52 | 0.808 | 0.000 | 4 | 8 | 8 | 8 | 24 |
+| dense | int8 | none | 2400 | 466 | 1.000 | 0.000 | 4 | 256 | 256 | 256 | 768 |
+| static_lowbit | int4 | none | 384 | 325 | 1.434 | 0.000 | 8 | 128 | 128 | 128 | 384 |
+| adaptive | int4 | bitmap | 192 | 341 | 1.367 | 0.800 | 4 | 128 | 128 | 128 | 384 |
+| no_sparse_skip | int4 | none | 192 | 326 | 1.429 | 0.800 | 4 | 128 | 128 | 128 | 384 |
+| no_lane_gating | int4 | bitmap | 192 | 341 | 1.367 | 0.800 | 8 | 128 | 128 | 128 | 384 |
+| no_precision_gating | int8 | bitmap | 192 | 340 | 1.371 | 0.000 | 4 | 128 | 128 | 128 | 384 |
 
 ## Evidence Covered
 
@@ -58,10 +60,12 @@ The current smoke covers the next paper-roadmap evidence hooks:
 
 ## Interpretation
 
-This table verifies the experiment plumbing and counter visibility. The absolute
-cycle numbers are dominated by tiny smoke-kernel setup overhead, so they are not
-yet useful as performance claims.
+This table verifies the experiment plumbing and counter visibility. The 16-round
+repeat makes cycle counts less dominated by setup overhead than the first
+single-tile smoke, but the workload is still too small for final performance
+claims.
 
 Use this record to justify that SAP-VPU now has a repeatable TinyViT-oriented
-kernel path. The next evidence step should expand the kernel shape or iteration
-count before making performance comparisons.
+kernel path. The next evidence step should broaden the kernel shape, add more
+realistic MLP dimensions, and separate compute effects from memory traffic
+before making performance comparisons.

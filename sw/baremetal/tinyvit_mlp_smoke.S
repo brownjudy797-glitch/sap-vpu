@@ -4,6 +4,7 @@
   .equ EXIT_ADDR, 0x10000004
   .equ RESULT_BASE, 0x00010000
   .equ RESULT_MAGIC, 0x54564954
+  .equ TINYVIT_ITERS, 16
 
   .macro sap_r funct7, funct3, rd, rs1, rs2
     .word ((\funct7 << 25) | (\rs2 << 20) | (\rs1 << 15) | (\funct3 << 12) | (\rd << 7) | 0x0b)
@@ -27,11 +28,13 @@ _start:
 
   sap_r 0x1d, 0x0, 0, 0, 0      /* VCLEARCNT x0, x0, x0 */
 
-  /* TinyViT MLP/GEMM-like INT8 dense 2x2 tile. */
+  /* TinyViT MLP/GEMM-like INT8 dense 2x2 tile, repeated to expose kernel cost. */
   read_csr 8, 0xb00              /* s0 = mcycle */
   read_csr 9, 0xb02              /* s1 = minstret */
   li t5, 0
+  li a0, TINYVIT_ITERS
 
+1:
   li t0, 0x04030201             /* token0: [1, 2, 3, 4] */
   li t1, 0x08070605             /* weight0: [5, 6, 7, 8] */
   sap_r 0x10, 0x0, 28, 5, 6     /* VDOT t3, t0, t1 => 70 */
@@ -50,13 +53,16 @@ _start:
   sap_r 0x10, 0x0, 28, 5, 6     /* VDOT t3, t0, t1 => 10 */
   add t5, t5, t3
 
-  li t4, 150
+  addi a0, a0, -1
+  bnez a0, 1b
+
+  li t4, 2400
   bne t5, t4, fail_dense_output
 
   li t0, 2
   sap_r 0x1a, 0x0, 28, 5, 0     /* VREADCNT MAC_ACTIVE */
   mv s4, t3
-  li t4, 4
+  li t4, 64
   bne s4, t4, fail_dense_mac
 
   li t0, 3
@@ -93,6 +99,8 @@ _start:
   sap_r 0x1b, 0x0, 0, 5, 0      /* VSETLANE 8 */
 
   li t5, 0
+  li a0, TINYVIT_ITERS
+1:
   li t0, 0x11111111
   li t1, 0x11111111
   sap_r 0x10, 0x0, 28, 5, 6     /* 8 active INT4 products => 8 */
@@ -103,13 +111,16 @@ _start:
   sap_r 0x10, 0x0, 28, 5, 6     /* 8 active INT4 products => 16 */
   add t5, t5, t3
 
-  li t4, 24
+  addi a0, a0, -1
+  bnez a0, 1b
+
+  li t4, 384
   bne t5, t4, fail_static_output
 
   li t0, 2
   sap_r 0x1a, 0x0, 28, 5, 0     /* VREADCNT MAC_ACTIVE */
   mv s6, t3
-  li t4, 2
+  li t4, 32
   bne s6, t4, fail_static_mac
 
   li t0, 3
@@ -158,6 +169,8 @@ _start:
   sap_r 0x1b, 0x0, 0, 5, 0      /* VSETLANE 4 */
 
   li t5, 0
+  li a0, TINYVIT_ITERS
+1:
   li t0, 0x11111111
   li t1, 0x11111111
   sap_r 0x10, 0x0, 28, 5, 6     /* 4 active INT4 products => 4 */
@@ -168,19 +181,22 @@ _start:
   sap_r 0x10, 0x0, 28, 5, 6     /* 4 active INT4 products => 8 */
   add t5, t5, t3
 
-  li t4, 12
+  addi a0, a0, -1
+  bnez a0, 1b
+
+  li t4, 192
   bne t5, t4, fail_policy_output
 
   li t0, 2
   sap_r 0x1a, 0x0, 28, 5, 0     /* VREADCNT MAC_ACTIVE */
   mv s6, t3
-  li t4, 2
+  li t4, 32
   bne s6, t4, fail_policy_mac
 
   li t0, 3
   sap_r 0x1a, 0x0, 28, 5, 0     /* VREADCNT SKIPPED */
   mv s7, t3
-  li t4, 8
+  li t4, 128
   bne s7, t4, fail_policy_skip
 
   li t0, 4
@@ -224,6 +240,8 @@ _start:
   sap_r 0x1b, 0x0, 0, 5, 0      /* VSETLANE 4 */
 
   li t5, 0
+  li a0, TINYVIT_ITERS
+1:
   li t0, 0x11111111
   li t1, 0x11111111
   sap_r 0x10, 0x0, 28, 5, 6     /* 4 active INT4 products => 4 */
@@ -234,19 +252,22 @@ _start:
   sap_r 0x10, 0x0, 28, 5, 6     /* 4 active INT4 products => 8 */
   add t5, t5, t3
 
-  li t4, 12
+  addi a0, a0, -1
+  bnez a0, 1b
+
+  li t4, 192
   bne t5, t4, fail_no_sparse_output
 
   li t0, 2
   sap_r 0x1a, 0x0, 28, 5, 0     /* VREADCNT MAC_ACTIVE */
   mv s6, t3
-  li t4, 2
+  li t4, 32
   bne s6, t4, fail_no_sparse_mac
 
   li t0, 3
   sap_r 0x1a, 0x0, 28, 5, 0     /* VREADCNT SKIPPED */
   mv s7, t3
-  li t4, 8
+  li t4, 128
   bne s7, t4, fail_no_sparse_skip
 
   li t0, 4
@@ -290,6 +311,8 @@ _start:
   sap_r 0x1b, 0x0, 0, 5, 0      /* VSETLANE 8 */
 
   li t5, 0
+  li a0, TINYVIT_ITERS
+1:
   li t0, 0x11111111
   li t1, 0x11111111
   sap_r 0x10, 0x0, 28, 5, 6     /* 4 active INT4 products => 4 */
@@ -300,19 +323,22 @@ _start:
   sap_r 0x10, 0x0, 28, 5, 6     /* 4 active INT4 products => 8 */
   add t5, t5, t3
 
-  li t4, 12
+  addi a0, a0, -1
+  bnez a0, 1b
+
+  li t4, 192
   bne t5, t4, fail_no_lane_output
 
   li t0, 2
   sap_r 0x1a, 0x0, 28, 5, 0     /* VREADCNT MAC_ACTIVE */
   mv s6, t3
-  li t4, 2
+  li t4, 32
   bne s6, t4, fail_no_lane_mac
 
   li t0, 3
   sap_r 0x1a, 0x0, 28, 5, 0     /* VREADCNT SKIPPED */
   mv s7, t3
-  li t4, 8
+  li t4, 128
   bne s7, t4, fail_no_lane_skip
 
   li t0, 4
@@ -356,6 +382,8 @@ _start:
   sap_r 0x1b, 0x0, 0, 5, 0      /* VSETLANE 4 */
 
   li t5, 0
+  li a0, TINYVIT_ITERS
+1:
   li t0, 0x01010101
   li t1, 0x01010101
   sap_r 0x10, 0x0, 28, 5, 6     /* 4 active INT8 products => 4 */
@@ -366,13 +394,16 @@ _start:
   sap_r 0x10, 0x0, 28, 5, 6     /* 4 active INT8 products => 8 */
   add t5, t5, t3
 
-  li t4, 12
+  addi a0, a0, -1
+  bnez a0, 1b
+
+  li t4, 192
   bne t5, t4, fail_no_precision_output
 
   li t0, 2
   sap_r 0x1a, 0x0, 28, 5, 0     /* VREADCNT MAC_ACTIVE */
   mv s6, t3
-  li t4, 2
+  li t4, 32
   bne s6, t4, fail_no_precision_mac
 
   li t0, 3

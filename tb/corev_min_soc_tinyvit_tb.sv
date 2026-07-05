@@ -3,6 +3,7 @@
 module corev_min_soc_tinyvit_tb;
   localparam int unsigned TIMEOUT_CYCLES = 30000;
   localparam logic [31:0] RESULT_MAGIC = 32'h5456_4954; // "TVIT"
+  localparam int unsigned TINYVIT_ITERS = 16;
 
   logic clk;
   logic rst_n;
@@ -29,6 +30,12 @@ module corev_min_soc_tinyvit_tb;
 
   always #5 clk = ~clk;
 
+  task automatic expect_result(input int unsigned index, input logic [31:0] expected);
+    if (dut.ram[index] !== expected) begin
+      $fatal(1, "TinyViT result ram[%0d] expected %0d got %0d", index, expected, dut.ram[index]);
+    end
+  endtask
+
   always_ff @(posedge clk or negedge rst_n) begin
     if (rst_n && uart_tx_valid) begin
       $fatal(1, "Unexpected UART byte 0x%02x", uart_tx_data);
@@ -41,6 +48,24 @@ module corev_min_soc_tinyvit_tb;
       if (dut.ram[0] !== RESULT_MAGIC) begin
         $fatal(1, "TinyViT result magic expected 0x%08x got 0x%08x", RESULT_MAGIC, dut.ram[0]);
       end
+      expect_result(1, 32'd150 * TINYVIT_ITERS);
+      expect_result(2, 32'd4 * TINYVIT_ITERS);
+      expect_result(3, 32'd0);
+      expect_result(6, 32'd24 * TINYVIT_ITERS);
+      expect_result(7, 32'd2 * TINYVIT_ITERS);
+      expect_result(8, 32'd0);
+      expect_result(13, 32'd12 * TINYVIT_ITERS);
+      expect_result(14, 32'd2 * TINYVIT_ITERS);
+      expect_result(15, 32'd8 * TINYVIT_ITERS);
+      expect_result(20, 32'd12 * TINYVIT_ITERS);
+      expect_result(21, 32'd2 * TINYVIT_ITERS);
+      expect_result(22, 32'd8 * TINYVIT_ITERS);
+      expect_result(27, 32'd12 * TINYVIT_ITERS);
+      expect_result(28, 32'd2 * TINYVIT_ITERS);
+      expect_result(29, 32'd8 * TINYVIT_ITERS);
+      expect_result(34, 32'd12 * TINYVIT_ITERS);
+      expect_result(35, 32'd2 * TINYVIT_ITERS);
+      expect_result(36, 32'd0);
       if ((dut.ram[4] == 32'd0) || (dut.ram[5] == 32'd0) ||
           (dut.ram[11] == 32'd0) || (dut.ram[12] == 32'd0) ||
           (dut.ram[18] == 32'd0) || (dut.ram[19] == 32'd0) ||
