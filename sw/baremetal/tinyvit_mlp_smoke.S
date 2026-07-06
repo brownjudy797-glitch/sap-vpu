@@ -3,8 +3,19 @@
 
   .equ EXIT_ADDR, 0x10000004
   .equ RESULT_BASE, 0x00010000
+  .equ TINYVIT_TILE_BASE, 0x00010100
   .equ RESULT_MAGIC, 0x54564954
   .equ TINYVIT_ITERS, 16
+  .equ TINYVIT_BLOCKS, 4
+
+  .equ TILE_DENSE_BASE, 0
+  .equ TILE_DENSE_STRIDE, 16
+  .equ TILE_INT4_BASE, 64
+  .equ TILE_INT4_STRIDE, 12
+  .equ TILE_INT2_BASE, 112
+  .equ TILE_INT2_STRIDE, 12
+  .equ TILE_INT8_BASE, 160
+  .equ TILE_INT8_STRIDE, 12
 
   .macro sap_r funct7, funct3, rd, rs1, rs2
     .word ((\funct7 << 25) | (\rs2 << 20) | (\rs1 << 15) | (\funct3 << 12) | (\rd << 7) | 0x0b)
@@ -28,41 +39,159 @@ _start:
 
   sap_r 0x1d, 0x0, 0, 0, 0      /* VCLEARCNT x0, x0, x0 */
 
-  /* TinyViT MLP/GEMM-like INT8 dense 2x2 tile, repeated to expose kernel cost. */
+  /* Materialize the deterministic TinyViT tile in RAM before timing kernels. */
+  li a1, TINYVIT_TILE_BASE
+
+  li t0, 0x04030201             /* token0: [1, 2, 3, 4] */
+  sw t0, TILE_DENSE_BASE + 0(a1)
+  li t0, 0x01020304             /* token1: [4, 3, 2, 1] */
+  sw t0, TILE_DENSE_BASE + 4(a1)
+  li t0, 0x08070605             /* weight0: [5, 6, 7, 8] */
+  sw t0, TILE_DENSE_BASE + 8(a1)
+  li t0, 0x01010101             /* weight1: [1, 1, 1, 1] */
+  sw t0, TILE_DENSE_BASE + 12(a1)
+  li t0, 0x02020202             /* second dense block token0: [2, 2, 2, 2] */
+  sw t0, TILE_DENSE_BASE + 16(a1)
+  li t0, 0x03010301             /* second dense block token1: [1, 3, 1, 3] */
+  sw t0, TILE_DENSE_BASE + 20(a1)
+  li t0, 0x08070605
+  sw t0, TILE_DENSE_BASE + 24(a1)
+  li t0, 0x02020202
+  sw t0, TILE_DENSE_BASE + 28(a1)
+  li t0, 0x01010101
+  sw t0, TILE_DENSE_BASE + 32(a1)
+  li t0, 0x02020202
+  sw t0, TILE_DENSE_BASE + 36(a1)
+  li t0, 0x04030201
+  sw t0, TILE_DENSE_BASE + 40(a1)
+  li t0, 0x01010101
+  sw t0, TILE_DENSE_BASE + 44(a1)
+  li t0, 0x03030303
+  sw t0, TILE_DENSE_BASE + 48(a1)
+  li t0, 0x01010101
+  sw t0, TILE_DENSE_BASE + 52(a1)
+  li t0, 0x02020202
+  sw t0, TILE_DENSE_BASE + 56(a1)
+  li t0, 0x01010101
+  sw t0, TILE_DENSE_BASE + 60(a1)
+
+  li t0, 0x11111111
+  sw t0, TILE_INT4_BASE + 0(a1)
+  li t0, 0x22222222
+  sw t0, TILE_INT4_BASE + 4(a1)
+  li t0, 0x11111111
+  sw t0, TILE_INT4_BASE + 8(a1)
+  li t0, 0x33333333
+  sw t0, TILE_INT4_BASE + 12(a1)
+  li t0, 0x44444444
+  sw t0, TILE_INT4_BASE + 16(a1)
+  li t0, 0x11111111
+  sw t0, TILE_INT4_BASE + 20(a1)
+  li t0, 0x11111111
+  sw t0, TILE_INT4_BASE + 24(a1)
+  li t0, 0x33333333
+  sw t0, TILE_INT4_BASE + 28(a1)
+  li t0, 0x11111111
+  sw t0, TILE_INT4_BASE + 32(a1)
+  li t0, 0x22222222
+  sw t0, TILE_INT4_BASE + 36(a1)
+  li t0, 0x44444444
+  sw t0, TILE_INT4_BASE + 40(a1)
+  li t0, 0x11111111
+  sw t0, TILE_INT4_BASE + 44(a1)
+
+  li t0, 0x55555555
+  sw t0, TILE_INT2_BASE + 0(a1)
+  li t0, 0x11111111
+  sw t0, TILE_INT2_BASE + 4(a1)
+  li t0, 0x55555555
+  sw t0, TILE_INT2_BASE + 8(a1)
+  li t0, 0x55555555
+  sw t0, TILE_INT2_BASE + 12(a1)
+  li t0, 0x11111111
+  sw t0, TILE_INT2_BASE + 16(a1)
+  li t0, 0x55555555
+  sw t0, TILE_INT2_BASE + 20(a1)
+  li t0, 0x55555555
+  sw t0, TILE_INT2_BASE + 24(a1)
+  li t0, 0x11111111
+  sw t0, TILE_INT2_BASE + 28(a1)
+  li t0, 0x55555555
+  sw t0, TILE_INT2_BASE + 32(a1)
+  li t0, 0x55555555
+  sw t0, TILE_INT2_BASE + 36(a1)
+  li t0, 0x11111111
+  sw t0, TILE_INT2_BASE + 40(a1)
+  li t0, 0x55555555
+  sw t0, TILE_INT2_BASE + 44(a1)
+
+  li t0, 0x01010101
+  sw t0, TILE_INT8_BASE + 0(a1)
+  li t0, 0x02020202
+  sw t0, TILE_INT8_BASE + 4(a1)
+  li t0, 0x01010101
+  sw t0, TILE_INT8_BASE + 8(a1)
+  li t0, 0x03030303
+  sw t0, TILE_INT8_BASE + 12(a1)
+  li t0, 0x04040404
+  sw t0, TILE_INT8_BASE + 16(a1)
+  li t0, 0x01010101
+  sw t0, TILE_INT8_BASE + 20(a1)
+  li t0, 0x01010101
+  sw t0, TILE_INT8_BASE + 24(a1)
+  li t0, 0x03030303
+  sw t0, TILE_INT8_BASE + 28(a1)
+  li t0, 0x01010101
+  sw t0, TILE_INT8_BASE + 32(a1)
+  li t0, 0x02020202
+  sw t0, TILE_INT8_BASE + 36(a1)
+  li t0, 0x04040404
+  sw t0, TILE_INT8_BASE + 40(a1)
+  li t0, 0x01010101
+  sw t0, TILE_INT8_BASE + 44(a1)
+
+  /* TinyViT MLP/GEMM-like INT8 dense 4-block tile, repeated to expose kernel cost. */
   read_csr 8, 0xb00              /* s0 = mcycle */
   read_csr 9, 0xb02              /* s1 = minstret */
   li t5, 0
   li a0, TINYVIT_ITERS
 
 1:
-  li t0, 0x04030201             /* token0: [1, 2, 3, 4] */
-  li t1, 0x08070605             /* weight0: [5, 6, 7, 8] */
-  sap_r 0x10, 0x0, 28, 5, 6     /* VDOT t3, t0, t1 => 70 */
+  addi a2, a1, TILE_DENSE_BASE
+  li a3, TINYVIT_BLOCKS
+2:
+  lw t0, 0(a2)
+  lw t1, 8(a2)
+  sap_r 0x10, 0x0, 28, 5, 6     /* token0 dot weight0 */
   add t5, t5, t3
 
-  li t1, 0x01010101             /* weight1: [1, 1, 1, 1] */
-  sap_r 0x10, 0x0, 28, 5, 6     /* VDOT t3, t0, t1 => 10 */
+  lw t1, 12(a2)
+  sap_r 0x10, 0x0, 28, 5, 6     /* token0 dot weight1 */
   add t5, t5, t3
 
-  li t0, 0x01020304             /* token1: [4, 3, 2, 1] */
-  li t1, 0x08070605
-  sap_r 0x10, 0x0, 28, 5, 6     /* VDOT t3, t0, t1 => 60 */
+  lw t0, 4(a2)
+  lw t1, 8(a2)
+  sap_r 0x10, 0x0, 28, 5, 6     /* token1 dot weight0 */
   add t5, t5, t3
 
-  li t1, 0x01010101
-  sap_r 0x10, 0x0, 28, 5, 6     /* VDOT t3, t0, t1 => 10 */
+  lw t1, 12(a2)
+  sap_r 0x10, 0x0, 28, 5, 6     /* token1 dot weight1 */
   add t5, t5, t3
+
+  addi a2, a2, TILE_DENSE_STRIDE
+  addi a3, a3, -1
+  bnez a3, 2b
 
   addi a0, a0, -1
   bnez a0, 1b
 
-  li t4, 2400
+  li t4, 6048
   bne t5, t4, fail_dense_output
 
   li t0, 2
   sap_r 0x1a, 0x0, 28, 5, 0     /* VREADCNT MAC_ACTIVE */
   mv s4, t3
-  li t4, 64
+  li t4, 256
   bne s4, t4, fail_dense_mac
 
   li t0, 3
@@ -101,26 +230,33 @@ _start:
   li t5, 0
   li a0, TINYVIT_ITERS
 1:
-  li t0, 0x11111111
-  li t1, 0x11111111
-  sap_r 0x10, 0x0, 28, 5, 6     /* 8 active INT4 products => 8 */
+  addi a2, a1, TILE_INT4_BASE
+  li a3, TINYVIT_BLOCKS
+2:
+  lw t0, 0(a2)
+  lw t1, 8(a2)
+  sap_r 0x10, 0x0, 28, 5, 6
   add t5, t5, t3
 
-  li t0, 0x22222222
-  li t1, 0x11111111
-  sap_r 0x10, 0x0, 28, 5, 6     /* 8 active INT4 products => 16 */
+  lw t0, 4(a2)
+  lw t1, 8(a2)
+  sap_r 0x10, 0x0, 28, 5, 6
   add t5, t5, t3
+
+  addi a2, a2, TILE_INT4_STRIDE
+  addi a3, a3, -1
+  bnez a3, 2b
 
   addi a0, a0, -1
   bnez a0, 1b
 
-  li t4, 384
+  li t4, 2560
   bne t5, t4, fail_static_output
 
   li t0, 2
   sap_r 0x1a, 0x0, 28, 5, 0     /* VREADCNT MAC_ACTIVE */
   mv s6, t3
-  li t4, 32
+  li t4, 128
   bne s6, t4, fail_static_mac
 
   li t0, 3
@@ -171,26 +307,33 @@ _start:
   li t5, 0
   li a0, TINYVIT_ITERS
 1:
-  li t0, 0x55555555
-  li t1, 0x55555555
-  sap_r 0x10, 0x0, 28, 5, 6     /* 16 active INT2 products => 16 */
+  addi a2, a1, TILE_INT2_BASE
+  li a3, TINYVIT_BLOCKS
+2:
+  lw t0, 0(a2)
+  lw t1, 8(a2)
+  sap_r 0x10, 0x0, 28, 5, 6
   add t5, t5, t3
 
-  li t0, 0x11111111
-  li t1, 0x55555555
-  sap_r 0x10, 0x0, 28, 5, 6     /* 8 active INT2 products => 8 */
+  lw t0, 4(a2)
+  lw t1, 8(a2)
+  sap_r 0x10, 0x0, 28, 5, 6
   add t5, t5, t3
+
+  addi a2, a2, TILE_INT2_STRIDE
+  addi a3, a3, -1
+  bnez a3, 2b
 
   addi a0, a0, -1
   bnez a0, 1b
 
-  li t4, 384
+  li t4, 1536
   bne t5, t4, fail_static_int2_output
 
   li t0, 2
   sap_r 0x1a, 0x0, 28, 5, 0     /* VREADCNT MAC_ACTIVE */
   mv s6, t3
-  li t4, 32
+  li t4, 128
   bne s6, t4, fail_static_int2_mac
 
   li t0, 3
@@ -241,32 +384,39 @@ _start:
   li t5, 0
   li a0, TINYVIT_ITERS
 1:
-  li t0, 0x11111111
-  li t1, 0x11111111
-  sap_r 0x10, 0x0, 28, 5, 6     /* 4 active INT4 products => 4 */
+  addi a2, a1, TILE_INT4_BASE
+  li a3, TINYVIT_BLOCKS
+2:
+  lw t0, 0(a2)
+  lw t1, 8(a2)
+  sap_r 0x10, 0x0, 28, 5, 6
   add t5, t5, t3
 
-  li t0, 0x22222222
-  li t1, 0x11111111
-  sap_r 0x10, 0x0, 28, 5, 6     /* 4 active INT4 products => 8 */
+  lw t0, 4(a2)
+  lw t1, 8(a2)
+  sap_r 0x10, 0x0, 28, 5, 6
   add t5, t5, t3
+
+  addi a2, a2, TILE_INT4_STRIDE
+  addi a3, a3, -1
+  bnez a3, 2b
 
   addi a0, a0, -1
   bnez a0, 1b
 
-  li t4, 192
+  li t4, 1280
   bne t5, t4, fail_policy_output
 
   li t0, 2
   sap_r 0x1a, 0x0, 28, 5, 0     /* VREADCNT MAC_ACTIVE */
   mv s6, t3
-  li t4, 32
+  li t4, 128
   bne s6, t4, fail_policy_mac
 
   li t0, 3
   sap_r 0x1a, 0x0, 28, 5, 0     /* VREADCNT SKIPPED */
   mv s7, t3
-  li t4, 128
+  li t4, 512
   bne s7, t4, fail_policy_skip
 
   li t0, 4
@@ -312,32 +462,39 @@ _start:
   li t5, 0
   li a0, TINYVIT_ITERS
 1:
-  li t0, 0x11111111
-  li t1, 0x11111111
-  sap_r 0x10, 0x0, 28, 5, 6     /* 4 active INT4 products => 4 */
+  addi a2, a1, TILE_INT4_BASE
+  li a3, TINYVIT_BLOCKS
+2:
+  lw t0, 0(a2)
+  lw t1, 8(a2)
+  sap_r 0x10, 0x0, 28, 5, 6
   add t5, t5, t3
 
-  li t0, 0x22222222
-  li t1, 0x11111111
-  sap_r 0x10, 0x0, 28, 5, 6     /* 4 active INT4 products => 8 */
+  lw t0, 4(a2)
+  lw t1, 8(a2)
+  sap_r 0x10, 0x0, 28, 5, 6
   add t5, t5, t3
+
+  addi a2, a2, TILE_INT4_STRIDE
+  addi a3, a3, -1
+  bnez a3, 2b
 
   addi a0, a0, -1
   bnez a0, 1b
 
-  li t4, 192
+  li t4, 1280
   bne t5, t4, fail_no_sparse_output
 
   li t0, 2
   sap_r 0x1a, 0x0, 28, 5, 0     /* VREADCNT MAC_ACTIVE */
   mv s6, t3
-  li t4, 32
+  li t4, 128
   bne s6, t4, fail_no_sparse_mac
 
   li t0, 3
   sap_r 0x1a, 0x0, 28, 5, 0     /* VREADCNT SKIPPED */
   mv s7, t3
-  li t4, 128
+  li t4, 512
   bne s7, t4, fail_no_sparse_skip
 
   li t0, 4
@@ -383,32 +540,39 @@ _start:
   li t5, 0
   li a0, TINYVIT_ITERS
 1:
-  li t0, 0x11111111
-  li t1, 0x11111111
-  sap_r 0x10, 0x0, 28, 5, 6     /* 4 active INT4 products => 4 */
+  addi a2, a1, TILE_INT4_BASE
+  li a3, TINYVIT_BLOCKS
+2:
+  lw t0, 0(a2)
+  lw t1, 8(a2)
+  sap_r 0x10, 0x0, 28, 5, 6
   add t5, t5, t3
 
-  li t0, 0x22222222
-  li t1, 0x11111111
-  sap_r 0x10, 0x0, 28, 5, 6     /* 4 active INT4 products => 8 */
+  lw t0, 4(a2)
+  lw t1, 8(a2)
+  sap_r 0x10, 0x0, 28, 5, 6
   add t5, t5, t3
+
+  addi a2, a2, TILE_INT4_STRIDE
+  addi a3, a3, -1
+  bnez a3, 2b
 
   addi a0, a0, -1
   bnez a0, 1b
 
-  li t4, 192
+  li t4, 1280
   bne t5, t4, fail_no_lane_output
 
   li t0, 2
   sap_r 0x1a, 0x0, 28, 5, 0     /* VREADCNT MAC_ACTIVE */
   mv s6, t3
-  li t4, 32
+  li t4, 128
   bne s6, t4, fail_no_lane_mac
 
   li t0, 3
   sap_r 0x1a, 0x0, 28, 5, 0     /* VREADCNT SKIPPED */
   mv s7, t3
-  li t4, 128
+  li t4, 512
   bne s7, t4, fail_no_lane_skip
 
   li t0, 4
@@ -454,26 +618,33 @@ _start:
   li t5, 0
   li a0, TINYVIT_ITERS
 1:
-  li t0, 0x01010101
-  li t1, 0x01010101
-  sap_r 0x10, 0x0, 28, 5, 6     /* 4 active INT8 products => 4 */
+  addi a2, a1, TILE_INT8_BASE
+  li a3, TINYVIT_BLOCKS
+2:
+  lw t0, 0(a2)
+  lw t1, 8(a2)
+  sap_r 0x10, 0x0, 28, 5, 6
   add t5, t5, t3
 
-  li t0, 0x02020202
-  li t1, 0x01010101
-  sap_r 0x10, 0x0, 28, 5, 6     /* 4 active INT8 products => 8 */
+  lw t0, 4(a2)
+  lw t1, 8(a2)
+  sap_r 0x10, 0x0, 28, 5, 6
   add t5, t5, t3
+
+  addi a2, a2, TILE_INT8_STRIDE
+  addi a3, a3, -1
+  bnez a3, 2b
 
   addi a0, a0, -1
   bnez a0, 1b
 
-  li t4, 192
+  li t4, 1280
   bne t5, t4, fail_no_precision_output
 
   li t0, 2
   sap_r 0x1a, 0x0, 28, 5, 0     /* VREADCNT MAC_ACTIVE */
   mv s6, t3
-  li t4, 32
+  li t4, 128
   bne s6, t4, fail_no_precision_mac
 
   li t0, 3

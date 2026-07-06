@@ -1,0 +1,126 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="720" viewBox="0 0 1200 720" role="img" aria-labelledby="title desc">
+  <title id="title">SAP-VPU framework diagram</title>
+  <desc id="desc">High-level framework of the CV32E40X-hosted SAP-VPU coprocessor, including TinyViT policy software, CV-X-IF attachment, SAP-VPU datapath, counters, and RAM tile evidence path.</desc>
+  <defs>
+    <marker id="arrow" markerWidth="10" markerHeight="8" refX="9" refY="4" orient="auto" markerUnits="strokeWidth">
+      <path d="M0,0 L10,4 L0,8 Z" fill="#243447"/>
+    </marker>
+    <marker id="arrow-blue" markerWidth="10" markerHeight="8" refX="9" refY="4" orient="auto" markerUnits="strokeWidth">
+      <path d="M0,0 L10,4 L0,8 Z" fill="#2764a8"/>
+    </marker>
+    <style>
+      .bg { fill: #ffffff; }
+      .title { font: 700 26px Arial, Helvetica, sans-serif; fill: #17212b; }
+      .subtitle { font: 400 14px Arial, Helvetica, sans-serif; fill: #4c5a66; }
+      .section { font: 700 15px Arial, Helvetica, sans-serif; fill: #17212b; letter-spacing: 0; }
+      .label { font: 600 14px Arial, Helvetica, sans-serif; fill: #17212b; }
+      .small { font: 400 12px Arial, Helvetica, sans-serif; fill: #40505f; }
+      .tiny { font: 400 11px Arial, Helvetica, sans-serif; fill: #4c5a66; }
+      .panel { fill: #f7f9fb; stroke: #b8c4cf; stroke-width: 1.4; rx: 8; }
+      .block { fill: #ffffff; stroke: #7f8f9f; stroke-width: 1.3; rx: 6; }
+      .blue { fill: #eff6ff; stroke: #2764a8; }
+      .green { fill: #eef8f2; stroke: #2f7d52; }
+      .amber { fill: #fff7e8; stroke: #b36b00; }
+      .rose { fill: #fff1f1; stroke: #b64040; }
+      .line { fill: none; stroke: #243447; stroke-width: 1.8; marker-end: url(#arrow); }
+      .line-blue { fill: none; stroke: #2764a8; stroke-width: 2; marker-end: url(#arrow-blue); }
+      .dash { fill: none; stroke: #7f8f9f; stroke-width: 1.3; stroke-dasharray: 6 5; }
+    </style>
+  </defs>
+
+  <rect class="bg" x="0" y="0" width="1200" height="720"/>
+  <text class="title" x="60" y="48">SAP-VPU Framework</text>
+  <text class="subtitle" x="60" y="72">Sparse-Aware Adaptive-Precision Vector Processing Unit attached to CV32E40X through CV-X-IF</text>
+
+  <rect class="panel" x="50" y="105" width="250" height="400"/>
+  <text class="section" x="72" y="134">Software / workload</text>
+  <rect class="block green" x="75" y="158" width="200" height="70"/>
+  <text class="label" x="100" y="186">TinyViT MLP / GEMM</text>
+  <text class="small" x="98" y="207">four-block RAM tile smoke</text>
+
+  <rect class="block green" x="75" y="252" width="200" height="92"/>
+  <text class="label" x="96" y="280">Adaptive policy</text>
+  <text class="small" x="98" y="303">precision: INT8 / INT4 / INT2</text>
+  <text class="small" x="98" y="323">sparse bitmap</text>
+  <text class="small" x="98" y="343">active lane count</text>
+
+  <rect class="block" x="75" y="368" width="200" height="98"/>
+  <text class="label" x="102" y="396">Custom-0 ISA calls</text>
+  <text class="small" x="98" y="419">VSETPREC, VSETLANE</text>
+  <text class="small" x="98" y="439">VSETSPARSE_BMP</text>
+  <text class="small" x="98" y="459">VDOT, VREADCNT</text>
+
+  <rect class="panel" x="365" y="105" width="235" height="400"/>
+  <text class="section" x="387" y="134">Host attachment</text>
+  <rect class="block blue" x="390" y="158" width="185" height="88"/>
+  <text class="label" x="428" y="188">CV32E40X core</text>
+  <text class="small" x="415" y="211">bare-metal kernel</text>
+  <text class="small" x="415" y="231">load/store RAM tile</text>
+
+  <rect class="block blue" x="390" y="285" width="185" height="86"/>
+  <text class="label" x="428" y="315">CV-X-IF issue</text>
+  <text class="small" x="415" y="338">custom instruction path</text>
+  <text class="small" x="415" y="358">result return path</text>
+
+  <rect class="block blue" x="390" y="407" width="185" height="70"/>
+  <text class="label" x="418" y="436">Flattened adapter</text>
+  <text class="small" x="414" y="458">decode and handshake</text>
+
+  <rect class="panel" x="665" y="105" width="455" height="400"/>
+  <text class="section" x="687" y="134">SAP-VPU coprocessor</text>
+  <rect class="block amber" x="690" y="158" width="170" height="112"/>
+  <text class="label" x="724" y="187">Policy state</text>
+  <text class="small" x="713" y="211">precision register</text>
+  <text class="small" x="713" y="231">sparse bitmap register</text>
+  <text class="small" x="713" y="251">active lanes register</text>
+
+  <rect class="block amber" x="905" y="158" width="185" height="112"/>
+  <text class="label" x="936" y="187">Counter bank</text>
+  <text class="small" x="932" y="211">cycle / instruction</text>
+  <text class="small" x="932" y="231">active products</text>
+  <text class="small" x="932" y="251">skipped products / state</text>
+
+  <rect class="block rose" x="690" y="315" width="400" height="148"/>
+  <text class="label" x="805" y="344">Packed dot-product datapath</text>
+  <rect class="block" x="715" y="368" width="105" height="58"/>
+  <text class="small" x="737" y="391">unpack</text>
+  <text class="tiny" x="733" y="411">INT8/4/2</text>
+  <rect class="block" x="850" y="368" width="105" height="58"/>
+  <text class="small" x="871" y="391">lane mask</text>
+  <text class="tiny" x="868" y="411">bitmap + count</text>
+  <rect class="block" x="985" y="368" width="80" height="58"/>
+  <text class="small" x="1005" y="391">MAC</text>
+  <text class="tiny" x="1001" y="411">accumulate</text>
+
+  <rect class="panel" x="110" y="565" width="965" height="92"/>
+  <text class="section" x="132" y="594">Evidence and memory-traffic path</text>
+  <rect class="block" x="135" y="615" width="215" height="30"/>
+  <text class="small" x="163" y="635">RAM scratch tile: operand + weight words</text>
+  <rect class="block" x="430" y="615" width="210" height="30"/>
+  <text class="small" x="464" y="635">result RAM and exact checks</text>
+  <rect class="block" x="720" y="615" width="215" height="30"/>
+  <text class="small" x="751" y="635">counter CSV and summary tables</text>
+
+  <path class="line-blue" d="M175 228 L175 252"/>
+  <path class="line-blue" d="M175 344 L175 368"/>
+  <path class="line" d="M275 417 C320 417, 338 202, 390 202"/>
+  <path class="line" d="M482 246 L482 285"/>
+  <path class="line" d="M482 371 L482 407"/>
+  <path class="line" d="M575 442 C620 442, 635 393, 690 393"/>
+  <path class="line-blue" d="M575 328 C625 328, 636 214, 690 214"/>
+  <path class="line-blue" d="M860 214 L905 214"/>
+  <path class="line-blue" d="M860 270 C875 302, 880 331, 890 368"/>
+  <path class="line" d="M820 397 L850 397"/>
+  <path class="line" d="M955 397 L985 397"/>
+  <path class="line" d="M1025 426 C1025 500, 827 552, 827 615"/>
+  <path class="line" d="M482 477 C482 545, 535 580, 535 615"/>
+  <path class="line" d="M242 615 C242 548, 438 530, 438 477"/>
+  <path class="dash" d="M350 630 L430 630"/>
+  <path class="dash" d="M640 630 L720 630"/>
+
+  <text class="tiny" x="315" y="190">packed operands</text>
+  <text class="tiny" x="308" y="208">and policy commands</text>
+  <text class="tiny" x="600" y="320">decoded SAP ops</text>
+  <text class="tiny" x="610" y="378">VDOT rs1/rs2</text>
+  <text class="tiny" x="918" y="302">VREADCNT</text>
+</svg>

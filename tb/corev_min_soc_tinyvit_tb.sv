@@ -4,6 +4,18 @@ module corev_min_soc_tinyvit_tb;
   localparam int unsigned TIMEOUT_CYCLES = 30000;
   localparam logic [31:0] RESULT_MAGIC = 32'h5456_4954; // "TVIT"
   localparam int unsigned TINYVIT_ITERS = 16;
+  localparam logic [31:0] RESULT_BASE = 32'h0001_0000;
+  localparam logic [31:0] TINYVIT_TILE_BASE = 32'h0001_0100;
+  localparam logic [31:0] TINYVIT_TILE_LIMIT = TINYVIT_TILE_BASE + 32'd208;
+  localparam int unsigned EXPECTED_TILE_READS = 1920;
+  localparam int unsigned K_DENSE = 0;
+  localparam int unsigned K_STATIC_LOWBIT = 1;
+  localparam int unsigned K_STATIC_INT2 = 2;
+  localparam int unsigned K_ADAPTIVE = 3;
+  localparam int unsigned K_NO_SPARSE = 4;
+  localparam int unsigned K_NO_LANE = 5;
+  localparam int unsigned K_NO_PRECISION = 6;
+  localparam int unsigned K_DONE = 7;
 
   logic clk;
   logic rst_n;
@@ -14,6 +26,11 @@ module corev_min_soc_tinyvit_tb;
   logic [31:0] exit_code;
   logic core_sleep;
   int result_fd;
+  int unsigned current_kernel;
+  int unsigned tile_read_count;
+  int unsigned operand_read_count [0:6];
+  int unsigned weight_read_count [0:6];
+  int unsigned kernel_tile_read_count [0:6];
 
   corev_min_soc #(
     .ROM_INIT_FILE("work/tinyvit/sap_vpu_tinyvit.hex")
@@ -36,76 +53,180 @@ module corev_min_soc_tinyvit_tb;
     end
   endtask
 
-  always_ff @(posedge clk or negedge rst_n) begin
-    if (rst_n && uart_tx_valid) begin
-      $fatal(1, "Unexpected UART byte 0x%02x", uart_tx_data);
+  task automatic expect_traffic(
+    input int unsigned index,
+    input int unsigned expected_operand_reads,
+    input int unsigned expected_weight_reads
+  );
+    if (operand_read_count[index] != expected_operand_reads) begin
+      $fatal(1, "TinyViT kernel[%0d] operand reads expected %0d got %0d",
+             index, expected_operand_reads, operand_read_count[index]);
     end
+    if (weight_read_count[index] != expected_weight_reads) begin
+      $fatal(1, "TinyViT kernel[%0d] weight reads expected %0d got %0d",
+             index, expected_weight_reads, weight_read_count[index]);
+    end
+    if (kernel_tile_read_count[index] != (expected_operand_reads + expected_weight_reads)) begin
+      $fatal(1, "TinyViT kernel[%0d] tile reads expected %0d got %0d",
+             index, expected_operand_reads + expected_weight_reads, kernel_tile_read_count[index]);
+    end
+  endtask
 
-    if (rst_n && exit_valid) begin
-      if (exit_code !== 32'd1) begin
-        $fatal(1, "TinyViT smoke exit code expected 1 got %0d", exit_code);
+  function automatic bit is_operand_addr(input logic [31:0] addr);
+    begin
+      is_operand_addr = 1'b0;
+      unique case (addr - TINYVIT_TILE_BASE)
+        32'd0, 32'd4, 32'd16, 32'd20, 32'd32, 32'd36, 32'd48, 32'd52,
+        32'd64, 32'd68, 32'd76, 32'd80, 32'd88, 32'd92, 32'd100, 32'd104,
+        32'd112, 32'd116, 32'd124, 32'd128, 32'd136, 32'd140, 32'd148, 32'd152,
+        32'd160, 32'd164, 32'd172, 32'd176, 32'd184, 32'd188, 32'd196, 32'd200: is_operand_addr = 1'b1;
+        default: is_operand_addr = 1'b0;
+      endcase
+    end
+  endfunction
+
+  function automatic bit is_weight_addr(input logic [31:0] addr);
+    begin
+      is_weight_addr = 1'b0;
+      unique case (addr - TINYVIT_TILE_BASE)
+        32'd8, 32'd12, 32'd24, 32'd28, 32'd40, 32'd44, 32'd56, 32'd60,
+        32'd72, 32'd84, 32'd96, 32'd108,
+        32'd120, 32'd132, 32'd144, 32'd156,
+        32'd168, 32'd180, 32'd192, 32'd204: is_weight_addr = 1'b1;
+        default: is_weight_addr = 1'b0;
+      endcase
+    end
+  endfunction
+
+  always_ff @(posedge clk or negedge rst_n) begin
+    if (!rst_n) begin
+      current_kernel <= K_DENSE;
+      tile_read_count <= 0;
+      for (int unsigned i = 0; i < 7; i++) begin
+        operand_read_count[i] <= 0;
+        weight_read_count[i] <= 0;
+        kernel_tile_read_count[i] <= 0;
       end
-      if (dut.ram[0] !== RESULT_MAGIC) begin
-        $fatal(1, "TinyViT result magic expected 0x%08x got 0x%08x", RESULT_MAGIC, dut.ram[0]);
+    end else begin
+      if (dut.data_req && dut.data_gnt && !dut.data_we &&
+          (dut.data_addr >= TINYVIT_TILE_BASE) && (dut.data_addr < TINYVIT_TILE_LIMIT)) begin
+        tile_read_count <= tile_read_count + 1;
+        if (current_kernel < K_DONE) begin
+          kernel_tile_read_count[current_kernel] <= kernel_tile_read_count[current_kernel] + 1;
+          if (is_operand_addr(dut.data_addr)) begin
+            operand_read_count[current_kernel] <= operand_read_count[current_kernel] + 1;
+          end else if (is_weight_addr(dut.data_addr)) begin
+            weight_read_count[current_kernel] <= weight_read_count[current_kernel] + 1;
+          end else begin
+            $fatal(1, "Unexpected TinyViT tile read address 0x%08x", dut.data_addr);
+          end
+        end else begin
+          $fatal(1, "Unexpected TinyViT tile read after all kernels");
+        end
       end
-      expect_result(1, 32'd150 * TINYVIT_ITERS);
-      expect_result(2, 32'd4 * TINYVIT_ITERS);
-      expect_result(3, 32'd0);
-      expect_result(6, 32'd24 * TINYVIT_ITERS);
-      expect_result(7, 32'd2 * TINYVIT_ITERS);
-      expect_result(8, 32'd0);
-      expect_result(13, 32'd12 * TINYVIT_ITERS);
-      expect_result(14, 32'd2 * TINYVIT_ITERS);
-      expect_result(15, 32'd8 * TINYVIT_ITERS);
-      expect_result(20, 32'd12 * TINYVIT_ITERS);
-      expect_result(21, 32'd2 * TINYVIT_ITERS);
-      expect_result(22, 32'd8 * TINYVIT_ITERS);
-      expect_result(27, 32'd12 * TINYVIT_ITERS);
-      expect_result(28, 32'd2 * TINYVIT_ITERS);
-      expect_result(29, 32'd8 * TINYVIT_ITERS);
-      expect_result(34, 32'd12 * TINYVIT_ITERS);
-      expect_result(35, 32'd2 * TINYVIT_ITERS);
-      expect_result(36, 32'd0);
-      expect_result(41, 32'd24 * TINYVIT_ITERS);
-      expect_result(42, 32'd2 * TINYVIT_ITERS);
-      expect_result(43, 32'd0);
-      if ((dut.ram[4] == 32'd0) || (dut.ram[5] == 32'd0) ||
-          (dut.ram[11] == 32'd0) || (dut.ram[12] == 32'd0) ||
-          (dut.ram[18] == 32'd0) || (dut.ram[19] == 32'd0) ||
-          (dut.ram[25] == 32'd0) || (dut.ram[26] == 32'd0) ||
-          (dut.ram[32] == 32'd0) || (dut.ram[33] == 32'd0) ||
-          (dut.ram[39] == 32'd0) || (dut.ram[40] == 32'd0) ||
-          (dut.ram[46] == 32'd0) || (dut.ram[47] == 32'd0)) begin
-        $fatal(1, "TinyViT cycle/inst counters must be nonzero");
+
+      if (dut.data_req && dut.data_gnt && dut.data_we) begin
+        unique case (dut.data_addr)
+          RESULT_BASE + 32'd20:  current_kernel <= K_STATIC_LOWBIT;
+          RESULT_BASE + 32'd48:  current_kernel <= K_STATIC_INT2;
+          RESULT_BASE + 32'd188: current_kernel <= K_ADAPTIVE;
+          RESULT_BASE + 32'd76:  current_kernel <= K_NO_SPARSE;
+          RESULT_BASE + 32'd104: current_kernel <= K_NO_LANE;
+          RESULT_BASE + 32'd132: current_kernel <= K_NO_PRECISION;
+          RESULT_BASE + 32'd160: current_kernel <= K_DONE;
+          default: begin
+          end
+        endcase
       end
-      result_fd = $fopen("work/tinyvit/tinyvit_smoke_counters.csv", "w");
-      if (result_fd == 0) begin
-        $fatal(1, "Could not open TinyViT counter CSV");
+
+      if (uart_tx_valid) begin
+        $fatal(1, "Unexpected UART byte 0x%02x", uart_tx_data);
       end
-      $fdisplay(result_fd, "kernel,precision,sparse,output,mac_active,skip,sparse_state,lane_state,cycle_delta,instret_delta");
-      $fdisplay(result_fd, "dense,int8,none,%0d,%0d,%0d,0,4,%0d,%0d",
-                dut.ram[1], dut.ram[2], dut.ram[3], dut.ram[4], dut.ram[5]);
-      $fdisplay(result_fd, "static_lowbit,int4,none,%0d,%0d,%0d,%0d,%0d,%0d,%0d",
-                dut.ram[6], dut.ram[7], dut.ram[8], dut.ram[9], dut.ram[10],
-                dut.ram[11], dut.ram[12]);
-      $fdisplay(result_fd, "static_int2,int2,none,%0d,%0d,%0d,%0d,%0d,%0d,%0d",
-                dut.ram[41], dut.ram[42], dut.ram[43], dut.ram[44], dut.ram[45],
-                dut.ram[46], dut.ram[47]);
-      $fdisplay(result_fd, "adaptive,int4,bitmap,%0d,%0d,%0d,%0d,%0d,%0d,%0d",
-                dut.ram[13], dut.ram[14], dut.ram[15], dut.ram[16], dut.ram[17],
-                dut.ram[18], dut.ram[19]);
-      $fdisplay(result_fd, "no_sparse_skip,int4,none,%0d,%0d,%0d,%0d,%0d,%0d,%0d",
-                dut.ram[20], dut.ram[21], dut.ram[22], dut.ram[23], dut.ram[24],
-                dut.ram[25], dut.ram[26]);
-      $fdisplay(result_fd, "no_lane_gating,int4,bitmap,%0d,%0d,%0d,%0d,%0d,%0d,%0d",
-                dut.ram[27], dut.ram[28], dut.ram[29], dut.ram[30], dut.ram[31],
-                dut.ram[32], dut.ram[33]);
-      $fdisplay(result_fd, "no_precision_gating,int8,bitmap,%0d,%0d,%0d,%0d,%0d,%0d,%0d",
-                dut.ram[34], dut.ram[35], dut.ram[36], dut.ram[37], dut.ram[38],
-                dut.ram[39], dut.ram[40]);
-      $fclose(result_fd);
-      $display("TinyViT smoke exit code: %0d", exit_code);
-      $finish;
+
+      if (exit_valid) begin
+        if (exit_code !== 32'd1) begin
+          $fatal(1, "TinyViT smoke exit code expected 1 got %0d", exit_code);
+        end
+        if (tile_read_count != EXPECTED_TILE_READS) begin
+          $fatal(1, "TinyViT RAM tile reads expected %0d got %0d", EXPECTED_TILE_READS, tile_read_count);
+        end
+        expect_traffic(K_DENSE, 128, 256);
+        expect_traffic(K_STATIC_LOWBIT, 128, 128);
+        expect_traffic(K_STATIC_INT2, 128, 128);
+        expect_traffic(K_ADAPTIVE, 128, 128);
+        expect_traffic(K_NO_SPARSE, 128, 128);
+        expect_traffic(K_NO_LANE, 128, 128);
+        expect_traffic(K_NO_PRECISION, 128, 128);
+        if (dut.ram[0] !== RESULT_MAGIC) begin
+          $fatal(1, "TinyViT result magic expected 0x%08x got 0x%08x", RESULT_MAGIC, dut.ram[0]);
+        end
+        expect_result(1, 32'd378 * TINYVIT_ITERS);
+        expect_result(2, 32'd16 * TINYVIT_ITERS);
+        expect_result(3, 32'd0);
+        expect_result(6, 32'd160 * TINYVIT_ITERS);
+        expect_result(7, 32'd8 * TINYVIT_ITERS);
+        expect_result(8, 32'd0);
+        expect_result(13, 32'd80 * TINYVIT_ITERS);
+        expect_result(14, 32'd8 * TINYVIT_ITERS);
+        expect_result(15, 32'd32 * TINYVIT_ITERS);
+        expect_result(20, 32'd80 * TINYVIT_ITERS);
+        expect_result(21, 32'd8 * TINYVIT_ITERS);
+        expect_result(22, 32'd32 * TINYVIT_ITERS);
+        expect_result(27, 32'd80 * TINYVIT_ITERS);
+        expect_result(28, 32'd8 * TINYVIT_ITERS);
+        expect_result(29, 32'd32 * TINYVIT_ITERS);
+        expect_result(34, 32'd80 * TINYVIT_ITERS);
+        expect_result(35, 32'd8 * TINYVIT_ITERS);
+        expect_result(36, 32'd0);
+        expect_result(41, 32'd96 * TINYVIT_ITERS);
+        expect_result(42, 32'd8 * TINYVIT_ITERS);
+        expect_result(43, 32'd0);
+        if ((dut.ram[4] == 32'd0) || (dut.ram[5] == 32'd0) ||
+            (dut.ram[11] == 32'd0) || (dut.ram[12] == 32'd0) ||
+            (dut.ram[18] == 32'd0) || (dut.ram[19] == 32'd0) ||
+            (dut.ram[25] == 32'd0) || (dut.ram[26] == 32'd0) ||
+            (dut.ram[32] == 32'd0) || (dut.ram[33] == 32'd0) ||
+            (dut.ram[39] == 32'd0) || (dut.ram[40] == 32'd0) ||
+            (dut.ram[46] == 32'd0) || (dut.ram[47] == 32'd0)) begin
+          $fatal(1, "TinyViT cycle/inst counters must be nonzero");
+        end
+        result_fd = $fopen("work/tinyvit/tinyvit_smoke_counters.csv", "w");
+        if (result_fd == 0) begin
+          $fatal(1, "Could not open TinyViT counter CSV");
+        end
+        $fdisplay(result_fd, "kernel,precision,sparse,output,mac_active,skip,sparse_state,lane_state,cycle_delta,instret_delta,operand_reads,weight_reads,ram_tile_reads");
+        $fdisplay(result_fd, "dense,int8,none,%0d,%0d,%0d,0,4,%0d,%0d,%0d,%0d,%0d",
+                  dut.ram[1], dut.ram[2], dut.ram[3], dut.ram[4], dut.ram[5],
+                  operand_read_count[K_DENSE], weight_read_count[K_DENSE],
+                  kernel_tile_read_count[K_DENSE]);
+        $fdisplay(result_fd, "static_lowbit,int4,none,%0d,%0d,%0d,%0d,%0d,%0d,%0d,%0d,%0d,%0d",
+                  dut.ram[6], dut.ram[7], dut.ram[8], dut.ram[9], dut.ram[10],
+                  dut.ram[11], dut.ram[12], operand_read_count[K_STATIC_LOWBIT],
+                  weight_read_count[K_STATIC_LOWBIT], kernel_tile_read_count[K_STATIC_LOWBIT]);
+        $fdisplay(result_fd, "static_int2,int2,none,%0d,%0d,%0d,%0d,%0d,%0d,%0d,%0d,%0d,%0d",
+                  dut.ram[41], dut.ram[42], dut.ram[43], dut.ram[44], dut.ram[45],
+                  dut.ram[46], dut.ram[47], operand_read_count[K_STATIC_INT2],
+                  weight_read_count[K_STATIC_INT2], kernel_tile_read_count[K_STATIC_INT2]);
+        $fdisplay(result_fd, "adaptive,int4,bitmap,%0d,%0d,%0d,%0d,%0d,%0d,%0d,%0d,%0d,%0d",
+                  dut.ram[13], dut.ram[14], dut.ram[15], dut.ram[16], dut.ram[17],
+                  dut.ram[18], dut.ram[19], operand_read_count[K_ADAPTIVE],
+                  weight_read_count[K_ADAPTIVE], kernel_tile_read_count[K_ADAPTIVE]);
+        $fdisplay(result_fd, "no_sparse_skip,int4,none,%0d,%0d,%0d,%0d,%0d,%0d,%0d,%0d,%0d,%0d",
+                  dut.ram[20], dut.ram[21], dut.ram[22], dut.ram[23], dut.ram[24],
+                  dut.ram[25], dut.ram[26], operand_read_count[K_NO_SPARSE],
+                  weight_read_count[K_NO_SPARSE], kernel_tile_read_count[K_NO_SPARSE]);
+        $fdisplay(result_fd, "no_lane_gating,int4,bitmap,%0d,%0d,%0d,%0d,%0d,%0d,%0d,%0d,%0d,%0d",
+                  dut.ram[27], dut.ram[28], dut.ram[29], dut.ram[30], dut.ram[31],
+                  dut.ram[32], dut.ram[33], operand_read_count[K_NO_LANE],
+                  weight_read_count[K_NO_LANE], kernel_tile_read_count[K_NO_LANE]);
+        $fdisplay(result_fd, "no_precision_gating,int8,bitmap,%0d,%0d,%0d,%0d,%0d,%0d,%0d,%0d,%0d,%0d",
+                  dut.ram[34], dut.ram[35], dut.ram[36], dut.ram[37], dut.ram[38],
+                  dut.ram[39], dut.ram[40], operand_read_count[K_NO_PRECISION],
+                  weight_read_count[K_NO_PRECISION], kernel_tile_read_count[K_NO_PRECISION]);
+        $fclose(result_fd);
+        $display("TinyViT smoke exit code: %0d", exit_code);
+        $finish;
+      end
     end
   end
 

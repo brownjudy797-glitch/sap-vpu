@@ -20,6 +20,9 @@ REQUIRED_COLUMNS = (
     "lane_state",
     "cycle_delta",
     "instret_delta",
+    "operand_reads",
+    "weight_reads",
+    "ram_tile_reads",
 )
 
 PRECISION_LANES = {
@@ -89,11 +92,20 @@ def dense_cycles(rows: list[dict[str, str]]) -> int:
 
 
 def traffic_bytes(row: dict[str, str]) -> tuple[int, int, int]:
-    dot_ops = as_int(row, "mac_active")
-    operand_bytes = dot_ops * 4
-    weight_bytes = dot_ops * 4
-    partial_sum_bytes = dot_ops * 4
+    operand_bytes = as_int(row, "operand_reads") * 4
+    weight_bytes = as_int(row, "weight_reads") * 4
+    partial_sum_bytes = as_int(row, "mac_active") * 4
     return operand_bytes, weight_bytes, partial_sum_bytes
+
+
+def validate_traffic(row: dict[str, str]) -> None:
+    operand_reads = as_int(row, "operand_reads")
+    weight_reads = as_int(row, "weight_reads")
+    ram_tile_reads = as_int(row, "ram_tile_reads")
+    if operand_reads + weight_reads != ram_tile_reads:
+        raise ValueError(
+            f"{row['kernel']} operand_reads + weight_reads does not match ram_tile_reads"
+        )
 
 
 def self_test() -> int:
@@ -102,44 +114,60 @@ def self_test() -> int:
             "kernel": "dense",
             "precision": "int8",
             "sparse": "none",
-            "mac_active": "64",
+            "mac_active": "256",
             "sparse_state": "0",
             "lane_state": "4",
+            "operand_reads": "128",
+            "weight_reads": "256",
+            "ram_tile_reads": "384",
         },
         {
             "kernel": "adaptive",
             "precision": "int4",
             "sparse": "bitmap",
-            "mac_active": "32",
+            "mac_active": "128",
             "sparse_state": "15",
             "lane_state": "4",
+            "operand_reads": "128",
+            "weight_reads": "128",
+            "ram_tile_reads": "256",
         },
         {
             "kernel": "no_lane_gating",
             "precision": "int4",
             "sparse": "bitmap",
-            "mac_active": "32",
+            "mac_active": "128",
             "sparse_state": "15",
             "lane_state": "8",
+            "operand_reads": "128",
+            "weight_reads": "128",
+            "ram_tile_reads": "256",
         },
         {
             "kernel": "static_int2",
             "precision": "int2",
             "sparse": "none",
-            "mac_active": "32",
+            "mac_active": "128",
             "sparse_state": "65535",
             "lane_state": "16",
+            "operand_reads": "128",
+            "weight_reads": "128",
+            "ram_tile_reads": "256",
         },
     ]
     rows[0]["skip"] = "0"
-    rows[1]["skip"] = "128"
-    rows[2]["skip"] = "128"
+    rows[1]["skip"] = "512"
+    rows[2]["skip"] = "512"
     rows[3]["skip"] = "0"
-    assert product_counts(rows[0]) == ProductCounts(4, 256, 256, 0)
-    assert product_counts(rows[1]) == ProductCounts(8, 256, 128, 128)
-    assert product_counts(rows[2]) == ProductCounts(8, 256, 128, 128)
-    assert product_counts(rows[3]) == ProductCounts(16, 512, 512, 0)
+    assert product_counts(rows[0]) == ProductCounts(4, 1024, 1024, 0)
+    assert product_counts(rows[1]) == ProductCounts(8, 1024, 512, 512)
+    assert product_counts(rows[2]) == ProductCounts(8, 1024, 512, 512)
+    assert product_counts(rows[3]) == ProductCounts(16, 2048, 2048, 0)
     assert skip_ratio(rows[1]) == 0.5
+    for row in rows:
+        validate_traffic(row)
+    assert traffic_bytes(rows[0]) == (512, 1024, 1024)
+    assert traffic_bytes(rows[1]) == (512, 512, 512)
     return 0
 
 
@@ -164,6 +192,8 @@ def main() -> int:
 
     try:
         baseline_cycles = dense_cycles(rows)
+        for row in rows:
+            validate_traffic(row)
     except ValueError as exc:
         print(f"Invalid TinyViT counter CSV: {exc}", file=sys.stderr)
         return 2
@@ -195,10 +225,23 @@ def main() -> int:
             f"{counts.active_total} | {counts.skipped_total} | {products_per_cycle:.3f} |"
         )
     print()
+    print("## Memory Traffic Draft")
+    print()
+    print("| Kernel | Operand reads | Weight reads | RAM tile reads | Operand bytes | Weight bytes | Partial sum bytes | Total bytes |")
+    print("| --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: |")
+    for row in rows:
+        operand_bytes, weight_bytes, partial_sum_bytes = traffic_bytes(row)
+        total_bytes = operand_bytes + weight_bytes + partial_sum_bytes
+        print(
+            f"| {row['kernel']} | {as_int(row, 'operand_reads')} | {as_int(row, 'weight_reads')} | "
+            f"{as_int(row, 'ram_tile_reads')} | {operand_bytes} | {weight_bytes} | "
+            f"{partial_sum_bytes} | {total_bytes} |"
+        )
+    print()
     print("## Paper Table Draft")
     print()
-    print("| Kernel | Precision | Sparse | Output | Cycles | Dense speedup | Skip ratio | Active lanes | Operand bytes | Weight bytes | Partial sum bytes | Total bytes |")
-    print("| --- | --- | --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: |")
+    print("| Kernel | Precision | Sparse | Output | Cycles | Dense speedup | Skip ratio | Active lanes | RAM tile reads | Operand bytes | Weight bytes | Partial sum bytes | Total bytes |")
+    print("| --- | --- | --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: |")
     for row in rows:
         cycles = as_int(row, "cycle_delta")
         speedup = baseline_cycles / cycles if cycles else 0.0
@@ -208,12 +251,13 @@ def main() -> int:
             f"| {row['kernel']} | {row['precision']} | {row['sparse']} | "
             f"{as_int(row, 'output')} | {cycles} | {speedup:.3f} | "
             f"{skip_ratio(row):.3f} | {as_int(row, 'lane_state')} | "
-            f"{operand_bytes} | {weight_bytes} | {partial_sum_bytes} | {total_bytes} |"
+            f"{as_int(row, 'ram_tile_reads')} | {operand_bytes} | {weight_bytes} | "
+            f"{partial_sum_bytes} | {total_bytes} |"
         )
     print()
     print("Dense speedup is local to this smoke counter run; use this as table plumbing, not as a paper claim.")
     print("Skip ratio is product-level: skipped products divided by active plus skipped products.")
-    print("Traffic is a packed-register estimate for the smoke kernel, not a final SRAM/cache traffic model.")
+    print("Traffic uses observed RAM tile operand/weight reads from the testbench plus one partial-sum word per VDOT.")
     print()
     print("Use this smoke table as a functional counter sanity check only; paper-facing tables need expanded kernels and policies.")
     return 0
