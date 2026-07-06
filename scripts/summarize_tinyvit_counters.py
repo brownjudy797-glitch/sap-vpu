@@ -114,101 +114,101 @@ def self_test() -> int:
             "kernel": "dense",
             "precision": "int8",
             "sparse": "none",
-            "mac_active": "256",
+            "mac_active": "512",
             "sparse_state": "0",
             "lane_state": "4",
-            "operand_reads": "128",
-            "weight_reads": "256",
-            "ram_tile_reads": "384",
+            "operand_reads": "256",
+            "weight_reads": "512",
+            "ram_tile_reads": "768",
         },
         {
             "kernel": "dense_reuse",
             "precision": "int8",
             "sparse": "none",
-            "mac_active": "256",
+            "mac_active": "512",
             "sparse_state": "0",
             "lane_state": "4",
-            "operand_reads": "128",
-            "weight_reads": "128",
-            "ram_tile_reads": "256",
+            "operand_reads": "256",
+            "weight_reads": "256",
+            "ram_tile_reads": "512",
         },
         {
             "kernel": "adaptive",
             "precision": "int4",
             "sparse": "bitmap",
-            "mac_active": "256",
+            "mac_active": "512",
             "sparse_state": "15",
             "lane_state": "4",
-            "operand_reads": "128",
-            "weight_reads": "256",
-            "ram_tile_reads": "384",
+            "operand_reads": "256",
+            "weight_reads": "512",
+            "ram_tile_reads": "768",
         },
         {
             "kernel": "adaptive_reuse",
             "precision": "int4",
             "sparse": "bitmap_reuse",
-            "mac_active": "256",
+            "mac_active": "512",
             "sparse_state": "15",
             "lane_state": "4",
-            "operand_reads": "128",
-            "weight_reads": "128",
-            "ram_tile_reads": "256",
+            "operand_reads": "256",
+            "weight_reads": "256",
+            "ram_tile_reads": "512",
         },
         {
             "kernel": "no_lane_gating",
             "precision": "int4",
             "sparse": "bitmap",
-            "mac_active": "256",
+            "mac_active": "512",
             "sparse_state": "15",
             "lane_state": "8",
-            "operand_reads": "128",
-            "weight_reads": "256",
-            "ram_tile_reads": "384",
+            "operand_reads": "256",
+            "weight_reads": "512",
+            "ram_tile_reads": "768",
         },
         {
             "kernel": "adaptive_unstructured",
             "precision": "int4",
             "sparse": "bitmap_unstructured",
-            "mac_active": "256",
+            "mac_active": "512",
             "sparse_state": "85",
             "lane_state": "8",
-            "operand_reads": "128",
-            "weight_reads": "256",
-            "ram_tile_reads": "384",
+            "operand_reads": "256",
+            "weight_reads": "512",
+            "ram_tile_reads": "768",
         },
         {
             "kernel": "static_int2",
             "precision": "int2",
             "sparse": "none",
-            "mac_active": "256",
+            "mac_active": "512",
             "sparse_state": "65535",
             "lane_state": "16",
-            "operand_reads": "128",
-            "weight_reads": "256",
-            "ram_tile_reads": "384",
+            "operand_reads": "256",
+            "weight_reads": "512",
+            "ram_tile_reads": "768",
         },
     ]
     rows[0]["skip"] = "0"
     rows[1]["skip"] = "0"
-    rows[2]["skip"] = "1024"
-    rows[3]["skip"] = "1024"
-    rows[4]["skip"] = "1024"
-    rows[5]["skip"] = "1024"
+    rows[2]["skip"] = "2048"
+    rows[3]["skip"] = "2048"
+    rows[4]["skip"] = "2048"
+    rows[5]["skip"] = "2048"
     rows[6]["skip"] = "0"
-    assert product_counts(rows[0]) == ProductCounts(4, 1024, 1024, 0)
-    assert product_counts(rows[1]) == ProductCounts(4, 1024, 1024, 0)
-    assert product_counts(rows[2]) == ProductCounts(8, 2048, 1024, 1024)
-    assert product_counts(rows[3]) == ProductCounts(8, 2048, 1024, 1024)
-    assert product_counts(rows[4]) == ProductCounts(8, 2048, 1024, 1024)
-    assert product_counts(rows[5]) == ProductCounts(8, 2048, 1024, 1024)
-    assert product_counts(rows[6]) == ProductCounts(16, 4096, 4096, 0)
+    assert product_counts(rows[0]) == ProductCounts(4, 2048, 2048, 0)
+    assert product_counts(rows[1]) == ProductCounts(4, 2048, 2048, 0)
+    assert product_counts(rows[2]) == ProductCounts(8, 4096, 2048, 2048)
+    assert product_counts(rows[3]) == ProductCounts(8, 4096, 2048, 2048)
+    assert product_counts(rows[4]) == ProductCounts(8, 4096, 2048, 2048)
+    assert product_counts(rows[5]) == ProductCounts(8, 4096, 2048, 2048)
+    assert product_counts(rows[6]) == ProductCounts(16, 8192, 8192, 0)
     assert skip_ratio(rows[2]) == 0.5
     for row in rows:
         validate_traffic(row)
-    assert traffic_bytes(rows[0]) == (512, 1024, 1024)
-    assert traffic_bytes(rows[1]) == (512, 512, 1024)
-    assert traffic_bytes(rows[2]) == (512, 1024, 1024)
-    assert traffic_bytes(rows[3]) == (512, 512, 1024)
+    assert traffic_bytes(rows[0]) == (1024, 2048, 2048)
+    assert traffic_bytes(rows[1]) == (1024, 1024, 2048)
+    assert traffic_bytes(rows[2]) == (1024, 2048, 2048)
+    assert traffic_bytes(rows[3]) == (1024, 1024, 2048)
     return 0
 
 

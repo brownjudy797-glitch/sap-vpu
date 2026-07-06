@@ -6,15 +6,15 @@
   .equ TINYVIT_TILE_BASE, 0x00010200
   .equ RESULT_MAGIC, 0x54564954
   .equ TINYVIT_ITERS, 16
-  .equ TINYVIT_BLOCKS, 4
+  .equ TINYVIT_BLOCKS, 8
 
   .equ TILE_DENSE_BASE, 0
   .equ TILE_DENSE_STRIDE, 16
-  .equ TILE_INT4_BASE, 64
+  .equ TILE_INT4_BASE, 128
   .equ TILE_INT4_STRIDE, 16
-  .equ TILE_INT2_BASE, 128
+  .equ TILE_INT2_BASE, 256
   .equ TILE_INT2_STRIDE, 16
-  .equ TILE_INT8_BASE, 192
+  .equ TILE_INT8_BASE, 384
   .equ TILE_INT8_STRIDE, 16
 
   .macro sap_r funct7, funct3, rd, rs1, rs2
@@ -74,6 +74,38 @@ _start:
   sw t0, TILE_DENSE_BASE + 56(a1)
   li t0, 0x01010101
   sw t0, TILE_DENSE_BASE + 60(a1)
+  li t0, 0x04030201
+  sw t0, TILE_DENSE_BASE + 64(a1)
+  li t0, 0x01020304
+  sw t0, TILE_DENSE_BASE + 68(a1)
+  li t0, 0x08070605
+  sw t0, TILE_DENSE_BASE + 72(a1)
+  li t0, 0x01010101
+  sw t0, TILE_DENSE_BASE + 76(a1)
+  li t0, 0x02020202
+  sw t0, TILE_DENSE_BASE + 80(a1)
+  li t0, 0x03010301
+  sw t0, TILE_DENSE_BASE + 84(a1)
+  li t0, 0x08070605
+  sw t0, TILE_DENSE_BASE + 88(a1)
+  li t0, 0x02020202
+  sw t0, TILE_DENSE_BASE + 92(a1)
+  li t0, 0x01010101
+  sw t0, TILE_DENSE_BASE + 96(a1)
+  li t0, 0x02020202
+  sw t0, TILE_DENSE_BASE + 100(a1)
+  li t0, 0x04030201
+  sw t0, TILE_DENSE_BASE + 104(a1)
+  li t0, 0x01010101
+  sw t0, TILE_DENSE_BASE + 108(a1)
+  li t0, 0x03030303
+  sw t0, TILE_DENSE_BASE + 112(a1)
+  li t0, 0x01010101
+  sw t0, TILE_DENSE_BASE + 116(a1)
+  li t0, 0x02020202
+  sw t0, TILE_DENSE_BASE + 120(a1)
+  li t0, 0x01010101
+  sw t0, TILE_DENSE_BASE + 124(a1)
 
   li t0, 0x11111111
   sw t0, TILE_INT4_BASE + 0(a1)
@@ -107,6 +139,38 @@ _start:
   sw t0, TILE_INT4_BASE + 56(a1)
   li t0, 0x11111111
   sw t0, TILE_INT4_BASE + 60(a1)
+  li t0, 0x11111111
+  sw t0, TILE_INT4_BASE + 64(a1)
+  li t0, 0x22222222
+  sw t0, TILE_INT4_BASE + 68(a1)
+  li t0, 0x11111111
+  sw t0, TILE_INT4_BASE + 72(a1)
+  li t0, 0x22222222
+  sw t0, TILE_INT4_BASE + 76(a1)
+  li t0, 0x33333333
+  sw t0, TILE_INT4_BASE + 80(a1)
+  li t0, 0x44444444
+  sw t0, TILE_INT4_BASE + 84(a1)
+  li t0, 0x11111111
+  sw t0, TILE_INT4_BASE + 88(a1)
+  li t0, 0x22222222
+  sw t0, TILE_INT4_BASE + 92(a1)
+  li t0, 0x11111111
+  sw t0, TILE_INT4_BASE + 96(a1)
+  li t0, 0x33333333
+  sw t0, TILE_INT4_BASE + 100(a1)
+  li t0, 0x11111111
+  sw t0, TILE_INT4_BASE + 104(a1)
+  li t0, 0x22222222
+  sw t0, TILE_INT4_BASE + 108(a1)
+  li t0, 0x11111111
+  sw t0, TILE_INT4_BASE + 112(a1)
+  li t0, 0x22222222
+  sw t0, TILE_INT4_BASE + 116(a1)
+  li t0, 0x44444444
+  sw t0, TILE_INT4_BASE + 120(a1)
+  li t0, 0x11111111
+  sw t0, TILE_INT4_BASE + 124(a1)
 
   li t0, 0x55555555
   sw t0, TILE_INT2_BASE + 0(a1)
@@ -140,6 +204,38 @@ _start:
   sw t0, TILE_INT2_BASE + 56(a1)
   li t0, 0x11111111
   sw t0, TILE_INT2_BASE + 60(a1)
+  li t0, 0x55555555
+  sw t0, TILE_INT2_BASE + 64(a1)
+  li t0, 0x11111111
+  sw t0, TILE_INT2_BASE + 68(a1)
+  li t0, 0x55555555
+  sw t0, TILE_INT2_BASE + 72(a1)
+  li t0, 0x11111111
+  sw t0, TILE_INT2_BASE + 76(a1)
+  li t0, 0x55555555
+  sw t0, TILE_INT2_BASE + 80(a1)
+  li t0, 0x11111111
+  sw t0, TILE_INT2_BASE + 84(a1)
+  li t0, 0x55555555
+  sw t0, TILE_INT2_BASE + 88(a1)
+  li t0, 0x11111111
+  sw t0, TILE_INT2_BASE + 92(a1)
+  li t0, 0x55555555
+  sw t0, TILE_INT2_BASE + 96(a1)
+  li t0, 0x11111111
+  sw t0, TILE_INT2_BASE + 100(a1)
+  li t0, 0x55555555
+  sw t0, TILE_INT2_BASE + 104(a1)
+  li t0, 0x11111111
+  sw t0, TILE_INT2_BASE + 108(a1)
+  li t0, 0x55555555
+  sw t0, TILE_INT2_BASE + 112(a1)
+  li t0, 0x11111111
+  sw t0, TILE_INT2_BASE + 116(a1)
+  li t0, 0x55555555
+  sw t0, TILE_INT2_BASE + 120(a1)
+  li t0, 0x11111111
+  sw t0, TILE_INT2_BASE + 124(a1)
 
   li t0, 0x01010101
   sw t0, TILE_INT8_BASE + 0(a1)
@@ -173,6 +269,38 @@ _start:
   sw t0, TILE_INT8_BASE + 56(a1)
   li t0, 0x01010101
   sw t0, TILE_INT8_BASE + 60(a1)
+  li t0, 0x01010101
+  sw t0, TILE_INT8_BASE + 64(a1)
+  li t0, 0x02020202
+  sw t0, TILE_INT8_BASE + 68(a1)
+  li t0, 0x01010101
+  sw t0, TILE_INT8_BASE + 72(a1)
+  li t0, 0x02020202
+  sw t0, TILE_INT8_BASE + 76(a1)
+  li t0, 0x03030303
+  sw t0, TILE_INT8_BASE + 80(a1)
+  li t0, 0x04040404
+  sw t0, TILE_INT8_BASE + 84(a1)
+  li t0, 0x01010101
+  sw t0, TILE_INT8_BASE + 88(a1)
+  li t0, 0x02020202
+  sw t0, TILE_INT8_BASE + 92(a1)
+  li t0, 0x01010101
+  sw t0, TILE_INT8_BASE + 96(a1)
+  li t0, 0x03030303
+  sw t0, TILE_INT8_BASE + 100(a1)
+  li t0, 0x01010101
+  sw t0, TILE_INT8_BASE + 104(a1)
+  li t0, 0x02020202
+  sw t0, TILE_INT8_BASE + 108(a1)
+  li t0, 0x01010101
+  sw t0, TILE_INT8_BASE + 112(a1)
+  li t0, 0x02020202
+  sw t0, TILE_INT8_BASE + 116(a1)
+  li t0, 0x04040404
+  sw t0, TILE_INT8_BASE + 120(a1)
+  li t0, 0x01010101
+  sw t0, TILE_INT8_BASE + 124(a1)
 
   /* TinyViT MLP/GEMM-like INT8 dense 4-block tile, repeated to expose kernel cost. */
   read_csr 8, 0xb00              /* s0 = mcycle */
@@ -209,13 +337,13 @@ _start:
   addi a0, a0, -1
   bnez a0, 1b
 
-  li t4, 6048
+  li t4, 12096
   bne t5, t4, fail_dense_output
 
   li t0, 2
   sap_r 0x1a, 0x0, 28, 5, 0     /* VREADCNT MAC_ACTIVE */
   mv s4, t3
-  li t4, 256
+  li t4, 512
   bne s4, t4, fail_dense_mac
 
   li t0, 3
@@ -282,13 +410,13 @@ _start:
   addi a0, a0, -1
   bnez a0, 1b
 
-  li t4, 7296
+  li t4, 14592
   bne t5, t4, fail_static_output
 
   li t0, 2
   sap_r 0x1a, 0x0, 28, 5, 0     /* VREADCNT MAC_ACTIVE */
   mv s6, t3
-  li t4, 256
+  li t4, 512
   bne s6, t4, fail_static_mac
 
   li t0, 3
@@ -367,13 +495,13 @@ _start:
   addi a0, a0, -1
   bnez a0, 1b
 
-  li t4, 2560
+  li t4, 5120
   bne t5, t4, fail_static_int2_output
 
   li t0, 2
   sap_r 0x1a, 0x0, 28, 5, 0     /* VREADCNT MAC_ACTIVE */
   mv s6, t3
-  li t4, 256
+  li t4, 512
   bne s6, t4, fail_static_int2_mac
 
   li t0, 3
@@ -452,19 +580,19 @@ _start:
   addi a0, a0, -1
   bnez a0, 1b
 
-  li t4, 3648
+  li t4, 7296
   bne t5, t4, fail_policy_output
 
   li t0, 2
   sap_r 0x1a, 0x0, 28, 5, 0     /* VREADCNT MAC_ACTIVE */
   mv s6, t3
-  li t4, 256
+  li t4, 512
   bne s6, t4, fail_policy_mac
 
   li t0, 3
   sap_r 0x1a, 0x0, 28, 5, 0     /* VREADCNT SKIPPED */
   mv s7, t3
-  li t4, 1024
+  li t4, 2048
   bne s7, t4, fail_policy_skip
 
   li t0, 4
@@ -538,19 +666,19 @@ _start:
   addi a0, a0, -1
   bnez a0, 1b
 
-  li t4, 3648
+  li t4, 7296
   bne t5, t4, fail_policy_unstructured_output
 
   li t0, 2
   sap_r 0x1a, 0x0, 28, 5, 0     /* VREADCNT MAC_ACTIVE */
   mv s6, t3
-  li t4, 256
+  li t4, 512
   bne s6, t4, fail_policy_unstructured_mac
 
   li t0, 3
   sap_r 0x1a, 0x0, 28, 5, 0     /* VREADCNT SKIPPED */
   mv s7, t3
-  li t4, 1024
+  li t4, 2048
   bne s7, t4, fail_policy_unstructured_skip
 
   li t0, 4
@@ -624,19 +752,19 @@ _start:
   addi a0, a0, -1
   bnez a0, 1b
 
-  li t4, 3648
+  li t4, 7296
   bne t5, t4, fail_no_sparse_output
 
   li t0, 2
   sap_r 0x1a, 0x0, 28, 5, 0     /* VREADCNT MAC_ACTIVE */
   mv s6, t3
-  li t4, 256
+  li t4, 512
   bne s6, t4, fail_no_sparse_mac
 
   li t0, 3
   sap_r 0x1a, 0x0, 28, 5, 0     /* VREADCNT SKIPPED */
   mv s7, t3
-  li t4, 1024
+  li t4, 2048
   bne s7, t4, fail_no_sparse_skip
 
   li t0, 4
@@ -710,19 +838,19 @@ _start:
   addi a0, a0, -1
   bnez a0, 1b
 
-  li t4, 3648
+  li t4, 7296
   bne t5, t4, fail_no_lane_output
 
   li t0, 2
   sap_r 0x1a, 0x0, 28, 5, 0     /* VREADCNT MAC_ACTIVE */
   mv s6, t3
-  li t4, 256
+  li t4, 512
   bne s6, t4, fail_no_lane_mac
 
   li t0, 3
   sap_r 0x1a, 0x0, 28, 5, 0     /* VREADCNT SKIPPED */
   mv s7, t3
-  li t4, 1024
+  li t4, 2048
   bne s7, t4, fail_no_lane_skip
 
   li t0, 4
@@ -796,13 +924,13 @@ _start:
   addi a0, a0, -1
   bnez a0, 1b
 
-  li t4, 3648
+  li t4, 7296
   bne t5, t4, fail_no_precision_output
 
   li t0, 2
   sap_r 0x1a, 0x0, 28, 5, 0     /* VREADCNT MAC_ACTIVE */
   mv s6, t3
-  li t4, 256
+  li t4, 512
   bne s6, t4, fail_no_precision_mac
 
   li t0, 3
@@ -871,13 +999,13 @@ _start:
   addi a0, a0, -1
   bnez a0, 1b
 
-  li t4, 6048
+  li t4, 12096
   bne t5, t4, fail_dense_reuse_output
 
   li t0, 2
   sap_r 0x1a, 0x0, 28, 5, 0     /* VREADCNT MAC_ACTIVE */
   mv s4, t3
-  li t4, 256
+  li t4, 512
   bne s4, t4, fail_dense_reuse_mac
 
   li t0, 3
@@ -941,19 +1069,19 @@ _start:
   addi a0, a0, -1
   bnez a0, 1b
 
-  li t4, 3648
+  li t4, 7296
   bne t5, t4, fail_policy_reuse_output
 
   li t0, 2
   sap_r 0x1a, 0x0, 28, 5, 0     /* VREADCNT MAC_ACTIVE */
   mv s6, t3
-  li t4, 256
+  li t4, 512
   bne s6, t4, fail_policy_reuse_mac
 
   li t0, 3
   sap_r 0x1a, 0x0, 28, 5, 0     /* VREADCNT SKIPPED */
   mv s7, t3
-  li t4, 1024
+  li t4, 2048
   bne s7, t4, fail_policy_reuse_skip
 
   li t0, 4

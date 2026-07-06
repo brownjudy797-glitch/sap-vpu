@@ -1,13 +1,13 @@
 `timescale 1ns/1ps
 
 module corev_min_soc_tinyvit_tb;
-  localparam int unsigned TIMEOUT_CYCLES = 30000;
+  localparam int unsigned TIMEOUT_CYCLES = 60000;
   localparam logic [31:0] RESULT_MAGIC = 32'h5456_4954; // "TVIT"
   localparam int unsigned TINYVIT_ITERS = 16;
   localparam logic [31:0] RESULT_BASE = 32'h0001_0000;
   localparam logic [31:0] TINYVIT_TILE_BASE = 32'h0001_0200;
-  localparam logic [31:0] TINYVIT_TILE_LIMIT = TINYVIT_TILE_BASE + 32'd256;
-  localparam int unsigned EXPECTED_TILE_READS = 3584;
+  localparam logic [31:0] TINYVIT_TILE_LIMIT = TINYVIT_TILE_BASE + 32'd512;
+  localparam int unsigned EXPECTED_TILE_READS = 7168;
   localparam int unsigned K_DENSE = 0;
   localparam int unsigned K_STATIC_LOWBIT = 1;
   localparam int unsigned K_STATIC_INT2 = 2;
@@ -36,6 +36,7 @@ module corev_min_soc_tinyvit_tb;
   int unsigned kernel_tile_read_count [0:9];
 
   corev_min_soc #(
+    .ROM_WORDS(2048),
     .ROM_INIT_FILE("work/tinyvit/sap_vpu_tinyvit.hex")
   ) dut (
     .clk_i(clk),
@@ -76,28 +77,18 @@ module corev_min_soc_tinyvit_tb;
   endtask
 
   function automatic bit is_operand_addr(input logic [31:0] addr);
+    logic [31:0] block_offset;
     begin
-      is_operand_addr = 1'b0;
-      unique case (addr - TINYVIT_TILE_BASE)
-        32'd0, 32'd4, 32'd16, 32'd20, 32'd32, 32'd36, 32'd48, 32'd52,
-        32'd64, 32'd68, 32'd80, 32'd84, 32'd96, 32'd100, 32'd112, 32'd116,
-        32'd128, 32'd132, 32'd144, 32'd148, 32'd160, 32'd164, 32'd176, 32'd180,
-        32'd192, 32'd196, 32'd208, 32'd212, 32'd224, 32'd228, 32'd240, 32'd244: is_operand_addr = 1'b1;
-        default: is_operand_addr = 1'b0;
-      endcase
+      block_offset = (addr - TINYVIT_TILE_BASE) & 32'hf;
+      is_operand_addr = (block_offset == 32'd0) || (block_offset == 32'd4);
     end
   endfunction
 
   function automatic bit is_weight_addr(input logic [31:0] addr);
+    logic [31:0] block_offset;
     begin
-      is_weight_addr = 1'b0;
-      unique case (addr - TINYVIT_TILE_BASE)
-        32'd8, 32'd12, 32'd24, 32'd28, 32'd40, 32'd44, 32'd56, 32'd60,
-        32'd72, 32'd76, 32'd88, 32'd92, 32'd104, 32'd108, 32'd120, 32'd124,
-        32'd136, 32'd140, 32'd152, 32'd156, 32'd168, 32'd172, 32'd184, 32'd188,
-        32'd200, 32'd204, 32'd216, 32'd220, 32'd232, 32'd236, 32'd248, 32'd252: is_weight_addr = 1'b1;
-        default: is_weight_addr = 1'b0;
-      endcase
+      block_offset = (addr - TINYVIT_TILE_BASE) & 32'hf;
+      is_weight_addr = (block_offset == 32'd8) || (block_offset == 32'd12);
     end
   endfunction
 
@@ -156,49 +147,49 @@ module corev_min_soc_tinyvit_tb;
         if (tile_read_count != EXPECTED_TILE_READS) begin
           $fatal(1, "TinyViT RAM tile reads expected %0d got %0d", EXPECTED_TILE_READS, tile_read_count);
         end
-        expect_traffic(K_DENSE, 128, 256);
-        expect_traffic(K_STATIC_LOWBIT, 128, 256);
-        expect_traffic(K_STATIC_INT2, 128, 256);
-        expect_traffic(K_ADAPTIVE, 128, 256);
-        expect_traffic(K_ADAPTIVE_UNSTRUCTURED, 128, 256);
-        expect_traffic(K_NO_SPARSE, 128, 256);
-        expect_traffic(K_NO_LANE, 128, 256);
-        expect_traffic(K_NO_PRECISION, 128, 256);
-        expect_traffic(K_DENSE_REUSE, 128, 128);
-        expect_traffic(K_ADAPTIVE_REUSE, 128, 128);
+        expect_traffic(K_DENSE, 256, 512);
+        expect_traffic(K_STATIC_LOWBIT, 256, 512);
+        expect_traffic(K_STATIC_INT2, 256, 512);
+        expect_traffic(K_ADAPTIVE, 256, 512);
+        expect_traffic(K_ADAPTIVE_UNSTRUCTURED, 256, 512);
+        expect_traffic(K_NO_SPARSE, 256, 512);
+        expect_traffic(K_NO_LANE, 256, 512);
+        expect_traffic(K_NO_PRECISION, 256, 512);
+        expect_traffic(K_DENSE_REUSE, 256, 256);
+        expect_traffic(K_ADAPTIVE_REUSE, 256, 256);
         if (dut.ram[0] !== RESULT_MAGIC) begin
           $fatal(1, "TinyViT result magic expected 0x%08x got 0x%08x", RESULT_MAGIC, dut.ram[0]);
         end
-        expect_result(1, 32'd378 * TINYVIT_ITERS);
-        expect_result(2, 32'd16 * TINYVIT_ITERS);
+        expect_result(1, 32'd756 * TINYVIT_ITERS);
+        expect_result(2, 32'd32 * TINYVIT_ITERS);
         expect_result(3, 32'd0);
-        expect_result(6, 32'd456 * TINYVIT_ITERS);
-        expect_result(7, 32'd16 * TINYVIT_ITERS);
+        expect_result(6, 32'd912 * TINYVIT_ITERS);
+        expect_result(7, 32'd32 * TINYVIT_ITERS);
         expect_result(8, 32'd0);
-        expect_result(13, 32'd228 * TINYVIT_ITERS);
-        expect_result(14, 32'd16 * TINYVIT_ITERS);
-        expect_result(15, 32'd64 * TINYVIT_ITERS);
-        expect_result(48, 32'd228 * TINYVIT_ITERS);
-        expect_result(49, 32'd16 * TINYVIT_ITERS);
-        expect_result(50, 32'd64 * TINYVIT_ITERS);
-        expect_result(20, 32'd228 * TINYVIT_ITERS);
-        expect_result(21, 32'd16 * TINYVIT_ITERS);
-        expect_result(22, 32'd64 * TINYVIT_ITERS);
-        expect_result(27, 32'd228 * TINYVIT_ITERS);
-        expect_result(28, 32'd16 * TINYVIT_ITERS);
-        expect_result(29, 32'd64 * TINYVIT_ITERS);
-        expect_result(34, 32'd228 * TINYVIT_ITERS);
-        expect_result(35, 32'd16 * TINYVIT_ITERS);
+        expect_result(13, 32'd456 * TINYVIT_ITERS);
+        expect_result(14, 32'd32 * TINYVIT_ITERS);
+        expect_result(15, 32'd128 * TINYVIT_ITERS);
+        expect_result(48, 32'd456 * TINYVIT_ITERS);
+        expect_result(49, 32'd32 * TINYVIT_ITERS);
+        expect_result(50, 32'd128 * TINYVIT_ITERS);
+        expect_result(20, 32'd456 * TINYVIT_ITERS);
+        expect_result(21, 32'd32 * TINYVIT_ITERS);
+        expect_result(22, 32'd128 * TINYVIT_ITERS);
+        expect_result(27, 32'd456 * TINYVIT_ITERS);
+        expect_result(28, 32'd32 * TINYVIT_ITERS);
+        expect_result(29, 32'd128 * TINYVIT_ITERS);
+        expect_result(34, 32'd456 * TINYVIT_ITERS);
+        expect_result(35, 32'd32 * TINYVIT_ITERS);
         expect_result(36, 32'd0);
-        expect_result(41, 32'd160 * TINYVIT_ITERS);
-        expect_result(42, 32'd16 * TINYVIT_ITERS);
+        expect_result(41, 32'd320 * TINYVIT_ITERS);
+        expect_result(42, 32'd32 * TINYVIT_ITERS);
         expect_result(43, 32'd0);
-        expect_result(55, 32'd378 * TINYVIT_ITERS);
-        expect_result(56, 32'd16 * TINYVIT_ITERS);
+        expect_result(55, 32'd756 * TINYVIT_ITERS);
+        expect_result(56, 32'd32 * TINYVIT_ITERS);
         expect_result(57, 32'd0);
-        expect_result(60, 32'd228 * TINYVIT_ITERS);
-        expect_result(61, 32'd16 * TINYVIT_ITERS);
-        expect_result(62, 32'd64 * TINYVIT_ITERS);
+        expect_result(60, 32'd456 * TINYVIT_ITERS);
+        expect_result(61, 32'd32 * TINYVIT_ITERS);
+        expect_result(62, 32'd128 * TINYVIT_ITERS);
         if ((dut.ram[4] == 32'd0) || (dut.ram[5] == 32'd0) ||
             (dut.ram[11] == 32'd0) || (dut.ram[12] == 32'd0) ||
             (dut.ram[18] == 32'd0) || (dut.ram[19] == 32'd0) ||

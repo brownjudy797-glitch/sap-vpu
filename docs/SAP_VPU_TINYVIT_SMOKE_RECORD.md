@@ -10,7 +10,7 @@ Current boundary:
 
 - The workload is a small deterministic bare-metal smoke kernel, not full
   TinyViT end-to-end inference.
-- Each row repeats a four-block, 2-token x 2-output-channel macro-tile 16 times
+- Each row repeats an eight-block, 2-token x 2-output-channel macro-tile 16 times
   to reduce one-time setup overhead and expose more RAM traffic, but the kernel
   is still a smoke workload.
 - The dense speedup is local to this smoke run and should not be cited as a
@@ -43,46 +43,46 @@ python3 scripts/summarize_tinyvit_counters.py work/tinyvit/tinyvit_smoke_counter
 
 | Kernel | Precision | Sparse | Output | Cycles | Dense speedup | Skip ratio | Active lanes | RAM tile reads | Operand bytes | Weight bytes | Partial sum bytes | Total bytes |
 | --- | --- | --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
-| dense | int8 | none | 6048 | 1825 | 1.000 | 0.000 | 4 | 384 | 512 | 1024 | 1024 | 2560 |
-| dense_reuse | int8 | none | 6048 | 1474 | 1.238 | 0.000 | 4 | 256 | 512 | 512 | 1024 | 2048 |
-| static_lowbit | int4 | none | 7296 | 1845 | 0.989 | 0.000 | 8 | 384 | 512 | 1024 | 1024 | 2560 |
-| static_int2 | int2 | none | 2560 | 1879 | 0.971 | 0.000 | 16 | 384 | 512 | 1024 | 1024 | 2560 |
-| adaptive | int4 | bitmap | 3648 | 1879 | 0.971 | 0.500 | 4 | 384 | 512 | 1024 | 1024 | 2560 |
-| adaptive_reuse | int4 | bitmap_reuse | 3648 | 1462 | 1.248 | 0.500 | 4 | 256 | 512 | 512 | 1024 | 2048 |
-| adaptive_unstructured | int4 | bitmap_unstructured | 3648 | 1879 | 0.971 | 0.500 | 8 | 384 | 512 | 1024 | 1024 | 2560 |
-| no_sparse_skip | int4 | none | 3648 | 1846 | 0.989 | 0.500 | 4 | 384 | 512 | 1024 | 1024 | 2560 |
-| no_lane_gating | int4 | bitmap | 3648 | 1846 | 0.989 | 0.500 | 8 | 384 | 512 | 1024 | 1024 | 2560 |
-| no_precision_gating | int8 | bitmap | 3648 | 1878 | 0.972 | 0.000 | 4 | 384 | 512 | 1024 | 1024 | 2560 |
+| dense | int8 | none | 12096 | 3553 | 1.000 | 0.000 | 4 | 768 | 1024 | 2048 | 2048 | 5120 |
+| dense_reuse | int8 | none | 12096 | 2882 | 1.233 | 0.000 | 4 | 512 | 1024 | 1024 | 2048 | 4096 |
+| static_lowbit | int4 | none | 14592 | 3573 | 0.994 | 0.000 | 8 | 768 | 1024 | 2048 | 2048 | 5120 |
+| static_int2 | int2 | none | 5120 | 3671 | 0.968 | 0.000 | 16 | 768 | 1024 | 2048 | 2048 | 5120 |
+| adaptive | int4 | bitmap | 7296 | 3672 | 0.968 | 0.500 | 4 | 768 | 1024 | 2048 | 2048 | 5120 |
+| adaptive_reuse | int4 | bitmap_reuse | 7296 | 2807 | 1.266 | 0.500 | 4 | 512 | 1024 | 1024 | 2048 | 4096 |
+| adaptive_unstructured | int4 | bitmap_unstructured | 7296 | 3575 | 0.994 | 0.500 | 8 | 768 | 1024 | 2048 | 2048 | 5120 |
+| no_sparse_skip | int4 | none | 7296 | 3575 | 0.994 | 0.500 | 4 | 768 | 1024 | 2048 | 2048 | 5120 |
+| no_lane_gating | int4 | bitmap | 7296 | 3672 | 0.968 | 0.500 | 8 | 768 | 1024 | 2048 | 2048 | 5120 |
+| no_precision_gating | int8 | bitmap | 7296 | 3670 | 0.968 | 0.000 | 4 | 768 | 1024 | 2048 | 2048 | 5120 |
 
 ## Current Compute Shape Table
 
 | Kernel | Vector lanes | VDOT ops | Active products | Skipped products | Active products/cycle |
 | --- | ---: | ---: | ---: | ---: | ---: |
-| dense | 4 | 256 | 1024 | 0 | 0.561 |
-| dense_reuse | 4 | 256 | 1024 | 0 | 0.695 |
-| static_lowbit | 8 | 256 | 2048 | 0 | 1.110 |
-| static_int2 | 16 | 256 | 4096 | 0 | 2.180 |
-| adaptive | 8 | 256 | 1024 | 1024 | 0.545 |
-| adaptive_reuse | 8 | 256 | 1024 | 1024 | 0.700 |
-| adaptive_unstructured | 8 | 256 | 1024 | 1024 | 0.545 |
-| no_sparse_skip | 8 | 256 | 1024 | 1024 | 0.555 |
-| no_lane_gating | 8 | 256 | 1024 | 1024 | 0.555 |
-| no_precision_gating | 4 | 256 | 1024 | 0 | 0.545 |
+| dense | 4 | 512 | 2048 | 0 | 0.576 |
+| dense_reuse | 4 | 512 | 2048 | 0 | 0.711 |
+| static_lowbit | 8 | 512 | 4096 | 0 | 1.146 |
+| static_int2 | 16 | 512 | 8192 | 0 | 2.232 |
+| adaptive | 8 | 512 | 2048 | 2048 | 0.558 |
+| adaptive_reuse | 8 | 512 | 2048 | 2048 | 0.730 |
+| adaptive_unstructured | 8 | 512 | 2048 | 2048 | 0.573 |
+| no_sparse_skip | 8 | 512 | 2048 | 2048 | 0.573 |
+| no_lane_gating | 8 | 512 | 2048 | 2048 | 0.558 |
+| no_precision_gating | 4 | 512 | 2048 | 0 | 0.558 |
 
 ## Current Memory Traffic Table
 
 | Kernel | Operand reads | Weight reads | RAM tile reads | Operand bytes | Weight bytes | Partial sum bytes | Total bytes |
 | --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
-| dense | 128 | 256 | 384 | 512 | 1024 | 1024 | 2560 |
-| dense_reuse | 128 | 128 | 256 | 512 | 512 | 1024 | 2048 |
-| static_lowbit | 128 | 256 | 384 | 512 | 1024 | 1024 | 2560 |
-| static_int2 | 128 | 256 | 384 | 512 | 1024 | 1024 | 2560 |
-| adaptive | 128 | 256 | 384 | 512 | 1024 | 1024 | 2560 |
-| adaptive_reuse | 128 | 128 | 256 | 512 | 512 | 1024 | 2048 |
-| adaptive_unstructured | 128 | 256 | 384 | 512 | 1024 | 1024 | 2560 |
-| no_sparse_skip | 128 | 256 | 384 | 512 | 1024 | 1024 | 2560 |
-| no_lane_gating | 128 | 256 | 384 | 512 | 1024 | 1024 | 2560 |
-| no_precision_gating | 128 | 256 | 384 | 512 | 1024 | 1024 | 2560 |
+| dense | 256 | 512 | 768 | 1024 | 2048 | 2048 | 5120 |
+| dense_reuse | 256 | 256 | 512 | 1024 | 1024 | 2048 | 4096 |
+| static_lowbit | 256 | 512 | 768 | 1024 | 2048 | 2048 | 5120 |
+| static_int2 | 256 | 512 | 768 | 1024 | 2048 | 2048 | 5120 |
+| adaptive | 256 | 512 | 768 | 1024 | 2048 | 2048 | 5120 |
+| adaptive_reuse | 256 | 256 | 512 | 1024 | 1024 | 2048 | 4096 |
+| adaptive_unstructured | 256 | 512 | 768 | 1024 | 2048 | 2048 | 5120 |
+| no_sparse_skip | 256 | 512 | 768 | 1024 | 2048 | 2048 | 5120 |
+| no_lane_gating | 256 | 512 | 768 | 1024 | 2048 | 2048 | 5120 |
+| no_precision_gating | 256 | 512 | 768 | 1024 | 2048 | 2048 | 5120 |
 
 ## Evidence Covered
 
@@ -96,7 +96,7 @@ The current smoke covers the next paper-roadmap evidence hooks:
   bitmap policy row.
 - Three policy-level ablations: no sparse skip, no lane gating, and no
   precision gating.
-- Testbench assertion that the smoke performs 3584 operand/weight reads from
+- Testbench assertion that the smoke performs 7168 operand/weight reads from
   the RAM tile scratch region.
 - CSV export for observed per-kernel operand reads, weight reads, and total RAM
   tile reads.
@@ -108,7 +108,7 @@ The current smoke covers the next paper-roadmap evidence hooks:
 ## Interpretation
 
 This table verifies the experiment plumbing and counter visibility. The
-four-block, 2-token x 2-output-channel, 16-round repeat makes cycle counts less
+eight-block, 2-token x 2-output-channel, 16-round repeat makes cycle counts less
 dominated by setup overhead than the first single-tile smoke, but the workload is
 still too small for final performance claims.
 
