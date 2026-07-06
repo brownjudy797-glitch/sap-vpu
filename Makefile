@@ -33,10 +33,13 @@ TINYVIT_COUNTER_CSV ?= $(TINYVIT_BUILD_DIR)/tinyvit_smoke_counters.csv
 FPGA_PART ?= xc7a35tcsg324-1
 FPGA_CLOCK_MHZ ?= 100
 FPGA_BUILD_DIR ?= $(ROOT_DIR)/work/fpga/vpu_core
+DC_CLOCK_PERIOD ?= 10.0
+DC_WORK_DIR ?= $(ROOT_DIR)/work/dc/tsmc28/vpu_core
+DC_REPORT_DIR ?= $(ROOT_DIR)/reports/dc/tsmc28/vpu_core
 
 .DEFAULT_GOAL := help
 
-.PHONY: help plan-check corev-fetch corev-rtl-flist lint-adapter lint-core lint lint-corev-soc sim-adapter sim-core sim-hello sim-vpu sim-tinyvit sim encoding-check legacy-summary hello-build hello-smoke vpu-build vpu-smoke tinyvit-build tinyvit-smoke tinyvit-summary fpga-vpu-synth fpga-vpu-summary
+.PHONY: help plan-check corev-fetch corev-rtl-flist lint-adapter lint-core lint lint-corev-soc sim-adapter sim-core sim-hello sim-vpu sim-tinyvit sim encoding-check legacy-summary hello-build hello-smoke vpu-build vpu-smoke tinyvit-build tinyvit-smoke tinyvit-summary fpga-vpu-synth fpga-vpu-summary dc-vpu-synth dc-vpu-summary
 
 help:
 	@printf '%s\n' \
@@ -56,7 +59,9 @@ help:
 	  'make tinyvit-smoke' \
 	  'make tinyvit-summary' \
 	  'make fpga-vpu-synth [FPGA_PART=xc7a35tcsg324-1] [FPGA_CLOCK_MHZ=100]' \
-	  'make fpga-vpu-summary'
+	  'make fpga-vpu-summary' \
+	  'make dc-vpu-synth [DC_CLOCK_PERIOD=10.0]' \
+	  'make dc-vpu-summary'
 
 plan-check:
 	test -x scripts/fetch_corev_cv32e40x.sh
@@ -76,9 +81,13 @@ plan-check:
 	test -x scripts/summarize_tinyvit_counters.py
 	test -f scripts/vivado_vpu_synth.tcl
 	test -x scripts/summarize_vivado_reports.py
+	test -f scripts/dc_vpu_synth.tcl
+	test -x scripts/run_dc_vpu_synth.sh
+	test -x scripts/summarize_dc_reports.py
 	test -f docs/SAP_VPU_RESEARCH_PLAN.md
 	test -f docs/SAP_VPU_LITERATURE_MATRIX.md
 	test -f docs/SAP_VPU_FPGA_FLOW.md
+	test -f docs/SAP_VPU_ASIC_FLOW.md
 
 corev-fetch:
 	scripts/fetch_corev_cv32e40x.sh "$(COREV_DIR)" "$(COREV_REF)"
@@ -247,3 +256,11 @@ fpga-vpu-synth:
 
 fpga-vpu-summary:
 	$(PYTHON) scripts/summarize_vivado_reports.py "$(FPGA_BUILD_DIR)"
+
+dc-vpu-synth:
+	CLOCK_PERIOD="$(DC_CLOCK_PERIOD)" \
+	  WORK_DIR="$(DC_WORK_DIR)" REPORT_DIR="$(DC_REPORT_DIR)" \
+	  scripts/run_dc_vpu_synth.sh
+
+dc-vpu-summary:
+	$(PYTHON) scripts/summarize_dc_reports.py "$(DC_WORK_DIR)" "$(DC_REPORT_DIR)"

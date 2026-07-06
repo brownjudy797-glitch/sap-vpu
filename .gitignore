@@ -31,3 +31,9 @@ __pycache__/
 *.ddc
 *.svf
 
+# Synopsys Design Compiler generated side files
+alib-*/
+command.log
+filenames*.log
+crte_*.txt
+sap_vpu_core.db
