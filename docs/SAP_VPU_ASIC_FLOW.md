@@ -110,3 +110,7 @@ Generated reports and netlists remain ignored local artifacts.
 - `make dc-vpu-precheck` was added to separate front-end setup from mapping.
   It has verified that the local license, TSMC28 `.db`, RTL analyze/elaborate,
   link, `check_design`, and `check_timing` path can complete before compile.
+- A separate tiny RTL mapping sanity check also failed when DC tried to read
+  mapped TSMC28 cell content, with `LDB-3`, `LDB-4`, and `File is not a DB file`
+  messages. Treat the current blocker as a DC/library compatibility issue until
+  a newer DC installation or a regenerated/compatible TSMC28 `.db` is available.
