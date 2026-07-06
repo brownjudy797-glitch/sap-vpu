@@ -835,6 +835,67 @@ _start:
   sw t6, 156(s2)
   sw t2, 160(s2)
 
+  sap_r 0x1d, 0x0, 0, 0, 0      /* VCLEARCNT x0, x0, x0 */
+
+  /* Dense INT8 macro-tile with block-local operand and weight reuse. */
+  read_csr 8, 0xb00              /* s0 = mcycle */
+  read_csr 9, 0xb02              /* s1 = minstret */
+  li t5, 0
+  li a0, TINYVIT_ITERS
+
+1:
+  addi a2, a1, TILE_DENSE_BASE
+  li a3, TINYVIT_BLOCKS
+2:
+  lw t0, 0(a2)                   /* token0 */
+  lw t2, 4(a2)                   /* token1 */
+  lw t1, 8(a2)                   /* weight0 */
+  lw t4, 12(a2)                  /* weight1 */
+
+  sap_r 0x10, 0x0, 28, 5, 6     /* token0 dot weight0 */
+  add t5, t5, t3
+
+  sap_r 0x10, 0x0, 28, 5, 29    /* token0 dot weight1 */
+  add t5, t5, t3
+
+  sap_r 0x10, 0x0, 28, 7, 6     /* token1 dot weight0 */
+  add t5, t5, t3
+
+  sap_r 0x10, 0x0, 28, 7, 29    /* token1 dot weight1 */
+  add t5, t5, t3
+
+  addi a2, a2, TILE_DENSE_STRIDE
+  addi a3, a3, -1
+  bnez a3, 2b
+
+  addi a0, a0, -1
+  bnez a0, 1b
+
+  li t4, 6048
+  bne t5, t4, fail_dense_reuse_output
+
+  li t0, 2
+  sap_r 0x1a, 0x0, 28, 5, 0     /* VREADCNT MAC_ACTIVE */
+  mv s4, t3
+  li t4, 256
+  bne s4, t4, fail_dense_reuse_mac
+
+  li t0, 3
+  sap_r 0x1a, 0x0, 28, 5, 0     /* VREADCNT SKIPPED */
+  mv s5, t3
+  bnez s5, fail_dense_reuse_skip
+
+  read_csr 31, 0xb00             /* t6 = dense reuse cycle delta */
+  sub t6, t6, s0
+  read_csr 7, 0xb02              /* t2 = dense reuse instret delta */
+  sub t2, t2, s1
+  li s2, RESULT_BASE
+  sw t5, 220(s2)
+  sw s4, 224(s2)
+  sw s5, 228(s2)
+  sw t6, 232(s2)
+  sw t2, 236(s2)
+
   exit_with 1
 
 fail_dense_output:
@@ -845,6 +906,15 @@ fail_dense_mac:
 
 fail_dense_skip:
   exit_with 13
+
+fail_dense_reuse_output:
+  exit_with 14
+
+fail_dense_reuse_mac:
+  exit_with 15
+
+fail_dense_reuse_skip:
+  exit_with 16
 
 fail_static_output:
   exit_with 21

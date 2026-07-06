@@ -7,7 +7,7 @@ module corev_min_soc_tinyvit_tb;
   localparam logic [31:0] RESULT_BASE = 32'h0001_0000;
   localparam logic [31:0] TINYVIT_TILE_BASE = 32'h0001_0100;
   localparam logic [31:0] TINYVIT_TILE_LIMIT = TINYVIT_TILE_BASE + 32'd256;
-  localparam int unsigned EXPECTED_TILE_READS = 3072;
+  localparam int unsigned EXPECTED_TILE_READS = 3328;
   localparam int unsigned K_DENSE = 0;
   localparam int unsigned K_STATIC_LOWBIT = 1;
   localparam int unsigned K_STATIC_INT2 = 2;
@@ -16,7 +16,8 @@ module corev_min_soc_tinyvit_tb;
   localparam int unsigned K_NO_SPARSE = 5;
   localparam int unsigned K_NO_LANE = 6;
   localparam int unsigned K_NO_PRECISION = 7;
-  localparam int unsigned K_DONE = 8;
+  localparam int unsigned K_DENSE_REUSE = 8;
+  localparam int unsigned K_DONE = 9;
 
   logic clk;
   logic rst_n;
@@ -29,9 +30,9 @@ module corev_min_soc_tinyvit_tb;
   int result_fd;
   int unsigned current_kernel;
   int unsigned tile_read_count;
-  int unsigned operand_read_count [0:7];
-  int unsigned weight_read_count [0:7];
-  int unsigned kernel_tile_read_count [0:7];
+  int unsigned operand_read_count [0:8];
+  int unsigned weight_read_count [0:8];
+  int unsigned kernel_tile_read_count [0:8];
 
   corev_min_soc #(
     .ROM_INIT_FILE("work/tinyvit/sap_vpu_tinyvit.hex")
@@ -103,7 +104,7 @@ module corev_min_soc_tinyvit_tb;
     if (!rst_n) begin
       current_kernel <= K_DENSE;
       tile_read_count <= 0;
-      for (int unsigned i = 0; i < 8; i++) begin
+      for (int unsigned i = 0; i < 9; i++) begin
         operand_read_count[i] <= 0;
         weight_read_count[i] <= 0;
         kernel_tile_read_count[i] <= 0;
@@ -135,7 +136,8 @@ module corev_min_soc_tinyvit_tb;
           RESULT_BASE + 32'd216: current_kernel <= K_NO_SPARSE;
           RESULT_BASE + 32'd104: current_kernel <= K_NO_LANE;
           RESULT_BASE + 32'd132: current_kernel <= K_NO_PRECISION;
-          RESULT_BASE + 32'd160: current_kernel <= K_DONE;
+          RESULT_BASE + 32'd160: current_kernel <= K_DENSE_REUSE;
+          RESULT_BASE + 32'd236: current_kernel <= K_DONE;
           default: begin
           end
         endcase
@@ -160,6 +162,7 @@ module corev_min_soc_tinyvit_tb;
         expect_traffic(K_NO_SPARSE, 128, 256);
         expect_traffic(K_NO_LANE, 128, 256);
         expect_traffic(K_NO_PRECISION, 128, 256);
+        expect_traffic(K_DENSE_REUSE, 128, 128);
         if (dut.ram[0] !== RESULT_MAGIC) begin
           $fatal(1, "TinyViT result magic expected 0x%08x got 0x%08x", RESULT_MAGIC, dut.ram[0]);
         end
@@ -187,6 +190,9 @@ module corev_min_soc_tinyvit_tb;
         expect_result(41, 32'd160 * TINYVIT_ITERS);
         expect_result(42, 32'd16 * TINYVIT_ITERS);
         expect_result(43, 32'd0);
+        expect_result(55, 32'd378 * TINYVIT_ITERS);
+        expect_result(56, 32'd16 * TINYVIT_ITERS);
+        expect_result(57, 32'd0);
         if ((dut.ram[4] == 32'd0) || (dut.ram[5] == 32'd0) ||
             (dut.ram[11] == 32'd0) || (dut.ram[12] == 32'd0) ||
             (dut.ram[18] == 32'd0) || (dut.ram[19] == 32'd0) ||
@@ -194,7 +200,8 @@ module corev_min_soc_tinyvit_tb;
             (dut.ram[32] == 32'd0) || (dut.ram[33] == 32'd0) ||
             (dut.ram[39] == 32'd0) || (dut.ram[40] == 32'd0) ||
             (dut.ram[46] == 32'd0) || (dut.ram[47] == 32'd0) ||
-            (dut.ram[53] == 32'd0) || (dut.ram[54] == 32'd0)) begin
+            (dut.ram[53] == 32'd0) || (dut.ram[54] == 32'd0) ||
+            (dut.ram[58] == 32'd0) || (dut.ram[59] == 32'd0)) begin
           $fatal(1, "TinyViT cycle/inst counters must be nonzero");
         end
         result_fd = $fopen("work/tinyvit/tinyvit_smoke_counters.csv", "w");
@@ -206,6 +213,10 @@ module corev_min_soc_tinyvit_tb;
                   dut.ram[1], dut.ram[2], dut.ram[3], dut.ram[4], dut.ram[5],
                   operand_read_count[K_DENSE], weight_read_count[K_DENSE],
                   kernel_tile_read_count[K_DENSE]);
+        $fdisplay(result_fd, "dense_reuse,int8,none,%0d,%0d,%0d,0,4,%0d,%0d,%0d,%0d,%0d",
+                  dut.ram[55], dut.ram[56], dut.ram[57], dut.ram[58], dut.ram[59],
+                  operand_read_count[K_DENSE_REUSE], weight_read_count[K_DENSE_REUSE],
+                  kernel_tile_read_count[K_DENSE_REUSE]);
         $fdisplay(result_fd, "static_lowbit,int4,none,%0d,%0d,%0d,%0d,%0d,%0d,%0d,%0d,%0d,%0d",
                   dut.ram[6], dut.ram[7], dut.ram[8], dut.ram[9], dut.ram[10],
                   dut.ram[11], dut.ram[12], operand_read_count[K_STATIC_LOWBIT],
