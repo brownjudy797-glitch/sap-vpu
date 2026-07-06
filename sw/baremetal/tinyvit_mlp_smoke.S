@@ -3,7 +3,7 @@
 
   .equ EXIT_ADDR, 0x10000004
   .equ RESULT_BASE, 0x00010000
-  .equ TINYVIT_TILE_BASE, 0x00010100
+  .equ TINYVIT_TILE_BASE, 0x00010200
   .equ RESULT_MAGIC, 0x54564954
   .equ TINYVIT_ITERS, 16
   .equ TINYVIT_BLOCKS, 4
@@ -896,6 +896,91 @@ _start:
   sw t6, 232(s2)
   sw t2, 236(s2)
 
+  sap_r 0x1d, 0x0, 0, 0, 0      /* VCLEARCNT x0, x0, x0 */
+
+  /* Adaptive INT4 sparse/lane policy with block-local operand and weight reuse. */
+  read_csr 8, 0xb00              /* s0 = mcycle */
+  read_csr 9, 0xb02              /* s1 = minstret */
+
+  li t0, 1
+  sap_r 0x18, 0x0, 0, 5, 0      /* VSETPREC INT4 */
+
+  li t0, 0x0f
+  sap_r 0x1c, 0x0, 0, 5, 0      /* VSETSPARSE_BMP lanes 0..3 */
+
+  li t0, 4
+  sap_r 0x1b, 0x0, 0, 5, 0      /* VSETLANE 4 */
+
+  li t5, 0
+  li a0, TINYVIT_ITERS
+1:
+  addi a2, a1, TILE_INT4_BASE
+  li a3, TINYVIT_BLOCKS
+2:
+  lw t0, 0(a2)                   /* token0 */
+  lw t2, 4(a2)                   /* token1 */
+  lw t1, 8(a2)                   /* weight0 */
+  lw t4, 12(a2)                  /* weight1 */
+
+  sap_r 0x10, 0x0, 28, 5, 6
+  add t5, t5, t3
+
+  sap_r 0x10, 0x0, 28, 5, 29
+  add t5, t5, t3
+
+  sap_r 0x10, 0x0, 28, 7, 6
+  add t5, t5, t3
+
+  sap_r 0x10, 0x0, 28, 7, 29
+  add t5, t5, t3
+
+  addi a2, a2, TILE_INT4_STRIDE
+  addi a3, a3, -1
+  bnez a3, 2b
+
+  addi a0, a0, -1
+  bnez a0, 1b
+
+  li t4, 3648
+  bne t5, t4, fail_policy_reuse_output
+
+  li t0, 2
+  sap_r 0x1a, 0x0, 28, 5, 0     /* VREADCNT MAC_ACTIVE */
+  mv s6, t3
+  li t4, 256
+  bne s6, t4, fail_policy_reuse_mac
+
+  li t0, 3
+  sap_r 0x1a, 0x0, 28, 5, 0     /* VREADCNT SKIPPED */
+  mv s7, t3
+  li t4, 1024
+  bne s7, t4, fail_policy_reuse_skip
+
+  li t0, 4
+  sap_r 0x1a, 0x0, 28, 5, 0     /* VREADCNT SPARSE */
+  mv s8, t3
+  li t4, 0x0f
+  bne s8, t4, fail_policy_reuse_sparse
+
+  li t0, 5
+  sap_r 0x1a, 0x0, 28, 5, 0     /* VREADCNT LANE */
+  mv s9, t3
+  li t4, 4
+  bne s9, t4, fail_policy_reuse_lane
+
+  read_csr 31, 0xb00             /* t6 = adaptive reuse cycle delta */
+  sub t6, t6, s0
+  read_csr 7, 0xb02              /* t2 = adaptive reuse instret delta */
+  sub t2, t2, s1
+  li s2, RESULT_BASE
+  sw t5, 240(s2)
+  sw s6, 244(s2)
+  sw s7, 248(s2)
+  sw s8, 252(s2)
+  sw s9, 256(s2)
+  sw t6, 260(s2)
+  sw t2, 264(s2)
+
   exit_with 1
 
 fail_dense_output:
@@ -960,6 +1045,21 @@ fail_policy_sparse:
 
 fail_policy_lane:
   exit_with 35
+
+fail_policy_reuse_output:
+  exit_with 36
+
+fail_policy_reuse_mac:
+  exit_with 37
+
+fail_policy_reuse_skip:
+  exit_with 38
+
+fail_policy_reuse_sparse:
+  exit_with 39
+
+fail_policy_reuse_lane:
+  exit_with 40
 
 fail_policy_unstructured_output:
   exit_with 81

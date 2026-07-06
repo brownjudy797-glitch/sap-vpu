@@ -48,6 +48,7 @@ python3 scripts/summarize_tinyvit_counters.py work/tinyvit/tinyvit_smoke_counter
 | static_lowbit | int4 | none | 7296 | 1845 | 0.989 | 0.000 | 8 | 384 | 512 | 1024 | 1024 | 2560 |
 | static_int2 | int2 | none | 2560 | 1879 | 0.971 | 0.000 | 16 | 384 | 512 | 1024 | 1024 | 2560 |
 | adaptive | int4 | bitmap | 3648 | 1879 | 0.971 | 0.500 | 4 | 384 | 512 | 1024 | 1024 | 2560 |
+| adaptive_reuse | int4 | bitmap_reuse | 3648 | 1462 | 1.248 | 0.500 | 4 | 256 | 512 | 512 | 1024 | 2048 |
 | adaptive_unstructured | int4 | bitmap_unstructured | 3648 | 1879 | 0.971 | 0.500 | 8 | 384 | 512 | 1024 | 1024 | 2560 |
 | no_sparse_skip | int4 | none | 3648 | 1846 | 0.989 | 0.500 | 4 | 384 | 512 | 1024 | 1024 | 2560 |
 | no_lane_gating | int4 | bitmap | 3648 | 1846 | 0.989 | 0.500 | 8 | 384 | 512 | 1024 | 1024 | 2560 |
@@ -62,6 +63,7 @@ python3 scripts/summarize_tinyvit_counters.py work/tinyvit/tinyvit_smoke_counter
 | static_lowbit | 8 | 256 | 2048 | 0 | 1.110 |
 | static_int2 | 16 | 256 | 4096 | 0 | 2.180 |
 | adaptive | 8 | 256 | 1024 | 1024 | 0.545 |
+| adaptive_reuse | 8 | 256 | 1024 | 1024 | 0.700 |
 | adaptive_unstructured | 8 | 256 | 1024 | 1024 | 0.545 |
 | no_sparse_skip | 8 | 256 | 1024 | 1024 | 0.555 |
 | no_lane_gating | 8 | 256 | 1024 | 1024 | 0.555 |
@@ -76,6 +78,7 @@ python3 scripts/summarize_tinyvit_counters.py work/tinyvit/tinyvit_smoke_counter
 | static_lowbit | 128 | 256 | 384 | 512 | 1024 | 1024 | 2560 |
 | static_int2 | 128 | 256 | 384 | 512 | 1024 | 1024 | 2560 |
 | adaptive | 128 | 256 | 384 | 512 | 1024 | 1024 | 2560 |
+| adaptive_reuse | 128 | 128 | 256 | 512 | 512 | 1024 | 2048 |
 | adaptive_unstructured | 128 | 256 | 384 | 512 | 1024 | 1024 | 2560 |
 | no_sparse_skip | 128 | 256 | 384 | 512 | 1024 | 1024 | 2560 |
 | no_lane_gating | 128 | 256 | 384 | 512 | 1024 | 1024 | 2560 |
@@ -86,14 +89,14 @@ python3 scripts/summarize_tinyvit_counters.py work/tinyvit/tinyvit_smoke_counter
 The current smoke covers the next paper-roadmap evidence hooks:
 
 - Static INT8 dense baseline.
-- Dense INT8 block-local reuse baseline with the same VDOT count and lower
-  observed RAM tile traffic.
+- Dense INT8 and adaptive INT4 block-local reuse baselines with the same VDOT
+  count and lower observed RAM tile traffic.
 - Static low-bit INT4 and INT2 policies.
 - Adaptive INT4 bitmap sparse and lane policy, including one non-contiguous
   bitmap policy row.
 - Three policy-level ablations: no sparse skip, no lane gating, and no
   precision gating.
-- Testbench assertion that the smoke performs 3328 operand/weight reads from
+- Testbench assertion that the smoke performs 3584 operand/weight reads from
   the RAM tile scratch region.
 - CSV export for observed per-kernel operand reads, weight reads, and total RAM
   tile reads.
@@ -109,9 +112,9 @@ four-block, 2-token x 2-output-channel, 16-round repeat makes cycle counts less
 dominated by setup overhead than the first single-tile smoke, but the workload is
 still too small for final performance claims.
 
-The `dense_reuse` row is a direct memory-reuse sanity check: it preserves the
-dense output and VDOT count while reducing repeated weight loads inside each
-block.
+The `dense_reuse` and `adaptive_reuse` rows are direct memory-reuse sanity
+checks: they preserve the corresponding output and VDOT count while reducing
+repeated weight loads inside each block.
 
 Use this record to justify that SAP-VPU now has a repeatable TinyViT-oriented
 kernel path. The next evidence step should broaden the kernel shape, add more

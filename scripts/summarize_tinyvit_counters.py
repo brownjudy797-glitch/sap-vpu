@@ -144,6 +144,17 @@ def self_test() -> int:
             "ram_tile_reads": "384",
         },
         {
+            "kernel": "adaptive_reuse",
+            "precision": "int4",
+            "sparse": "bitmap_reuse",
+            "mac_active": "256",
+            "sparse_state": "15",
+            "lane_state": "4",
+            "operand_reads": "128",
+            "weight_reads": "128",
+            "ram_tile_reads": "256",
+        },
+        {
             "kernel": "no_lane_gating",
             "precision": "int4",
             "sparse": "bitmap",
@@ -182,19 +193,22 @@ def self_test() -> int:
     rows[2]["skip"] = "1024"
     rows[3]["skip"] = "1024"
     rows[4]["skip"] = "1024"
-    rows[5]["skip"] = "0"
+    rows[5]["skip"] = "1024"
+    rows[6]["skip"] = "0"
     assert product_counts(rows[0]) == ProductCounts(4, 1024, 1024, 0)
     assert product_counts(rows[1]) == ProductCounts(4, 1024, 1024, 0)
     assert product_counts(rows[2]) == ProductCounts(8, 2048, 1024, 1024)
     assert product_counts(rows[3]) == ProductCounts(8, 2048, 1024, 1024)
     assert product_counts(rows[4]) == ProductCounts(8, 2048, 1024, 1024)
-    assert product_counts(rows[5]) == ProductCounts(16, 4096, 4096, 0)
+    assert product_counts(rows[5]) == ProductCounts(8, 2048, 1024, 1024)
+    assert product_counts(rows[6]) == ProductCounts(16, 4096, 4096, 0)
     assert skip_ratio(rows[2]) == 0.5
     for row in rows:
         validate_traffic(row)
     assert traffic_bytes(rows[0]) == (512, 1024, 1024)
     assert traffic_bytes(rows[1]) == (512, 512, 1024)
     assert traffic_bytes(rows[2]) == (512, 1024, 1024)
+    assert traffic_bytes(rows[3]) == (512, 512, 1024)
     return 0
 
 
