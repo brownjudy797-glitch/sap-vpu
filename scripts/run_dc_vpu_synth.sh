@@ -22,6 +22,7 @@ MAP_EFFORT="${MAP_EFFORT:-medium}"
 AREA_EFFORT="${AREA_EFFORT:-none}"
 EXACT_MAP="${EXACT_MAP:-0}"
 USE_DW="${USE_DW:-1}"
+PRECHECK_ONLY="${PRECHECK_ONLY:-0}"
 
 WORK_DIR="${WORK_DIR:-$ROOT_DIR/work/dc/tsmc28/vpu_core}"
 REPORT_DIR="${REPORT_DIR:-$ROOT_DIR/reports/dc/tsmc28/vpu_core}"
@@ -65,5 +66,6 @@ mkdir -p "$WORK_DIR" "$REPORT_DIR" "$NETLIST_DIR"
     AREA_EFFORT="$AREA_EFFORT" \
     EXACT_MAP="$EXACT_MAP" \
     USE_DW="$USE_DW" \
+    PRECHECK_ONLY="$PRECHECK_ONLY" \
     "$DC_SHELL" -64bit -f scripts/dc_vpu_synth.tcl | tee "$WORK_DIR/dc.log"
 )

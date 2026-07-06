@@ -57,6 +57,25 @@ make dc-vpu-synth DC_CLOCK_PERIOD=10.0
 Start or verify the Synopsys license server before running the target if
 `27000@localhost` is not already active.
 
+Local license helper:
+
+```sh
+mkdir -p work/license
+/opt/synopsys/scl/2018.06/linux64/bin/lmgrd \
+  -c /opt/synopsys/scl/2018.06/admin/license/Synopsys.dat \
+  -l work/license/synopsys_lmgrd.log
+```
+
+Run only the DC front-end precheck, stopping after analyze, elaborate, link,
+`check_design`, and `check_timing`:
+
+```sh
+make dc-vpu-precheck DC_CLOCK_PERIOD=10.0
+```
+
+This target is for isolating tool setup and RTL/library readability from the
+mapping-stage crash. It does not produce area, timing, or power evidence.
+
 Summarize generated reports:
 
 ```sh
@@ -66,6 +85,7 @@ make dc-vpu-summary
 The flow writes:
 
 - `work/dc/tsmc28/vpu_core/dc_vpu_summary.csv`
+- `work/dc/tsmc28/vpu_core/dc_vpu_precheck.csv`
 - `work/dc/tsmc28/vpu_core/dc.log`
 - `reports/dc/tsmc28/vpu_core/area.rpt`
 - `reports/dc/tsmc28/vpu_core/qor.rpt`
@@ -87,3 +107,6 @@ Generated reports and netlists remain ignored local artifacts.
   Pass 1 Mapping but hit an internal DC crash across several conservative
   settings. Do not cite a DC PPA number until a complete `dc_vpu_summary.csv`,
   `area.rpt`, `timing_max.rpt`, and `power.rpt` are generated.
+- `make dc-vpu-precheck` was added to separate front-end setup from mapping.
+  It has verified that the local license, TSMC28 `.db`, RTL analyze/elaborate,
+  link, `check_design`, and `check_timing` path can complete before compile.

@@ -39,7 +39,7 @@ DC_REPORT_DIR ?= $(ROOT_DIR)/reports/dc/tsmc28/vpu_core
 
 .DEFAULT_GOAL := help
 
-.PHONY: help plan-check corev-fetch corev-rtl-flist lint-adapter lint-core lint lint-corev-soc sim-adapter sim-core sim-hello sim-vpu sim-tinyvit sim encoding-check legacy-summary hello-build hello-smoke vpu-build vpu-smoke tinyvit-build tinyvit-smoke tinyvit-summary fpga-vpu-synth fpga-vpu-summary dc-vpu-synth dc-vpu-summary
+.PHONY: help plan-check corev-fetch corev-rtl-flist lint-adapter lint-core lint lint-corev-soc sim-adapter sim-core sim-hello sim-vpu sim-tinyvit sim encoding-check legacy-summary hello-build hello-smoke vpu-build vpu-smoke tinyvit-build tinyvit-smoke tinyvit-summary fpga-vpu-synth fpga-vpu-summary dc-vpu-precheck dc-vpu-synth dc-vpu-summary
 
 help:
 	@printf '%s\n' \
@@ -60,6 +60,7 @@ help:
 	  'make tinyvit-summary' \
 	  'make fpga-vpu-synth [FPGA_PART=xc7a35tcsg324-1] [FPGA_CLOCK_MHZ=100]' \
 	  'make fpga-vpu-summary' \
+	  'make dc-vpu-precheck [DC_CLOCK_PERIOD=10.0]' \
 	  'make dc-vpu-synth [DC_CLOCK_PERIOD=10.0]' \
 	  'make dc-vpu-summary'
 
@@ -256,6 +257,11 @@ fpga-vpu-synth:
 
 fpga-vpu-summary:
 	$(PYTHON) scripts/summarize_vivado_reports.py "$(FPGA_BUILD_DIR)"
+
+dc-vpu-precheck:
+	PRECHECK_ONLY=1 CLOCK_PERIOD="$(DC_CLOCK_PERIOD)" \
+	  WORK_DIR="$(DC_WORK_DIR)" REPORT_DIR="$(DC_REPORT_DIR)" \
+	  scripts/run_dc_vpu_synth.sh
 
 dc-vpu-synth:
 	CLOCK_PERIOD="$(DC_CLOCK_PERIOD)" \

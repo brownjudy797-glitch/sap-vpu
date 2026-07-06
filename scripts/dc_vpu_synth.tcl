@@ -23,6 +23,7 @@ set map_effort [env_or_default MAP_EFFORT "medium"]
 set area_effort [env_or_default AREA_EFFORT "none"]
 set exact_map [env_or_default EXACT_MAP "0"]
 set use_dw [env_or_default USE_DW "1"]
+set precheck_only [env_or_default PRECHECK_ONLY "0"]
 
 foreach dir [list $work_dir $report_dir $netlist_dir] {
   file mkdir $dir
@@ -63,6 +64,7 @@ puts "  map_effort: $map_effort"
 puts "  area_effort: $area_effort"
 puts "  exact_map: $exact_map"
 puts "  use_dw: $use_dw"
+puts "  precheck_only: $precheck_only"
 puts "  work_dir: $work_dir"
 
 analyze -format sverilog -define SYNTHESIS -library WORK $rtl_files
@@ -79,6 +81,16 @@ set_output_delay $output_delay -clock clk_i [all_outputs]
 
 redirect -tee [file join $report_dir "check_design.rpt"] {check_design}
 redirect [file join $report_dir "check_timing.rpt"] {check_timing}
+
+if {$precheck_only eq "1"} {
+  set summary_file [file join $work_dir "dc_vpu_precheck.csv"]
+  set fd [open $summary_file "w"]
+  puts $fd "top,library,corner,clock_period_ns,status"
+  puts $fd "$top_name,$db_file,$process_corner,$clock_period,precheck_pass"
+  close $fd
+  puts "SAP-VPU DC precheck complete: $summary_file"
+  exit
+}
 
 set_fix_multiple_port_nets -all -buffer_constants
 if {$compile_ultra eq "0"} {
