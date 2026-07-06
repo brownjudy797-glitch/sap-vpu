@@ -125,62 +125,62 @@ def self_test() -> int:
             "kernel": "adaptive",
             "precision": "int4",
             "sparse": "bitmap",
-            "mac_active": "128",
+            "mac_active": "256",
             "sparse_state": "15",
             "lane_state": "4",
             "operand_reads": "128",
-            "weight_reads": "128",
-            "ram_tile_reads": "256",
+            "weight_reads": "256",
+            "ram_tile_reads": "384",
         },
         {
             "kernel": "no_lane_gating",
             "precision": "int4",
             "sparse": "bitmap",
-            "mac_active": "128",
+            "mac_active": "256",
             "sparse_state": "15",
             "lane_state": "8",
             "operand_reads": "128",
-            "weight_reads": "128",
-            "ram_tile_reads": "256",
+            "weight_reads": "256",
+            "ram_tile_reads": "384",
         },
         {
             "kernel": "adaptive_unstructured",
             "precision": "int4",
             "sparse": "bitmap_unstructured",
-            "mac_active": "128",
+            "mac_active": "256",
             "sparse_state": "85",
             "lane_state": "8",
             "operand_reads": "128",
-            "weight_reads": "128",
-            "ram_tile_reads": "256",
+            "weight_reads": "256",
+            "ram_tile_reads": "384",
         },
         {
             "kernel": "static_int2",
             "precision": "int2",
             "sparse": "none",
-            "mac_active": "128",
+            "mac_active": "256",
             "sparse_state": "65535",
             "lane_state": "16",
             "operand_reads": "128",
-            "weight_reads": "128",
-            "ram_tile_reads": "256",
+            "weight_reads": "256",
+            "ram_tile_reads": "384",
         },
     ]
     rows[0]["skip"] = "0"
-    rows[1]["skip"] = "512"
-    rows[2]["skip"] = "512"
-    rows[3]["skip"] = "512"
+    rows[1]["skip"] = "1024"
+    rows[2]["skip"] = "1024"
+    rows[3]["skip"] = "1024"
     rows[4]["skip"] = "0"
     assert product_counts(rows[0]) == ProductCounts(4, 1024, 1024, 0)
-    assert product_counts(rows[1]) == ProductCounts(8, 1024, 512, 512)
-    assert product_counts(rows[2]) == ProductCounts(8, 1024, 512, 512)
-    assert product_counts(rows[3]) == ProductCounts(8, 1024, 512, 512)
-    assert product_counts(rows[4]) == ProductCounts(16, 2048, 2048, 0)
+    assert product_counts(rows[1]) == ProductCounts(8, 2048, 1024, 1024)
+    assert product_counts(rows[2]) == ProductCounts(8, 2048, 1024, 1024)
+    assert product_counts(rows[3]) == ProductCounts(8, 2048, 1024, 1024)
+    assert product_counts(rows[4]) == ProductCounts(16, 4096, 4096, 0)
     assert skip_ratio(rows[1]) == 0.5
     for row in rows:
         validate_traffic(row)
     assert traffic_bytes(rows[0]) == (512, 1024, 1024)
-    assert traffic_bytes(rows[1]) == (512, 512, 512)
+    assert traffic_bytes(rows[1]) == (512, 1024, 1024)
     return 0
 
 
