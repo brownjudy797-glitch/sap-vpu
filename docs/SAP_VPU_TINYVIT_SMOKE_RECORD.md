@@ -46,6 +46,7 @@ python3 scripts/summarize_tinyvit_counters.py work/tinyvit/tinyvit_smoke_counter
 | static_lowbit | int4 | none | 2560 | 1205 | 1.515 | 0.000 | 8 | 256 | 512 | 512 | 512 | 1536 |
 | static_int2 | int2 | none | 1536 | 1238 | 1.474 | 0.000 | 16 | 256 | 512 | 512 | 512 | 1536 |
 | adaptive | int4 | bitmap | 1280 | 1205 | 1.515 | 0.500 | 4 | 256 | 512 | 512 | 512 | 1536 |
+| adaptive_unstructured | int4 | bitmap_unstructured | 1280 | 1238 | 1.474 | 0.500 | 8 | 256 | 512 | 512 | 512 | 1536 |
 | no_sparse_skip | int4 | none | 1280 | 1238 | 1.474 | 0.500 | 4 | 256 | 512 | 512 | 512 | 1536 |
 | no_lane_gating | int4 | bitmap | 1280 | 1205 | 1.515 | 0.500 | 8 | 256 | 512 | 512 | 512 | 1536 |
 | no_precision_gating | int8 | bitmap | 1280 | 1204 | 1.516 | 0.000 | 4 | 256 | 512 | 512 | 512 | 1536 |
@@ -58,6 +59,7 @@ python3 scripts/summarize_tinyvit_counters.py work/tinyvit/tinyvit_smoke_counter
 | static_lowbit | 8 | 128 | 1024 | 0 | 0.850 |
 | static_int2 | 16 | 128 | 2048 | 0 | 1.654 |
 | adaptive | 8 | 128 | 512 | 512 | 0.425 |
+| adaptive_unstructured | 8 | 128 | 512 | 512 | 0.414 |
 | no_sparse_skip | 8 | 128 | 512 | 512 | 0.414 |
 | no_lane_gating | 8 | 128 | 512 | 512 | 0.425 |
 | no_precision_gating | 4 | 128 | 512 | 0 | 0.425 |
@@ -70,6 +72,7 @@ python3 scripts/summarize_tinyvit_counters.py work/tinyvit/tinyvit_smoke_counter
 | static_lowbit | 128 | 128 | 256 | 512 | 512 | 512 | 1536 |
 | static_int2 | 128 | 128 | 256 | 512 | 512 | 512 | 1536 |
 | adaptive | 128 | 128 | 256 | 512 | 512 | 512 | 1536 |
+| adaptive_unstructured | 128 | 128 | 256 | 512 | 512 | 512 | 1536 |
 | no_sparse_skip | 128 | 128 | 256 | 512 | 512 | 512 | 1536 |
 | no_lane_gating | 128 | 128 | 256 | 512 | 512 | 512 | 1536 |
 | no_precision_gating | 128 | 128 | 256 | 512 | 512 | 512 | 1536 |
@@ -80,10 +83,11 @@ The current smoke covers the next paper-roadmap evidence hooks:
 
 - Static INT8 dense baseline.
 - Static low-bit INT4 and INT2 policies.
-- Adaptive INT4 bitmap sparse and lane policy.
+- Adaptive INT4 bitmap sparse and lane policy, including one non-contiguous
+  bitmap policy row.
 - Three policy-level ablations: no sparse skip, no lane gating, and no
   precision gating.
-- Testbench assertion that the smoke performs 1920 operand/weight reads from
+- Testbench assertion that the smoke performs 2176 operand/weight reads from
   the RAM tile scratch region.
 - CSV export for observed per-kernel operand reads, weight reads, and total RAM
   tile reads.

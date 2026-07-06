@@ -446,6 +446,84 @@ _start:
 
   sap_r 0x1d, 0x0, 0, 0, 0      /* VCLEARCNT x0, x0, x0 */
 
+  /* Adaptive sparse policy with a non-contiguous bitmap. */
+  read_csr 8, 0xb00              /* s0 = mcycle */
+  read_csr 9, 0xb02              /* s1 = minstret */
+
+  li t0, 1
+  sap_r 0x18, 0x0, 0, 5, 0      /* VSETPREC INT4 */
+
+  li t0, 0x55
+  sap_r 0x1c, 0x0, 0, 5, 0      /* VSETSPARSE_BMP lanes 0,2,4,6 */
+
+  li t0, 8
+  sap_r 0x1b, 0x0, 0, 5, 0      /* VSETLANE 8 */
+
+  li t5, 0
+  li a0, TINYVIT_ITERS
+1:
+  addi a2, a1, TILE_INT4_BASE
+  li a3, TINYVIT_BLOCKS
+2:
+  lw t0, 0(a2)
+  lw t1, 8(a2)
+  sap_r 0x10, 0x0, 28, 5, 6
+  add t5, t5, t3
+
+  lw t0, 4(a2)
+  lw t1, 8(a2)
+  sap_r 0x10, 0x0, 28, 5, 6
+  add t5, t5, t3
+
+  addi a2, a2, TILE_INT4_STRIDE
+  addi a3, a3, -1
+  bnez a3, 2b
+
+  addi a0, a0, -1
+  bnez a0, 1b
+
+  li t4, 1280
+  bne t5, t4, fail_policy_unstructured_output
+
+  li t0, 2
+  sap_r 0x1a, 0x0, 28, 5, 0     /* VREADCNT MAC_ACTIVE */
+  mv s6, t3
+  li t4, 128
+  bne s6, t4, fail_policy_unstructured_mac
+
+  li t0, 3
+  sap_r 0x1a, 0x0, 28, 5, 0     /* VREADCNT SKIPPED */
+  mv s7, t3
+  li t4, 512
+  bne s7, t4, fail_policy_unstructured_skip
+
+  li t0, 4
+  sap_r 0x1a, 0x0, 28, 5, 0     /* VREADCNT SPARSE */
+  mv s8, t3
+  li t4, 0x55
+  bne s8, t4, fail_policy_unstructured_sparse
+
+  li t0, 5
+  sap_r 0x1a, 0x0, 28, 5, 0     /* VREADCNT LANE */
+  mv s9, t3
+  li t4, 8
+  bne s9, t4, fail_policy_unstructured_lane
+
+  read_csr 31, 0xb00             /* t6 = unstructured policy cycle delta */
+  sub t6, t6, s0
+  read_csr 7, 0xb02              /* t2 = unstructured policy instret delta */
+  sub t2, t2, s1
+  li s2, RESULT_BASE
+  sw t5, 192(s2)
+  sw s6, 196(s2)
+  sw s7, 200(s2)
+  sw s8, 204(s2)
+  sw s9, 208(s2)
+  sw t6, 212(s2)
+  sw t2, 216(s2)
+
+  sap_r 0x1d, 0x0, 0, 0, 0      /* VCLEARCNT x0, x0, x0 */
+
   /* Ablation: no sparse skip, with lane gating still enabled. */
   read_csr 8, 0xb00              /* s0 = mcycle */
   read_csr 9, 0xb02              /* s1 = minstret */
@@ -732,6 +810,21 @@ fail_policy_sparse:
 
 fail_policy_lane:
   exit_with 35
+
+fail_policy_unstructured_output:
+  exit_with 81
+
+fail_policy_unstructured_mac:
+  exit_with 82
+
+fail_policy_unstructured_skip:
+  exit_with 83
+
+fail_policy_unstructured_sparse:
+  exit_with 84
+
+fail_policy_unstructured_lane:
+  exit_with 85
 
 fail_no_sparse_output:
   exit_with 41

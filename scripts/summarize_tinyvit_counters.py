@@ -144,6 +144,17 @@ def self_test() -> int:
             "ram_tile_reads": "256",
         },
         {
+            "kernel": "adaptive_unstructured",
+            "precision": "int4",
+            "sparse": "bitmap_unstructured",
+            "mac_active": "128",
+            "sparse_state": "85",
+            "lane_state": "8",
+            "operand_reads": "128",
+            "weight_reads": "128",
+            "ram_tile_reads": "256",
+        },
+        {
             "kernel": "static_int2",
             "precision": "int2",
             "sparse": "none",
@@ -158,11 +169,13 @@ def self_test() -> int:
     rows[0]["skip"] = "0"
     rows[1]["skip"] = "512"
     rows[2]["skip"] = "512"
-    rows[3]["skip"] = "0"
+    rows[3]["skip"] = "512"
+    rows[4]["skip"] = "0"
     assert product_counts(rows[0]) == ProductCounts(4, 1024, 1024, 0)
     assert product_counts(rows[1]) == ProductCounts(8, 1024, 512, 512)
     assert product_counts(rows[2]) == ProductCounts(8, 1024, 512, 512)
-    assert product_counts(rows[3]) == ProductCounts(16, 2048, 2048, 0)
+    assert product_counts(rows[3]) == ProductCounts(8, 1024, 512, 512)
+    assert product_counts(rows[4]) == ProductCounts(16, 2048, 2048, 0)
     assert skip_ratio(rows[1]) == 0.5
     for row in rows:
         validate_traffic(row)
