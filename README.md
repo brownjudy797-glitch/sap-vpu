@@ -35,6 +35,8 @@ make encoding-check
 make hello-build
 make hello-smoke
 make legacy-summary
+make fpga-vpu-synth
+make fpga-vpu-summary
 ```
 
 ## Current Engineering Slice
@@ -46,6 +48,7 @@ make legacy-summary
 - `platforms/corev/rtl/corev_min_soc.sv`: minimal CV32E40X ROM/RAM/UART/exit wrapper for bring-up.
 - `sw/baremetal/hello.S`: RV32IMC assembly hello program for the minimal SoC.
 - `docs/SAP_VPU_PAPER_ROADMAP.md`: IEEE-hardware-paper evidence plan.
+- `docs/SAP_VPU_FPGA_FLOW.md`: standalone SAP-VPU core Vivado flow and report boundary.
 - `docs/SAP_VPU_BASELINE_LEDGER.md`: traceable legacy `nutvpu` evidence map.
 
 `make hello-smoke` builds the RV32 hello image, runs the minimal SoC under

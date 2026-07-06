@@ -30,10 +30,13 @@ TINYVIT_ELF := $(TINYVIT_BUILD_DIR)/sap_vpu_tinyvit.elf
 TINYVIT_BIN := $(TINYVIT_BUILD_DIR)/sap_vpu_tinyvit.bin
 TINYVIT_HEX := $(TINYVIT_BUILD_DIR)/sap_vpu_tinyvit.hex
 TINYVIT_COUNTER_CSV ?= $(TINYVIT_BUILD_DIR)/tinyvit_smoke_counters.csv
+FPGA_PART ?= xc7a35tcsg324-1
+FPGA_CLOCK_MHZ ?= 100
+FPGA_BUILD_DIR ?= $(ROOT_DIR)/work/fpga/vpu_core
 
 .DEFAULT_GOAL := help
 
-.PHONY: help plan-check corev-fetch corev-rtl-flist lint-adapter lint-core lint lint-corev-soc sim-adapter sim-core sim-hello sim-vpu sim-tinyvit sim encoding-check legacy-summary hello-build hello-smoke vpu-build vpu-smoke tinyvit-build tinyvit-smoke tinyvit-summary
+.PHONY: help plan-check corev-fetch corev-rtl-flist lint-adapter lint-core lint lint-corev-soc sim-adapter sim-core sim-hello sim-vpu sim-tinyvit sim encoding-check legacy-summary hello-build hello-smoke vpu-build vpu-smoke tinyvit-build tinyvit-smoke tinyvit-summary fpga-vpu-synth fpga-vpu-summary
 
 help:
 	@printf '%s\n' \
@@ -51,7 +54,9 @@ help:
 	  'make hello-smoke' \
 	  'make vpu-smoke' \
 	  'make tinyvit-smoke' \
-	  'make tinyvit-summary'
+	  'make tinyvit-summary' \
+	  'make fpga-vpu-synth [FPGA_PART=xc7a35tcsg324-1] [FPGA_CLOCK_MHZ=100]' \
+	  'make fpga-vpu-summary'
 
 plan-check:
 	test -x scripts/fetch_corev_cv32e40x.sh
@@ -69,8 +74,11 @@ plan-check:
 	test -f sw/baremetal/link.ld
 	test -x scripts/bin_to_verilog_hex.py
 	test -x scripts/summarize_tinyvit_counters.py
+	test -f scripts/vivado_vpu_synth.tcl
+	test -x scripts/summarize_vivado_reports.py
 	test -f docs/SAP_VPU_RESEARCH_PLAN.md
 	test -f docs/SAP_VPU_LITERATURE_MATRIX.md
+	test -f docs/SAP_VPU_FPGA_FLOW.md
 
 corev-fetch:
 	scripts/fetch_corev_cv32e40x.sh "$(COREV_DIR)" "$(COREV_REF)"
@@ -231,3 +239,11 @@ tinyvit-smoke: sim-tinyvit lint-corev-soc
 
 tinyvit-summary: tinyvit-smoke
 	$(PYTHON) scripts/summarize_tinyvit_counters.py "$(TINYVIT_COUNTER_CSV)"
+
+fpga-vpu-synth:
+	mkdir -p "$(FPGA_BUILD_DIR)"
+	vivado -mode batch -source scripts/vivado_vpu_synth.tcl \
+	  -tclargs "$(FPGA_PART)" "$(FPGA_CLOCK_MHZ)" "$(FPGA_BUILD_DIR)"
+
+fpga-vpu-summary:
+	$(PYTHON) scripts/summarize_vivado_reports.py "$(FPGA_BUILD_DIR)"
