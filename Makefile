@@ -30,6 +30,7 @@ TINYVIT_ELF := $(TINYVIT_BUILD_DIR)/sap_vpu_tinyvit.elf
 TINYVIT_BIN := $(TINYVIT_BUILD_DIR)/sap_vpu_tinyvit.bin
 TINYVIT_HEX := $(TINYVIT_BUILD_DIR)/sap_vpu_tinyvit.hex
 TINYVIT_COUNTER_CSV ?= $(TINYVIT_BUILD_DIR)/tinyvit_smoke_counters.csv
+TINYVIT_PAPER_TABLE ?= $(TINYVIT_BUILD_DIR)/tinyvit_paper_table.md
 FPGA_PART ?= xc7a35tcsg324-1
 FPGA_CLOCK_MHZ ?= 100
 FPGA_BUILD_DIR ?= $(ROOT_DIR)/work/fpga/vpu_core
@@ -39,7 +40,7 @@ DC_REPORT_DIR ?= $(ROOT_DIR)/reports/dc/tsmc28/vpu_core
 
 .DEFAULT_GOAL := help
 
-.PHONY: help plan-check corev-fetch corev-rtl-flist lint-adapter lint-core lint lint-corev-soc sim-adapter sim-core sim-hello sim-vpu sim-tinyvit sim encoding-check legacy-summary hello-build hello-smoke vpu-build vpu-smoke tinyvit-build tinyvit-smoke tinyvit-summary fpga-vpu-synth fpga-vpu-summary dc-vpu-precheck dc-vpu-synth dc-vpu-summary
+.PHONY: help plan-check corev-fetch corev-rtl-flist lint-adapter lint-core lint lint-corev-soc sim-adapter sim-core sim-hello sim-vpu sim-tinyvit sim encoding-check legacy-summary hello-build hello-smoke vpu-build vpu-smoke tinyvit-build tinyvit-smoke tinyvit-summary tinyvit-paper-table fpga-vpu-synth fpga-vpu-summary dc-vpu-precheck dc-vpu-synth dc-vpu-summary
 
 help:
 	@printf '%s\n' \
@@ -58,6 +59,7 @@ help:
 	  'make vpu-smoke' \
 	  'make tinyvit-smoke' \
 	  'make tinyvit-summary' \
+	  'make tinyvit-paper-table' \
 	  'make fpga-vpu-synth [FPGA_PART=xc7a35tcsg324-1] [FPGA_CLOCK_MHZ=100]' \
 	  'make fpga-vpu-summary' \
 	  'make dc-vpu-precheck [DC_CLOCK_PERIOD=10.0]' \
@@ -87,6 +89,7 @@ plan-check:
 	test -x scripts/summarize_dc_reports.py
 	test -f docs/SAP_VPU_RESEARCH_PLAN.md
 	test -f docs/SAP_VPU_LITERATURE_MATRIX.md
+	test -f docs/SAP_VPU_TINYVIT_SMOKE_RECORD.md
 	test -f docs/SAP_VPU_FPGA_FLOW.md
 	test -f docs/SAP_VPU_ASIC_FLOW.md
 
@@ -249,6 +252,10 @@ tinyvit-smoke: sim-tinyvit lint-corev-soc
 
 tinyvit-summary: tinyvit-smoke
 	$(PYTHON) scripts/summarize_tinyvit_counters.py "$(TINYVIT_COUNTER_CSV)"
+
+tinyvit-paper-table: tinyvit-smoke
+	$(PYTHON) scripts/summarize_tinyvit_counters.py "$(TINYVIT_COUNTER_CSV)" > "$(TINYVIT_PAPER_TABLE)"
+	@printf 'Wrote %s\n' "$(TINYVIT_PAPER_TABLE)"
 
 fpga-vpu-synth:
 	mkdir -p "$(FPGA_BUILD_DIR)"
