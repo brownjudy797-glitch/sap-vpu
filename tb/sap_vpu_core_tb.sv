@@ -17,6 +17,7 @@ module sap_vpu_core_tb;
   logic [3:0]  rsp_id;
   logic [31:0] rsp_data;
   logic        rsp_exc;
+  string       vcd_file;
 
   sap_vpu_core dut (
     .clk_i(clk),
@@ -37,7 +38,13 @@ module sap_vpu_core_tb;
 
   task automatic tick;
     begin
+`ifdef SAP_VPU_TRACE_TIMING
+      #5;
+`endif
       clk = 1'b1;
+`ifdef SAP_VPU_TRACE_TIMING
+      #5;
+`endif
       clk = 1'b0;
     end
   endtask
@@ -80,6 +87,11 @@ module sap_vpu_core_tb;
   endtask
 
   initial begin
+    if ($value$plusargs("vcd=%s", vcd_file)) begin
+      $dumpfile(vcd_file);
+      $dumpvars(0, sap_vpu_core_tb);
+    end
+
     clk = 1'b0;
     rst_n = 1'b0;
     clear_inputs();

@@ -143,9 +143,9 @@ def main() -> int:
     )
     print()
     print(
-        "Power is vectorless Design Compiler power unless a separate activity file "
-        "is provided. Treat standalone `sap_vpu_core` results as VPU-core ASIC "
-        "evidence, not full SoC evidence."
+        "Power is Design Compiler power: vectorless unless the report was generated "
+        "with an activity file such as SAIF. Treat standalone `sap_vpu_core` results "
+        "as VPU-core ASIC evidence, not full SoC evidence."
     )
     return 0
 

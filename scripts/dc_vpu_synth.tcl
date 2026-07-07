@@ -27,6 +27,13 @@ set use_dw [env_or_default USE_DW "1"]
 set precheck_only [env_or_default PRECHECK_ONLY "0"]
 set skip_power_report [env_or_default SKIP_POWER_REPORT "0"]
 set power_only [env_or_default POWER_ONLY "0"]
+set saif_file_raw [env_or_default SAIF_FILE ""]
+if {$saif_file_raw eq ""} {
+  set saif_file ""
+} else {
+  set saif_file [file normalize $saif_file_raw]
+}
+set saif_instance [env_or_default SAIF_INSTANCE ""]
 set power_report [file join $report_dir "power.rpt"]
 
 foreach dir [list $work_dir $report_dir $netlist_dir] {
@@ -71,6 +78,8 @@ puts "  use_dw: $use_dw"
 puts "  precheck_only: $precheck_only"
 puts "  skip_power_report: $skip_power_report"
 puts "  power_only: $power_only"
+puts "  saif_file: $saif_file"
+puts "  saif_instance: $saif_instance"
 puts "  work_dir: $work_dir"
 
 if {$power_only eq "1"} {
@@ -81,6 +90,17 @@ if {$power_only eq "1"} {
   read_ddc $ddc_file
   current_design $top_name
   link
+  if {$saif_file ne ""} {
+    if {![file exists $saif_file]} {
+      puts stderr "SAIF_FILE is missing or does not exist: $saif_file"
+      exit 4
+    }
+    if {$saif_instance eq ""} {
+      read_saif -input $saif_file
+    } else {
+      read_saif -input $saif_file -instance_name $saif_instance
+    }
+  }
   if {$skip_power_report eq "1"} {
     puts "Skipping power report"
   } else {
@@ -149,6 +169,17 @@ if {$skip_power_report eq "1"} {
   puts "Skipping power report"
 } else {
   if {[catch {
+    if {$saif_file ne ""} {
+      if {![file exists $saif_file]} {
+        puts stderr "SAIF_FILE is missing or does not exist: $saif_file"
+        exit 4
+      }
+      if {$saif_instance eq ""} {
+        read_saif -input $saif_file
+      } else {
+        read_saif -input $saif_file -instance_name $saif_instance
+      }
+    }
     redirect $power_report {
       report_power -analysis_effort low
     }

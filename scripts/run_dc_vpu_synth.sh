@@ -25,6 +25,8 @@ USE_DW="${USE_DW:-1}"
 PRECHECK_ONLY="${PRECHECK_ONLY:-0}"
 SKIP_POWER_REPORT="${SKIP_POWER_REPORT:-0}"
 POWER_ONLY="${POWER_ONLY:-0}"
+SAIF_FILE="${SAIF_FILE:-}"
+SAIF_INSTANCE="${SAIF_INSTANCE:-}"
 
 WORK_DIR="${WORK_DIR:-$ROOT_DIR/work/dc/tsmc28/vpu_core}"
 REPORT_DIR="${REPORT_DIR:-$ROOT_DIR/reports/dc/tsmc28/vpu_core}"
@@ -76,5 +78,12 @@ mkdir -p "$WORK_DIR" "$REPORT_DIR" "$NETLIST_DIR"
     SKIP_POWER_REPORT="$SKIP_POWER_REPORT" \
     POWER_ONLY="$POWER_ONLY" \
     DDC_FILE="$DDC_FILE" \
+    SAIF_FILE="$SAIF_FILE" \
+    SAIF_INSTANCE="$SAIF_INSTANCE" \
     "$DC_SHELL" -64bit -f scripts/dc_vpu_synth.tcl | tee "$WORK_DIR/dc.log"
+
+  if [[ -n "$SAIF_FILE" ]] && grep -q "PWR-362" "$WORK_DIR/dc.log"; then
+    echo "SAIF activity was not annotated; check SAIF_INSTANCE=$SAIF_INSTANCE" >&2
+    exit 8
+  fi
 )
