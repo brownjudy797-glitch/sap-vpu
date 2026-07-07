@@ -155,6 +155,17 @@ def self_test() -> int:
             "ram_tile_reads": "512",
         },
         {
+            "kernel": "adaptive_sparse75",
+            "precision": "int4",
+            "sparse": "bitmap_sparse75",
+            "mac_active": "512",
+            "sparse_state": "3",
+            "lane_state": "2",
+            "operand_reads": "256",
+            "weight_reads": "512",
+            "ram_tile_reads": "768",
+        },
+        {
             "kernel": "no_lane_gating",
             "precision": "int4",
             "sparse": "bitmap",
@@ -192,17 +203,20 @@ def self_test() -> int:
     rows[1]["skip"] = "0"
     rows[2]["skip"] = "2048"
     rows[3]["skip"] = "2048"
-    rows[4]["skip"] = "2048"
+    rows[4]["skip"] = "3072"
     rows[5]["skip"] = "2048"
-    rows[6]["skip"] = "0"
+    rows[6]["skip"] = "2048"
+    rows[7]["skip"] = "0"
     assert product_counts(rows[0]) == ProductCounts(4, 2048, 2048, 0)
     assert product_counts(rows[1]) == ProductCounts(4, 2048, 2048, 0)
     assert product_counts(rows[2]) == ProductCounts(8, 4096, 2048, 2048)
     assert product_counts(rows[3]) == ProductCounts(8, 4096, 2048, 2048)
-    assert product_counts(rows[4]) == ProductCounts(8, 4096, 2048, 2048)
+    assert product_counts(rows[4]) == ProductCounts(8, 4096, 1024, 3072)
     assert product_counts(rows[5]) == ProductCounts(8, 4096, 2048, 2048)
-    assert product_counts(rows[6]) == ProductCounts(16, 8192, 8192, 0)
+    assert product_counts(rows[6]) == ProductCounts(8, 4096, 2048, 2048)
+    assert product_counts(rows[7]) == ProductCounts(16, 8192, 8192, 0)
     assert skip_ratio(rows[2]) == 0.5
+    assert skip_ratio(rows[4]) == 0.75
     for row in rows:
         validate_traffic(row)
     assert traffic_bytes(rows[0]) == (1024, 2048, 2048)
