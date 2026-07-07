@@ -38,7 +38,19 @@ module sap_vpu_core #(
   logic [XLEN-1:0]       rsp_data_q;
   logic                  rsp_exc_q;
 
-  assign cmd_ready_o = !rsp_valid_q;
+  localparam int unsigned VDOT_SUM_GROUPS = (SAP_FRONT_MAX_LANES + 3) / 4;
+
+  logic                  vdot_pending_q;
+  logic                  vdot_sum_pending_q;
+  logic                  vdot_elem_pending_q;
+  logic [X_ID_WIDTH-1:0] vdot_id_q;
+  logic signed [31:0]    vdot_lhs_q [0:SAP_FRONT_MAX_LANES-1];
+  logic signed [31:0]    vdot_rhs_q [0:SAP_FRONT_MAX_LANES-1];
+  logic signed [31:0]    vdot_product_q [0:SAP_FRONT_MAX_LANES-1];
+  logic signed [31:0]    vdot_sum_q [0:VDOT_SUM_GROUPS-1];
+  logic [31:0]           vdot_skipped_q;
+
+  assign cmd_ready_o = !rsp_valid_q && !vdot_elem_pending_q && !vdot_pending_q && !vdot_sum_pending_q;
   assign rsp_valid_o = rsp_valid_q;
   assign rsp_id_o    = rsp_id_q;
   assign rsp_data_o  = rsp_data_q;
@@ -114,8 +126,22 @@ module sap_vpu_core #(
       rsp_id_q        <= '0;
       rsp_data_q      <= '0;
       rsp_exc_q       <= 1'b0;
+      vdot_pending_q  <= 1'b0;
+      vdot_sum_pending_q <= 1'b0;
+      vdot_elem_pending_q <= 1'b0;
+      vdot_id_q       <= '0;
+      vdot_skipped_q  <= '0;
+      for (int unsigned i = 0; i < SAP_FRONT_MAX_LANES; i++) begin
+        vdot_lhs_q[i]     <= '0;
+        vdot_rhs_q[i]     <= '0;
+        vdot_product_q[i] <= '0;
+      end
+      for (int unsigned i = 0; i < VDOT_SUM_GROUPS; i++) begin
+        vdot_sum_q[i] <= '0;
+      end
     end else begin
       int signed   dot_acc;
+      int signed   dot_product;
       int unsigned lanes;
       int unsigned skipped;
       int unsigned next_inst_count;
@@ -126,13 +152,46 @@ module sap_vpu_core #(
         rsp_valid_q <= 1'b0;
       end
 
+      if (vdot_sum_pending_q && !rsp_valid_q) begin
+        dot_acc = 0;
+        for (int unsigned i = 0; i < VDOT_SUM_GROUPS; i++) begin
+          dot_acc += vdot_sum_q[i];
+        end
+        rsp_valid_q     <= 1'b1;
+        rsp_id_q        <= vdot_id_q;
+        rsp_data_q      <= XLEN'(dot_acc);
+        rsp_exc_q       <= 1'b0;
+        mac_active_q    <= mac_active_q + 32'd1;
+        skipped_count_q <= skipped_count_q + vdot_skipped_q;
+        vdot_sum_pending_q <= 1'b0;
+      end else if (vdot_pending_q && !rsp_valid_q) begin
+        for (int unsigned group = 0; group < VDOT_SUM_GROUPS; group++) begin
+          dot_acc = 0;
+          for (int unsigned lane = 0; lane < 4; lane++) begin
+            if (((group * 4) + lane) < SAP_FRONT_MAX_LANES) begin
+              dot_acc += vdot_product_q[(group * 4) + lane];
+            end
+          end
+          vdot_sum_q[group] <= dot_acc;
+        end
+        vdot_pending_q     <= 1'b0;
+        vdot_sum_pending_q <= 1'b1;
+      end else if (vdot_elem_pending_q && !rsp_valid_q) begin
+        for (int unsigned i = 0; i < SAP_FRONT_MAX_LANES; i++) begin
+          dot_product = vdot_lhs_q[i] * vdot_rhs_q[i];
+          vdot_product_q[i] <= dot_product;
+        end
+        vdot_elem_pending_q <= 1'b0;
+        vdot_pending_q      <= 1'b1;
+      end
+
       if (cmd_valid_i && cmd_ready_o) begin
         dot_acc = 0;
         skipped = 0;
         lanes = lanes_for_precision(precision_q);
         next_inst_count = inst_count_q + 32'd1;
 
-        rsp_valid_q <= 1'b1;
+        rsp_valid_q <= (cmd_op_i != SAP_OP_VDOT);
         rsp_id_q    <= cmd_id_i;
         rsp_data_q  <= '0;
         rsp_exc_q   <= 1'b0;
@@ -171,16 +230,21 @@ module sap_vpu_core #(
             for (int unsigned i = 0; i < SAP_FRONT_MAX_LANES; i++) begin
               if (i < lanes) begin
                 if ((i < active_lanes_q) && sparse_bitmap_q[i]) begin
-                  dot_acc += packed_elem(cmd_rs1_i[31:0], i, precision_q)
-                           * packed_elem(cmd_rs2_i[31:0], i, precision_q);
+                  vdot_lhs_q[i] <= packed_elem(cmd_rs1_i[31:0], i, precision_q);
+                  vdot_rhs_q[i] <= packed_elem(cmd_rs2_i[31:0], i, precision_q);
                 end else begin
                   skipped++;
+                  vdot_lhs_q[i] <= '0;
+                  vdot_rhs_q[i] <= '0;
                 end
+              end else begin
+                vdot_lhs_q[i] <= '0;
+                vdot_rhs_q[i] <= '0;
               end
             end
-            rsp_data_q      <= XLEN'(dot_acc);
-            mac_active_q    <= mac_active_q + 32'd1;
-            skipped_count_q <= skipped_count_q + skipped[31:0];
+            vdot_id_q           <= cmd_id_i;
+            vdot_skipped_q      <= skipped[31:0];
+            vdot_elem_pending_q <= 1'b1;
           end
 
           SAP_OP_VREADCNT: begin

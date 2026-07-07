@@ -37,3 +37,9 @@ command.log
 filenames*.log
 crte_*.txt
 sap_vpu_core.db
+
+# Vivado generated side files
+vivado*.jou
+vivado*.log
+clockInfo.txt
+tight_setup_hold_pins.txt

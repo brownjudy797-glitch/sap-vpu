@@ -69,6 +69,9 @@ module sap_vpu_core_tb;
       assert(cmd_ready);
       tick();
       cmd_valid = 1'b0;
+      if (op == SAP_OP_VDOT) begin
+        repeat (3) tick();
+      end
       assert(rsp_valid);
       assert(rsp_id == id);
       assert(!rsp_exc);
