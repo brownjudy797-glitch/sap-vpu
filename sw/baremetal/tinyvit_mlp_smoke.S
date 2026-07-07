@@ -6,6 +6,7 @@
   .equ TINYVIT_TILE_BASE, 0x00010200
   .equ RESULT_MAGIC, 0x54564954
   .equ TINYVIT_ITERS, 16
+  .equ TINYVIT_LARGE_ITERS, 64
   .equ TINYVIT_BLOCKS, 8
 
   .equ TILE_DENSE_BASE, 0
@@ -363,6 +364,68 @@ _start:
   sw s5, 12(s2)
   sw t6, 16(s2)
   sw t2, 20(s2)
+
+  sap_r 0x1d, 0x0, 0, 0, 0      /* VCLEARCNT x0, x0, x0 */
+
+  /* Larger INT8 dense kernel shape for the paper-table path. */
+  read_csr 8, 0xb00              /* s0 = mcycle */
+  read_csr 9, 0xb02              /* s1 = minstret */
+  li t5, 0
+  li a0, TINYVIT_LARGE_ITERS
+
+1:
+  addi a2, a1, TILE_DENSE_BASE
+  li a3, TINYVIT_BLOCKS
+2:
+  lw t0, 0(a2)
+  lw t1, 8(a2)
+  sap_r 0x10, 0x0, 28, 5, 6
+  add t5, t5, t3
+
+  lw t1, 12(a2)
+  sap_r 0x10, 0x0, 28, 5, 6
+  add t5, t5, t3
+
+  lw t0, 4(a2)
+  lw t1, 8(a2)
+  sap_r 0x10, 0x0, 28, 5, 6
+  add t5, t5, t3
+
+  lw t1, 12(a2)
+  sap_r 0x10, 0x0, 28, 5, 6
+  add t5, t5, t3
+
+  addi a2, a2, TILE_DENSE_STRIDE
+  addi a3, a3, -1
+  bnez a3, 2b
+
+  addi a0, a0, -1
+  bnez a0, 1b
+
+  li t4, 48384
+  bne t5, t4, fail_dense_x4_output
+
+  li t0, 2
+  sap_r 0x1a, 0x0, 28, 5, 0     /* VREADCNT MAC_ACTIVE */
+  mv s4, t3
+  li t4, 2048
+  bne s4, t4, fail_dense_x4_mac
+
+  li t0, 3
+  sap_r 0x1a, 0x0, 28, 5, 0     /* VREADCNT SKIPPED */
+  mv s5, t3
+  bnez s5, fail_dense_x4_skip
+
+  read_csr 31, 0xb00             /* t6 = dense x4 cycle delta */
+  sub t6, t6, s0
+  read_csr 7, 0xb02              /* t2 = dense x4 instret delta */
+  sub t2, t2, s1
+  li s2, RESULT_BASE
+  sw t5, 296(s2)
+  sw s4, 300(s2)
+  sw s5, 304(s2)
+  sw t6, 308(s2)
+  sw t2, 312(s2)
 
   sap_r 0x1d, 0x0, 0, 0, 0      /* VCLEARCNT x0, x0, x0 */
 
@@ -1205,6 +1268,15 @@ fail_dense_mac:
 
 fail_dense_skip:
   exit_with 13
+
+fail_dense_x4_output:
+  exit_with 17
+
+fail_dense_x4_mac:
+  exit_with 18
+
+fail_dense_x4_skip:
+  exit_with 19
 
 fail_dense_reuse_output:
   exit_with 14

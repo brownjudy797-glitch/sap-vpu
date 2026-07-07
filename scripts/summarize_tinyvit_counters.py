@@ -81,14 +81,22 @@ def product_counts(row: dict[str, str]) -> ProductCounts:
     )
 
 
-def dense_cycles(rows: list[dict[str, str]]) -> int:
+def dense_baseline(rows: list[dict[str, str]]) -> dict[str, str]:
     for row in rows:
         if row["kernel"] == "dense":
-            cycles = as_int(row, "cycle_delta")
-            if cycles <= 0:
+            if as_int(row, "cycle_delta") <= 0:
                 break
-            return cycles
+            return row
     raise ValueError("missing nonzero dense baseline cycle count")
+
+
+def dense_speedup(row: dict[str, str], baseline: dict[str, str]) -> float:
+    cycles = as_int(row, "cycle_delta")
+    baseline_mac = as_int(baseline, "mac_active")
+    if cycles <= 0 or baseline_mac <= 0:
+        return 0.0
+    normalized_dense_cycles = as_int(baseline, "cycle_delta") * as_int(row, "mac_active") / baseline_mac
+    return normalized_dense_cycles / cycles
 
 
 def traffic_bytes(row: dict[str, str]) -> tuple[int, int, int]:
@@ -131,6 +139,17 @@ def self_test() -> int:
             "operand_reads": "256",
             "weight_reads": "256",
             "ram_tile_reads": "512",
+        },
+        {
+            "kernel": "dense_x4",
+            "precision": "int8",
+            "sparse": "none",
+            "mac_active": "2048",
+            "sparse_state": "0",
+            "lane_state": "4",
+            "operand_reads": "1024",
+            "weight_reads": "2048",
+            "ram_tile_reads": "3072",
         },
         {
             "kernel": "adaptive",
@@ -200,29 +219,34 @@ def self_test() -> int:
         },
     ]
     rows[0]["skip"] = "0"
+    rows[0]["cycle_delta"] = "100"
     rows[1]["skip"] = "0"
-    rows[2]["skip"] = "2048"
+    rows[2]["skip"] = "0"
+    rows[2]["cycle_delta"] = "400"
     rows[3]["skip"] = "2048"
-    rows[4]["skip"] = "3072"
-    rows[5]["skip"] = "2048"
+    rows[4]["skip"] = "2048"
+    rows[5]["skip"] = "3072"
     rows[6]["skip"] = "2048"
-    rows[7]["skip"] = "0"
+    rows[7]["skip"] = "2048"
+    rows[8]["skip"] = "0"
     assert product_counts(rows[0]) == ProductCounts(4, 2048, 2048, 0)
     assert product_counts(rows[1]) == ProductCounts(4, 2048, 2048, 0)
-    assert product_counts(rows[2]) == ProductCounts(8, 4096, 2048, 2048)
+    assert product_counts(rows[2]) == ProductCounts(4, 8192, 8192, 0)
     assert product_counts(rows[3]) == ProductCounts(8, 4096, 2048, 2048)
-    assert product_counts(rows[4]) == ProductCounts(8, 4096, 1024, 3072)
-    assert product_counts(rows[5]) == ProductCounts(8, 4096, 2048, 2048)
+    assert product_counts(rows[4]) == ProductCounts(8, 4096, 2048, 2048)
+    assert product_counts(rows[5]) == ProductCounts(8, 4096, 1024, 3072)
     assert product_counts(rows[6]) == ProductCounts(8, 4096, 2048, 2048)
-    assert product_counts(rows[7]) == ProductCounts(16, 8192, 8192, 0)
-    assert skip_ratio(rows[2]) == 0.5
-    assert skip_ratio(rows[4]) == 0.75
+    assert product_counts(rows[7]) == ProductCounts(8, 4096, 2048, 2048)
+    assert product_counts(rows[8]) == ProductCounts(16, 8192, 8192, 0)
+    assert skip_ratio(rows[3]) == 0.5
+    assert skip_ratio(rows[5]) == 0.75
     for row in rows:
         validate_traffic(row)
     assert traffic_bytes(rows[0]) == (1024, 2048, 2048)
     assert traffic_bytes(rows[1]) == (1024, 1024, 2048)
-    assert traffic_bytes(rows[2]) == (1024, 2048, 2048)
-    assert traffic_bytes(rows[3]) == (1024, 1024, 2048)
+    assert traffic_bytes(rows[2]) == (4096, 8192, 8192)
+    assert traffic_bytes(rows[3]) == (1024, 2048, 2048)
+    assert dense_speedup(rows[2], rows[0]) == 1.0
     return 0
 
 
@@ -246,7 +270,7 @@ def main() -> int:
         return 2
 
     try:
-        baseline_cycles = dense_cycles(rows)
+        baseline = dense_baseline(rows)
         for row in rows:
             validate_traffic(row)
     except ValueError as exc:
@@ -295,11 +319,11 @@ def main() -> int:
     print()
     print("## Paper Table Draft")
     print()
-    print("| Kernel | Precision | Sparse | Output | Cycles | Dense speedup | Skip ratio | Active lanes | RAM tile reads | Operand bytes | Weight bytes | Partial sum bytes | Total bytes |")
+    print("| Kernel | Precision | Sparse | Output | Cycles | Dense-normalized speedup | Skip ratio | Active lanes | RAM tile reads | Operand bytes | Weight bytes | Partial sum bytes | Total bytes |")
     print("| --- | --- | --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: |")
     for row in rows:
         cycles = as_int(row, "cycle_delta")
-        speedup = baseline_cycles / cycles if cycles else 0.0
+        speedup = dense_speedup(row, baseline)
         operand_bytes, weight_bytes, partial_sum_bytes = traffic_bytes(row)
         total_bytes = operand_bytes + weight_bytes + partial_sum_bytes
         print(
@@ -310,7 +334,7 @@ def main() -> int:
             f"{partial_sum_bytes} | {total_bytes} |"
         )
     print()
-    print("Dense speedup is local to this smoke counter run; use this as table plumbing, not as a paper claim.")
+    print("Dense-normalized speedup scales the dense baseline by VDOT count; use this as table plumbing, not as a paper claim.")
     print("Skip ratio is product-level: skipped products divided by active plus skipped products.")
     print("Traffic uses observed RAM tile operand/weight reads from the testbench plus one partial-sum word per VDOT.")
     print()

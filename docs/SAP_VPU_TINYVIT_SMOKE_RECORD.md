@@ -54,6 +54,8 @@ python3 scripts/summarize_tinyvit_counters.py work/tinyvit/tinyvit_smoke_counter
 The current smoke covers the next paper-roadmap evidence hooks:
 
 - Static INT8 dense baseline.
+- Larger `dense_x4` INT8 row that repeats the same deterministic macro-tile 64
+  times for a less setup-dominated baseline shape.
 - Dense INT8 and adaptive INT4 block-local reuse baselines with the same VDOT
   count and lower observed RAM tile traffic.
 - Static low-bit INT4 and INT2 policies.
@@ -63,7 +65,7 @@ The current smoke covers the next paper-roadmap evidence hooks:
   75% product-level skip.
 - Three policy-level ablations: no sparse skip, no lane gating, and no
   precision gating.
-- Testbench assertion that the smoke performs 7936 operand/weight reads from
+- Testbench assertion that the smoke performs 11008 operand/weight reads from
   the RAM tile scratch region.
 - CSV export for observed per-kernel operand reads, weight reads, and total RAM
   tile reads.
