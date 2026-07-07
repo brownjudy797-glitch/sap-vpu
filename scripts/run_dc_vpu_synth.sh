@@ -3,7 +3,7 @@ set -euo pipefail
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 
-SYNOPSYS_ENV_FILE="${SYNOPSYS_ENV_FILE:-}"
+SYNOPSYS_ENV_FILE="${SYNOPSYS_ENV_FILE:-$HOME/synopsys_env.sh}"
 DC_HOME="${DC_HOME:-/opt/synopsys/syn/L-2016.03-SP1}"
 DC_SHELL="${DC_SHELL:-$DC_HOME/bin/dc_shell}"
 SNPS_LICENSE="${SNPS_LICENSE:-27000@localhost}"
@@ -23,10 +23,13 @@ AREA_EFFORT="${AREA_EFFORT:-none}"
 EXACT_MAP="${EXACT_MAP:-0}"
 USE_DW="${USE_DW:-1}"
 PRECHECK_ONLY="${PRECHECK_ONLY:-0}"
+SKIP_POWER_REPORT="${SKIP_POWER_REPORT:-0}"
+POWER_ONLY="${POWER_ONLY:-0}"
 
 WORK_DIR="${WORK_DIR:-$ROOT_DIR/work/dc/tsmc28/vpu_core}"
 REPORT_DIR="${REPORT_DIR:-$ROOT_DIR/reports/dc/tsmc28/vpu_core}"
 NETLIST_DIR="${NETLIST_DIR:-$ROOT_DIR/netlist/dc/tsmc28/vpu_core}"
+DDC_FILE="${DDC_FILE:-$NETLIST_DIR/sap_vpu_core.ddc}"
 
 test -x "$DC_SHELL" || {
   echo "Design Compiler not executable: $DC_SHELL" >&2
@@ -46,6 +49,9 @@ mkdir -p "$WORK_DIR" "$REPORT_DIR" "$NETLIST_DIR"
   if [[ -n "$SYNOPSYS_ENV_FILE" && -f "$SYNOPSYS_ENV_FILE" ]]; then
     # shellcheck disable=SC1090
     source "$SYNOPSYS_ENV_FILE" >/dev/null 2>&1
+    if declare -F lmstart >/dev/null 2>&1; then
+      lmstart >/dev/null 2>&1 || true
+    fi
   fi
   export LM_LICENSE_FILE="${LM_LICENSE_FILE:-$SNPS_LICENSE}"
   export SNPSLMD_LICENSE_FILE="${SNPSLMD_LICENSE_FILE:-$SNPS_LICENSE}"
@@ -67,5 +73,8 @@ mkdir -p "$WORK_DIR" "$REPORT_DIR" "$NETLIST_DIR"
     EXACT_MAP="$EXACT_MAP" \
     USE_DW="$USE_DW" \
     PRECHECK_ONLY="$PRECHECK_ONLY" \
+    SKIP_POWER_REPORT="$SKIP_POWER_REPORT" \
+    POWER_ONLY="$POWER_ONLY" \
+    DDC_FILE="$DDC_FILE" \
     "$DC_SHELL" -64bit -f scripts/dc_vpu_synth.tcl | tee "$WORK_DIR/dc.log"
 )

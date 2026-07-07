@@ -66,6 +66,22 @@ def parse_power(path: Path, top: str) -> dict[str, str]:
             "total_power": "NA",
         }
 
+    total_match = re.search(
+        r"^\s*Total\s+([-+0-9.eE]+)\s+(\S+)\s+"
+        r"([-+0-9.eE]+)\s+(\S+)\s+"
+        r"([-+0-9.eE]+)\s+(\S+)\s+"
+        r"([-+0-9.eE]+)\s+(\S+)\s*$",
+        text,
+        flags=re.MULTILINE,
+    )
+    if total_match:
+        return {
+            "internal_power": f"{total_match.group(1)} {total_match.group(2)}",
+            "switching_power": f"{total_match.group(3)} {total_match.group(4)}",
+            "leakage_power": f"{total_match.group(5)} {total_match.group(6)}",
+            "total_power": f"{total_match.group(7)} {total_match.group(8)}",
+        }
+
     escaped_top = re.escape(top)
     match = re.search(
         rf"^\s*{escaped_top}\s+([-+0-9.eE]+)\s+([-+0-9.eE]+)\s+([-+0-9.eE]+)\s+([-+0-9.eE]+)\s+",
