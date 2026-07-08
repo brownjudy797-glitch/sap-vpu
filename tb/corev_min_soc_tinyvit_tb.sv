@@ -36,6 +36,7 @@ module corev_min_soc_tinyvit_tb;
   int unsigned operand_read_count [0:11];
   int unsigned weight_read_count [0:11];
   int unsigned kernel_tile_read_count [0:11];
+  string vcd_file;
 
   corev_min_soc #(
     .ROM_WORDS(2048),
@@ -52,6 +53,13 @@ module corev_min_soc_tinyvit_tb;
   );
 
   always #5 clk = ~clk;
+
+  initial begin
+    if ($value$plusargs("vcd=%s", vcd_file)) begin
+      $dumpfile(vcd_file);
+      $dumpvars(0, dut.vpu_i);
+    end
+  end
 
   task automatic expect_result(input int unsigned index, input logic [31:0] expected);
     if (dut.ram[index] !== expected) begin

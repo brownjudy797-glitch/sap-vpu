@@ -34,8 +34,12 @@ TINYVIT_PAPER_TABLE ?= $(TINYVIT_BUILD_DIR)/tinyvit_paper_table.md
 VPU_CORE_ACTIVITY_DIR ?= $(ROOT_DIR)/work/activity/vpu_core
 VPU_CORE_VCD ?= $(VPU_CORE_ACTIVITY_DIR)/sap_vpu_core_tb.vcd
 VPU_CORE_SAIF ?= $(VPU_CORE_ACTIVITY_DIR)/sap_vpu_core.saif
+TINYVIT_ACTIVITY_DIR ?= $(ROOT_DIR)/work/activity/tinyvit
+TINYVIT_VCD ?= $(TINYVIT_ACTIVITY_DIR)/corev_min_soc_tinyvit_tb.vcd
+TINYVIT_SAIF ?= $(TINYVIT_ACTIVITY_DIR)/sap_vpu_tinyvit.saif
 VCD2SAIF ?= /opt/synopsys/syn/L-2016.03-SP1/bin/vcd2saif
 SAIF_INSTANCE ?= sap_vpu_core_tb/dut
+TINYVIT_SAIF_INSTANCE ?= corev_min_soc_tinyvit_tb/dut/vpu_i
 FPGA_PART ?= xc7a35tcsg324-1
 FPGA_CLOCK_MHZ ?= 100
 FPGA_BUILD_DIR ?= $(ROOT_DIR)/work/fpga/vpu_core
@@ -46,7 +50,7 @@ DC_NETLIST_DIR ?= $(ROOT_DIR)/netlist/dc/tsmc28/vpu_core
 
 .DEFAULT_GOAL := help
 
-.PHONY: help plan-check corev-fetch corev-rtl-flist lint-adapter lint-core lint lint-corev-soc sim-adapter sim-core sim-core-vcd sim-hello sim-vpu sim-tinyvit sim encoding-check legacy-summary hello-build hello-smoke vpu-build vpu-smoke tinyvit-build tinyvit-smoke tinyvit-summary tinyvit-paper-table fpga-vpu-synth fpga-vpu-summary dc-vpu-precheck dc-vpu-synth dc-vpu-power dc-vpu-saif-power dc-vpu-summary
+.PHONY: help plan-check corev-fetch corev-rtl-flist lint-adapter lint-core lint lint-corev-soc sim-adapter sim-core sim-core-vcd sim-hello sim-vpu sim-tinyvit sim-tinyvit-vcd sim encoding-check legacy-summary hello-build hello-smoke vpu-build vpu-smoke tinyvit-build tinyvit-smoke tinyvit-summary tinyvit-paper-table fpga-vpu-synth fpga-vpu-summary dc-vpu-precheck dc-vpu-synth dc-vpu-power dc-vpu-saif-power dc-vpu-tinyvit-saif-power dc-vpu-summary
 
 help:
 	@printf '%s\n' \
@@ -59,6 +63,7 @@ help:
 	  'make sim-core' \
 	  'make sim-core-vcd' \
 	  'make sim-hello' \
+	  'make sim-tinyvit-vcd' \
 	  'make encoding-check' \
 	  'make legacy-summary [LEGACY_RESULTS_DIR=../nutvpu/results]' \
 	  'make hello-build' \
@@ -73,6 +78,7 @@ help:
 	  'make dc-vpu-synth [DC_CLOCK_PERIOD=10.0]' \
 	  'make dc-vpu-power [DC_NETLIST_DIR=netlist/dc/tsmc28/vpu_core]' \
 	  'make dc-vpu-saif-power [DC_NETLIST_DIR=netlist/dc/tsmc28/vpu_core]' \
+	  'make dc-vpu-tinyvit-saif-power [DC_NETLIST_DIR=netlist/dc/tsmc28/vpu_core]' \
 	  'make dc-vpu-summary'
 
 plan-check:
@@ -229,6 +235,28 @@ sim-tinyvit: tinyvit-build corev-rtl-flist
 	  -o corev_min_soc_tinyvit_tb
 	"$(SIM_DIR)/tinyvit_obj/corev_min_soc_tinyvit_tb"
 
+sim-tinyvit-vcd: tinyvit-build corev-rtl-flist
+	mkdir -p "$(SIM_DIR)" "$(TINYVIT_ACTIVITY_DIR)"
+	DESIGN_RTL_DIR="$(COREV_DIR)/rtl" $(VERILATOR) --binary --timing --trace -sv \
+	  -DCOREV_ASSERT_OFF --top-module corev_min_soc_tinyvit_tb -Wno-fatal \
+	  -Wno-BLKANDNBLK -Wno-TIMESCALEMOD -Wno-UNOPTFLAT \
+	  -Wno-WIDTHEXPAND -Wno-WIDTHTRUNC -Wno-WIDTHCONCAT \
+	  -Wno-ASCRANGE -Wno-IMPLICIT -Wno-UNSIGNED -Wno-COMBDLY \
+	  --output-split $(VERILATOR_OUTPUT_SPLIT) --output-split-cfuncs $(VERILATOR_OUTPUT_SPLIT_CFUNCS) \
+	  -f "$(COREV_RTL_FLIST)" \
+	  rtl/sap_vpu_pkg.sv \
+	  rtl/sap_vpu_core.sv \
+	  platforms/corev/rtl/cvxif_sap_vpu_adapter.sv \
+	  platforms/corev/rtl/corev_min_soc.sv \
+	  tb/corev_min_soc_tinyvit_tb.sv \
+	  --Mdir "$(SIM_DIR)/tinyvit_vcd_obj" \
+	  -MAKEFLAGS "CXX=$(VERILATOR_CXX)" \
+	  -CFLAGS "$(VERILATOR_TIMING_CFLAGS)" \
+	  -LDFLAGS "$(VERILATOR_TIMING_LDFLAGS)" \
+	  -o corev_min_soc_tinyvit_tb
+	"$(SIM_DIR)/tinyvit_vcd_obj/corev_min_soc_tinyvit_tb" +vcd="$(TINYVIT_VCD)"
+	test -s "$(TINYVIT_VCD)"
+
 sim: sim-adapter sim-core
 
 encoding-check:
@@ -311,6 +339,15 @@ dc-vpu-saif-power: sim-core-vcd
 	  WORK_DIR="$(DC_WORK_DIR)" REPORT_DIR="$(DC_REPORT_DIR)" NETLIST_DIR="$(DC_NETLIST_DIR)" \
 	  DDC_FILE="$(DC_NETLIST_DIR)/sap_vpu_core.ddc" \
 	  SAIF_FILE="$(VPU_CORE_SAIF)" SAIF_INSTANCE="$(SAIF_INSTANCE)" \
+	  scripts/run_dc_vpu_synth.sh
+
+dc-vpu-tinyvit-saif-power: sim-tinyvit-vcd
+	$(VCD2SAIF) -input "$(TINYVIT_VCD)" -output "$(TINYVIT_SAIF)"
+	test -s "$(TINYVIT_SAIF)"
+	POWER_ONLY=1 CLOCK_PERIOD="$(DC_CLOCK_PERIOD)" \
+	  WORK_DIR="$(DC_WORK_DIR)" REPORT_DIR="$(DC_REPORT_DIR)" NETLIST_DIR="$(DC_NETLIST_DIR)" \
+	  DDC_FILE="$(DC_NETLIST_DIR)/sap_vpu_core.ddc" \
+	  SAIF_FILE="$(TINYVIT_SAIF)" SAIF_INSTANCE="$(TINYVIT_SAIF_INSTANCE)" \
 	  scripts/run_dc_vpu_synth.sh
 
 dc-vpu-summary:

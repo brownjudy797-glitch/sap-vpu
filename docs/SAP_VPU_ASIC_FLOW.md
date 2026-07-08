@@ -54,6 +54,30 @@ Run DC synthesis:
 make dc-vpu-synth DC_CLOCK_PERIOD=10.0
 ```
 
+Run power-only from an existing mapped DDC:
+
+```sh
+make dc-vpu-power DC_NETLIST_DIR=netlist/dc/tsmc28/vpu_core_sliced_10ns_nopower
+```
+
+Run SAIF activity power from the standalone VPU smoke:
+
+```sh
+make dc-vpu-saif-power \
+  DC_NETLIST_DIR=netlist/dc/tsmc28/vpu_core_sliced_10ns_nopower \
+  DC_WORK_DIR=work/dc/tsmc28/vpu_core_sliced_10ns_saif_power \
+  DC_REPORT_DIR=reports/dc/tsmc28/vpu_core_sliced_10ns_saif_power
+```
+
+Run SAIF activity power from the TinyViT SoC smoke VPU instance:
+
+```sh
+make dc-vpu-tinyvit-saif-power \
+  DC_NETLIST_DIR=netlist/dc/tsmc28/vpu_core_sliced_10ns_nopower \
+  DC_WORK_DIR=work/dc/tsmc28/vpu_core_sliced_10ns_tinyvit_saif_power \
+  DC_REPORT_DIR=reports/dc/tsmc28/vpu_core_sliced_10ns_tinyvit_saif_power
+```
+
 Start or verify the Synopsys license server before running the target if
 `27000@localhost` is not already active.
 
@@ -101,16 +125,26 @@ Generated reports and netlists remain ignored local artifacts.
 
 - The current target is the standalone VPU core, not the full CV32E40X SoC.
 - SRAMs are not modeled as foundry macros in this standalone core flow.
-- Power is vectorless DC power unless SAIF/VCD activity is provided later.
+- Power is vectorless DC power unless SAIF/VCD activity is explicitly provided.
 - Treat the numbers as early ASIC synthesis evidence, not final silicon PPA.
-- On the current local DC L-2016.03-SP1 installation, TSMC28 mapping reached
-  Pass 1 Mapping but hit an internal DC crash across several conservative
-  settings. Do not cite a DC PPA number until a complete `dc_vpu_summary.csv`,
-  `area.rpt`, `timing_max.rpt`, and `power.rpt` are generated.
-- `make dc-vpu-precheck` was added to separate front-end setup from mapping.
-  It has verified that the local license, TSMC28 `.db`, RTL analyze/elaborate,
-  link, `check_design`, and `check_timing` path can complete before compile.
-- A separate tiny RTL mapping sanity check also failed when DC tried to read
-  mapped TSMC28 cell content, with `LDB-3`, `LDB-4`, and `File is not a DB file`
-  messages. Treat the current blocker as a DC/library compatibility issue until
-  a newer DC installation or a regenerated/compatible TSMC28 `.db` is available.
+- On the current local DC L-2016.03-SP1 installation, TSMC28 mapping now has a
+  complete 10 ns standalone VPU checkpoint under
+  `vpu_core_sliced_10ns_nopower`. The local `.db` still emits an `LDB-4`
+  library-view warning during load; keep that warning with the report package.
+- SAIF power runs may emit `PWR-452` partial annotation warnings. They are not
+  the same as a total annotation failure, but the unmatched-object count must be
+  reported with any activity-power number.
+
+## Local Checkpoint
+
+Current local TSMC28 `tt0p9v85c`, 10 ns, standalone `sap_vpu_core` evidence:
+
+| Activity source | Internal power | Switching power | Leakage power | Total power |
+| --- | ---: | ---: | ---: | ---: |
+| Vectorless DC | 0.3952 mW | 3.5926e-03 mW | 7.1120e+04 nW | 0.4699 mW |
+| Standalone VPU smoke SAIF | 0.4127 mW | 1.9090e-02 mW | 7.2433e+04 nW | 0.5042 mW |
+| TinyViT smoke VPU-instance SAIF | 0.4065 mW | 1.4669e-02 mW | 7.2839e+04 nW | 0.4940 mW |
+
+These are local reproducibility checkpoints. Re-generate the reports before
+using them in paper tables, and keep the run directory, command line, library
+corner, clock period, and SAIF annotation warnings with the cited number.
