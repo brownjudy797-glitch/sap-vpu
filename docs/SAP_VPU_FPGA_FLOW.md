@@ -30,6 +30,14 @@ Run Vivado batch synthesis, placement, routing, and reports:
 make fpga-vpu-synth FPGA_PART=xc7a35tcsg324-1 FPGA_CLOCK_MHZ=100
 ```
 
+Run power from an existing routed checkpoint with VPU smoke SAIF activity:
+
+```sh
+make fpga-vpu-saif-power \
+  FPGA_SAIF_DCP=work/fpga/vpu_core_sliced_140/checkpoints/post_route.dcp \
+  FPGA_SAIF_POWER_DIR=work/fpga/vpu_core_sliced_140_saif_power
+```
+
 Summarize generated reports:
 
 ```sh
@@ -44,6 +52,8 @@ The flow writes:
 - `work/fpga/vpu_core/reports/post_route_utilization.rpt`
 - `work/fpga/vpu_core/reports/post_route_timing_summary.rpt`
 - `work/fpga/vpu_core/reports/post_route_power.rpt`
+- `work/fpga/vpu_core_sliced_140_saif_power/reports/post_route_saif_power.rpt`
+- `work/fpga/vpu_core_sliced_140_saif_power/reports/post_route_saif_unmatched.rpt`
 - `work/fpga/vpu_core/checkpoints/post_synth.dcp`
 - `work/fpga/vpu_core/checkpoints/post_route.dcp`
 
@@ -53,6 +63,11 @@ The flow writes:
   generated with Windows Vivado 2023.2 (`D:\Xilinx_2023_02\Vivado\2023.2`) via
   a temporary UNC drive mapping into this repository.
 - `report_power` uses Vivado default switching unless an activity file is added.
+- `fpga-vpu-saif-power` uses the standalone VPU smoke SAIF, not TinyViT SoC
+  activity.
+- Current RTL SAIF to routed FPGA checkpoint annotation is low because Vivado
+  sees post-synthesis/post-route net names. Treat it as a flow smoke until a
+  post-synthesis or post-route simulation activity file is generated.
 - Timing pass/fail is checked at the requested `FPGA_CLOCK_MHZ`; the Tcl exits
   nonzero on negative post-route worst slack.
 - Generated reports remain under ignored `work/` and must not be committed.
@@ -80,10 +95,21 @@ generated for the same RTL and mapping style.
 Older local Windows runs at 150 MHz and 200 MHz used a DSP-mapped implementation
 and are not part of the current no-DSP sliced VPU-core table.
 
+Current local SAIF power-flow smoke on the 140 MHz checkpoint:
+
+| Source | Activity file | Nets matched | Confidence | Total power W | Dynamic W | Static W | Status |
+| --- | --- | ---: | --- | ---: | ---: | ---: | --- |
+| `work/fpga/vpu_core_sliced_140_saif_power` | standalone VPU smoke SAIF | 159/4691 (3%) | Medium | 0.086 | 0.015 | 0.070 | flow smoke only |
+
+Do not use this SAIF power number as a final FPGA energy result; use it to show
+that the Vivado activity import path exists. A paper-facing FPGA activity power
+number needs a better-matched post-synthesis/post-route activity source.
+
 ## Next FPGA Steps
 
 1. Re-run the 140 MHz checkpoint after any RTL datapath change.
-2. Add activity-based FPGA power only after a stable VCD/SAIF or Vivado SAIF
-   flow is connected to the standalone VPU or SoC testbench.
+2. Generate post-synthesis or post-route simulation activity for the standalone
+   VPU checkpoint so Vivado can annotate internal nets beyond the current 3%
+   smoke level.
 3. Add a board-level top and constraints only after the standalone VPU-core
    report remains reproducible.

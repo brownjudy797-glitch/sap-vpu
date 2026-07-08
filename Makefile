@@ -12,6 +12,7 @@ VERILATOR_TIMING_LDFLAGS ?= -no-pie
 VERILATOR_OUTPUT_SPLIT ?= 1000
 VERILATOR_OUTPUT_SPLIT_CFUNCS ?= 1000
 PYTHON ?= python3
+VIVADO ?= vivado
 SIM_DIR ?= $(ROOT_DIR)/work/sim
 COREV_RTL_FLIST := $(ROOT_DIR)/work/corev_rtl.f
 RISCV_AS ?= riscv64-linux-gnu-as
@@ -43,6 +44,9 @@ TINYVIT_SAIF_INSTANCE ?= corev_min_soc_tinyvit_tb/dut/vpu_i
 FPGA_PART ?= xc7a35tcsg324-1
 FPGA_CLOCK_MHZ ?= 100
 FPGA_BUILD_DIR ?= $(ROOT_DIR)/work/fpga/vpu_core
+FPGA_SAIF_POWER_DIR ?= $(ROOT_DIR)/work/fpga/vpu_core_sliced_140_saif_power
+FPGA_SAIF_DCP ?= $(ROOT_DIR)/work/fpga/vpu_core_sliced_140/checkpoints/post_route.dcp
+FPGA_SAIF_STRIP_PATH ?=
 DC_CLOCK_PERIOD ?= 10.0
 DC_WORK_DIR ?= $(ROOT_DIR)/work/dc/tsmc28/vpu_core
 DC_REPORT_DIR ?= $(ROOT_DIR)/reports/dc/tsmc28/vpu_core
@@ -50,7 +54,7 @@ DC_NETLIST_DIR ?= $(ROOT_DIR)/netlist/dc/tsmc28/vpu_core
 
 .DEFAULT_GOAL := help
 
-.PHONY: help plan-check corev-fetch corev-rtl-flist lint-adapter lint-core lint lint-corev-soc sim-adapter sim-core sim-core-vcd sim-hello sim-vpu sim-tinyvit sim-tinyvit-vcd sim encoding-check legacy-summary hello-build hello-smoke vpu-build vpu-smoke tinyvit-build tinyvit-smoke tinyvit-summary tinyvit-paper-table fpga-vpu-synth fpga-vpu-summary dc-vpu-precheck dc-vpu-synth dc-vpu-power dc-vpu-saif-power dc-vpu-tinyvit-saif-power dc-vpu-summary
+.PHONY: help plan-check corev-fetch corev-rtl-flist lint-adapter lint-core lint lint-corev-soc sim-adapter sim-core sim-core-vcd sim-hello sim-vpu sim-tinyvit sim-tinyvit-vcd sim encoding-check legacy-summary hello-build hello-smoke vpu-build vpu-smoke tinyvit-build tinyvit-smoke tinyvit-summary tinyvit-paper-table fpga-vpu-synth fpga-vpu-saif-power fpga-vpu-summary dc-vpu-precheck dc-vpu-synth dc-vpu-power dc-vpu-saif-power dc-vpu-tinyvit-saif-power dc-vpu-summary
 
 help:
 	@printf '%s\n' \
@@ -73,6 +77,7 @@ help:
 	  'make tinyvit-summary' \
 	  'make tinyvit-paper-table' \
 	  'make fpga-vpu-synth [FPGA_PART=xc7a35tcsg324-1] [FPGA_CLOCK_MHZ=100]' \
+	  'make fpga-vpu-saif-power [FPGA_SAIF_DCP=work/fpga/vpu_core_sliced_140/checkpoints/post_route.dcp]' \
 	  'make fpga-vpu-summary' \
 	  'make dc-vpu-precheck [DC_CLOCK_PERIOD=10.0]' \
 	  'make dc-vpu-synth [DC_CLOCK_PERIOD=10.0]' \
@@ -98,6 +103,7 @@ plan-check:
 	test -x scripts/bin_to_verilog_hex.py
 	test -x scripts/summarize_tinyvit_counters.py
 	test -f scripts/vivado_vpu_synth.tcl
+	test -f scripts/vivado_vpu_saif_power.tcl
 	test -x scripts/summarize_vivado_reports.py
 	test -f scripts/dc_vpu_synth.tcl
 	test -x scripts/run_dc_vpu_synth.sh
@@ -310,8 +316,16 @@ tinyvit-paper-table: tinyvit-smoke
 
 fpga-vpu-synth:
 	mkdir -p "$(FPGA_BUILD_DIR)"
-	vivado -mode batch -source scripts/vivado_vpu_synth.tcl \
+	$(VIVADO) -mode batch -source scripts/vivado_vpu_synth.tcl \
 	  -tclargs "$(FPGA_PART)" "$(FPGA_CLOCK_MHZ)" "$(FPGA_BUILD_DIR)"
+
+fpga-vpu-saif-power: sim-core-vcd
+	$(VCD2SAIF) -input "$(VPU_CORE_VCD)" -output "$(VPU_CORE_SAIF)"
+	test -s "$(VPU_CORE_SAIF)"
+	test -s "$(FPGA_SAIF_DCP)"
+	mkdir -p "$(FPGA_SAIF_POWER_DIR)"
+	$(VIVADO) -mode batch -source scripts/vivado_vpu_saif_power.tcl \
+	  -tclargs "$(FPGA_SAIF_DCP)" "$(VPU_CORE_SAIF)" "$(FPGA_SAIF_POWER_DIR)" "$(FPGA_SAIF_STRIP_PATH)"
 
 fpga-vpu-summary:
 	$(PYTHON) scripts/summarize_vivado_reports.py "$(FPGA_BUILD_DIR)"
