@@ -38,6 +38,15 @@ make fpga-vpu-saif-power \
   FPGA_SAIF_POWER_DIR=work/fpga/vpu_core_sliced_140_saif_power
 ```
 
+Export a post-synthesis functional simulation netlist from an existing
+checkpoint:
+
+```sh
+make fpga-vpu-funcsim-netlist \
+  FPGA_FUNCSIM_DCP=work/fpga/vpu_core_sliced_140/checkpoints/post_synth.dcp \
+  FPGA_FUNCSIM_DIR=work/fpga/vpu_core_sliced_140_funcsim
+```
+
 Summarize generated reports:
 
 ```sh
@@ -54,6 +63,8 @@ The flow writes:
 - `work/fpga/vpu_core/reports/post_route_power.rpt`
 - `work/fpga/vpu_core_sliced_140_saif_power/reports/post_route_saif_power.rpt`
 - `work/fpga/vpu_core_sliced_140_saif_power/reports/post_route_saif_unmatched.rpt`
+- `work/fpga/vpu_core_sliced_140_funcsim/sap_vpu_core_funcsim.v`
+- `work/fpga/vpu_core_sliced_140_funcsim/fpga_vpu_funcsim_summary.csv`
 - `work/fpga/vpu_core/checkpoints/post_synth.dcp`
 - `work/fpga/vpu_core/checkpoints/post_route.dcp`
 
@@ -68,6 +79,11 @@ The flow writes:
 - Current RTL SAIF to routed FPGA checkpoint annotation is low because Vivado
   sees post-synthesis/post-route net names. Treat it as a flow smoke until a
   post-synthesis or post-route simulation activity file is generated.
+- `fpga-vpu-funcsim-netlist` only exports a post-synthesis functional netlist.
+  Local XSim compile/elaboration of this netlist reached simulation with the
+  existing RTL smoke testbench, but that testbench is not yet gate-clean under
+  XSim and must not be used as paper activity evidence until a dedicated
+  gate-level driver or timing-safe checks are added.
 - Timing pass/fail is checked at the requested `FPGA_CLOCK_MHZ`; the Tcl exits
   nonzero on negative post-route worst slack.
 - Generated reports remain under ignored `work/` and must not be committed.
@@ -108,8 +124,10 @@ number needs a better-matched post-synthesis/post-route activity source.
 ## Next FPGA Steps
 
 1. Re-run the 140 MHz checkpoint after any RTL datapath change.
-2. Generate post-synthesis or post-route simulation activity for the standalone
+2. Add a gate-level XSim smoke testbench or timing-safe driver for the exported
+   post-synthesis functional netlist.
+3. Generate post-synthesis or post-route simulation activity for the standalone
    VPU checkpoint so Vivado can annotate internal nets beyond the current 3%
    smoke level.
-3. Add a board-level top and constraints only after the standalone VPU-core
+4. Add a board-level top and constraints only after the standalone VPU-core
    report remains reproducible.
