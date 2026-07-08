@@ -148,3 +148,19 @@ Current local TSMC28 `tt0p9v85c`, 10 ns, standalone `sap_vpu_core` evidence:
 These are local reproducibility checkpoints. Re-generate the reports before
 using them in paper tables, and keep the run directory, command line, library
 corner, clock period, and SAIF annotation warnings with the cited number.
+
+## Clock Sweep Status
+
+Local tighter-clock attempts after the 10 ns checkpoint are currently limited
+by DC/tool stability rather than by a clean timing report:
+
+| Target period | Settings | Result |
+| ---: | --- | --- |
+| 8.0 ns | default flow | DC internal crash during WLM backend optimization |
+| 5.0 ns | default flow | DC internal crash during Pass 1 mapping |
+| 5.0 ns | `COMPILE_ULTRA=0 MAP_EFFORT=low EXACT_MAP=1 USE_DW=0` | DC internal crash during Pass 1 mapping |
+
+Do not cite an ASIC Fmax from the current DC L-2016.03-SP1 setup. The next
+credible path for clock sweep evidence is a newer compatible DC installation or
+a validated regenerated TSMC28 `.db`; until then, use the 10 ns checkpoint for
+area/timing/power and report the tool boundary explicitly.
