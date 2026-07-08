@@ -164,3 +164,19 @@ Do not cite an ASIC Fmax from the current DC L-2016.03-SP1 setup. The next
 credible path for clock sweep evidence is a newer compatible DC installation or
 a validated regenerated TSMC28 `.db`; until then, use the 10 ns checkpoint for
 area/timing/power and report the tool boundary explicitly.
+
+## Corner Expansion Status
+
+Local non-TT corner attempts on the current DC L-2016.03-SP1 setup also hit the
+same mapping-stage tool limitation:
+
+| Corner | Target period | Settings | Result |
+| --- | ---: | --- | --- |
+| `ssg0p72v125c` | 10.0 ns | default flow | DC internal crash during Pass 1 mapping |
+| `ssg0p72v125c` | 10.0 ns | `COMPILE_ULTRA=0 MAP_EFFORT=low EXACT_MAP=1 USE_DW=0` | DC internal crash during Pass 1 mapping |
+| `ffg1p05vm40c` | 10.0 ns | default flow | DC internal crash during Pass 1 mapping |
+
+Do not present SS/FF corner PPA from this setup. The current publishable ASIC
+checkpoint is TT `tt0p9v85c` at 10 ns, plus the documented vectorless and SAIF
+power variants. SS/FF evidence needs either a newer compatible DC installation,
+validated regenerated `.db` files, or a different synthesis tool flow.
