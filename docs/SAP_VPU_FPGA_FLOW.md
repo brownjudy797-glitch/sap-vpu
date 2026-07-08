@@ -49,18 +49,41 @@ The flow writes:
 
 ## Current Evidence Boundary
 
-- The local WSL environment used for this repository checkpoint did not expose a
-  `vivado` command, so the flow entry is committed before report generation.
+- The WSL environment does not expose `vivado` directly. Local FPGA reports were
+  generated with Windows Vivado 2023.2 (`D:\Xilinx_2023_02\Vivado\2023.2`) via
+  a temporary UNC drive mapping into this repository.
 - `report_power` uses Vivado default switching unless an activity file is added.
 - Timing pass/fail is checked at the requested `FPGA_CLOCK_MHZ`; the Tcl exits
   nonzero on negative post-route worst slack.
 - Generated reports remain under ignored `work/` and must not be committed.
+- These are standalone VPU-core reports, not board-validated or full-SoC
+  reports.
+
+## Local Checkpoint
+
+Current local Artix-7 `xc7a35tcsg324-1`, Vivado 2023.2, standalone
+`sap_vpu_core` evidence for the current 0-DSP sliced datapath:
+
+| Source | Clock MHz | Worst slack ns | LUT | FF | DSP | BRAM | Power W | Status |
+| --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | --- |
+| `work/fpga/vpu_core_sliced_125` | 125 | 0.418 | 1814 | 729 | 0 | 0 | 0.089 | pass |
+| `work/fpga/vpu_core_sliced_130` | 130 | 0.176 | 1814 | 733 | 0 | 0 | 0.090 | pass |
+| `work/fpga/vpu_core_sliced_135` | 135 | 0.301 | 1816 | 732 | 0 | 0 | 0.090 | pass |
+| `work/fpga/vpu_core_sliced_140` | 140 | 0.044 | 1820 | 744 | 0 | 0 | 0.091 | pass |
+| `work/fpga/vpu_core_win_141mhz` | 141 | -0.036 | 1822 | 742 | 0 | 0 | 0.091 | fail |
+| `work/fpga/vpu_core_sliced_145` | 145 | -0.008 | 1824 | 749 | 0 | 0 | 0.092 | fail |
+
+Treat 140 MHz as the current reproducible standalone VPU-core FPGA timing
+checkpoint. Do not claim 145 MHz or higher until a positive-slack run is
+generated for the same RTL and mapping style.
+
+Older local Windows runs at 150 MHz and 200 MHz used a DSP-mapped implementation
+and are not part of the current no-DSP sliced VPU-core table.
 
 ## Next FPGA Steps
 
-1. Run `make fpga-vpu-synth` on the Vivado machine for the actual Artix-7 board
-   or target part.
-2. Save the command, Vivado version, part, target clock, timing slack,
-   utilization, and power summary in the dated work record.
+1. Re-run the 140 MHz checkpoint after any RTL datapath change.
+2. Add activity-based FPGA power only after a stable VCD/SAIF or Vivado SAIF
+   flow is connected to the standalone VPU or SoC testbench.
 3. Add a board-level top and constraints only after the standalone VPU-core
-   report is reproducible.
+   report remains reproducible.
