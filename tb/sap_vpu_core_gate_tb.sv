@@ -19,6 +19,8 @@ module sap_vpu_core_gate_tb;
   logic [3:0]  rsp_id_o;
   logic [31:0] rsp_data_o;
   logic        rsp_exc_o;
+  string       policy_name;
+  string       vcd_file;
 
   sap_vpu_core dut (
     .clk_i(clk_i),
@@ -126,6 +128,125 @@ module sap_vpu_core_gate_tb;
     end
   endtask
 
+  task automatic policy_config(
+    input string        name,
+    output logic [1:0]  precision,
+    output logic [31:0] sparse,
+    output logic [31:0] lanes,
+    output logic [31:0] expected_skip
+  );
+    begin
+      if (name == "dense_int8") begin
+        precision = SAP_PREC_INT8; sparse = 32'h0f; lanes = 4; expected_skip = 0;
+      end else if (name == "static_int4") begin
+        precision = SAP_PREC_INT4; sparse = 32'hff; lanes = 8; expected_skip = 0;
+      end else if (name == "static_int2") begin
+        precision = SAP_PREC_INT2; sparse = 32'hffff; lanes = 16; expected_skip = 0;
+      end else if (name == "adaptive_int4") begin
+        precision = SAP_PREC_INT4; sparse = 32'h0f; lanes = 4; expected_skip = 2048;
+      end else if (name == "adaptive_sparse75") begin
+        precision = SAP_PREC_INT4; sparse = 32'h03; lanes = 2; expected_skip = 3072;
+      end else if (name == "adaptive_unstructured") begin
+        precision = SAP_PREC_INT4; sparse = 32'h55; lanes = 8; expected_skip = 2048;
+      end else if (name == "no_sparse") begin
+        precision = SAP_PREC_INT4; sparse = 32'hff; lanes = 4; expected_skip = 2048;
+      end else if (name == "no_lane") begin
+        precision = SAP_PREC_INT4; sparse = 32'h0f; lanes = 8; expected_skip = 2048;
+      end else if (name == "no_precision") begin
+        precision = SAP_PREC_INT8; sparse = 32'h0f; lanes = 4; expected_skip = 0;
+      end else begin
+        gate_fail($sformatf("unknown policy %s", name));
+      end
+    end
+  endtask
+
+  task automatic policy_operands(
+    input string name,
+    input int unsigned index,
+    output logic [31:0] rs1,
+    output logic [31:0] rs2
+  );
+    int unsigned block;
+    int unsigned op;
+    logic [31:0] token0;
+    logic [31:0] token1;
+    logic [31:0] weight0;
+    logic [31:0] weight1;
+    begin
+      block = (index / 4) % 4;
+      op = index % 4;
+
+      if (name == "dense_int8") begin
+        case (block)
+          0: begin token0 = 32'h04030201; token1 = 32'h01020304; weight0 = 32'h08070605; weight1 = 32'h01010101; end
+          1: begin token0 = 32'h02020202; token1 = 32'h03010301; weight0 = 32'h08070605; weight1 = 32'h02020202; end
+          2: begin token0 = 32'h01010101; token1 = 32'h02020202; weight0 = 32'h04030201; weight1 = 32'h01010101; end
+          default: begin token0 = 32'h03030303; token1 = 32'h01010101; weight0 = 32'h02020202; weight1 = 32'h01010101; end
+        endcase
+      end else if (name == "static_int2") begin
+        token0 = 32'h55555555; token1 = 32'h11111111;
+        weight0 = 32'h55555555; weight1 = 32'h11111111;
+      end else if (name == "no_precision") begin
+        case (block)
+          0: begin token0 = 32'h01010101; token1 = 32'h02020202; weight0 = 32'h01010101; weight1 = 32'h02020202; end
+          1: begin token0 = 32'h03030303; token1 = 32'h04040404; weight0 = 32'h01010101; weight1 = 32'h02020202; end
+          2: begin token0 = 32'h01010101; token1 = 32'h03030303; weight0 = 32'h01010101; weight1 = 32'h02020202; end
+          default: begin token0 = 32'h01010101; token1 = 32'h02020202; weight0 = 32'h04040404; weight1 = 32'h01010101; end
+        endcase
+      end else begin
+        case (block)
+          0: begin token0 = 32'h11111111; token1 = 32'h22222222; weight0 = 32'h11111111; weight1 = 32'h22222222; end
+          1: begin token0 = 32'h33333333; token1 = 32'h44444444; weight0 = 32'h11111111; weight1 = 32'h22222222; end
+          2: begin token0 = 32'h11111111; token1 = 32'h33333333; weight0 = 32'h11111111; weight1 = 32'h22222222; end
+          default: begin token0 = 32'h11111111; token1 = 32'h22222222; weight0 = 32'h44444444; weight1 = 32'h11111111; end
+        endcase
+      end
+
+      rs1 = (op < 2) ? token0 : token1;
+      rs2 = ((op % 2) == 0) ? weight0 : weight1;
+    end
+  endtask
+
+  task automatic run_policy(input string name, input string activity_file);
+    logic [1:0] precision;
+    logic [31:0] sparse;
+    logic [31:0] lanes;
+    logic [31:0] expected_skip;
+    logic [31:0] rs1;
+    logic [31:0] rs2;
+    begin
+      policy_config(name, precision, sparse, lanes, expected_skip);
+
+      send_cmd(4'h0, SAP_OP_VSETPREC, 32'(precision), 32'h0);
+      expect_rsp(4'h0, 1'b1, 32'(precision), 1'b0);
+      send_cmd(4'h1, SAP_OP_VSETSPARSE_BMP, sparse, 32'h0);
+      expect_rsp(4'h1, 1'b1, sparse, 1'b0);
+      send_cmd(4'h2, SAP_OP_VSETLANE, lanes, 32'h0);
+      expect_rsp(4'h2, 1'b1, lanes, 1'b0);
+      send_cmd(4'h3, SAP_OP_VCLEARCNT, 32'h0, 32'h0);
+      expect_rsp(4'h3, 1'b1, 32'h0, 1'b0);
+
+      $dumpfile(activity_file);
+      $dumpvars(0, sap_vpu_core_gate_tb);
+      for (int unsigned i = 0; i < 512; i++) begin
+        policy_operands(name, i, rs1, rs2);
+        send_cmd(i[3:0], SAP_OP_VDOT, rs1, rs2);
+        expect_rsp(i[3:0], 1'b0, 32'h0, 1'b0);
+      end
+      $dumpoff;
+
+      send_cmd(4'h4, SAP_OP_VREADCNT, 32'(SAP_CNT_MAC_ACTIVE), 32'h0);
+      expect_rsp(4'h4, 1'b1, 32'd512, 1'b0);
+      send_cmd(4'h5, SAP_OP_VREADCNT, 32'(SAP_CNT_SKIPPED), 32'h0);
+      expect_rsp(4'h5, 1'b1, expected_skip, 1'b0);
+      send_cmd(4'h6, SAP_OP_VREADCNT, 32'(SAP_CNT_SPARSE), 32'h0);
+      expect_rsp(4'h6, 1'b1, sparse, 1'b0);
+      send_cmd(4'h7, SAP_OP_VREADCNT, 32'(SAP_CNT_LANE), 32'h0);
+      expect_rsp(4'h7, 1'b1, lanes, 1'b0);
+      $display("GATE_POLICY_PASS: %s", name);
+    end
+  endtask
+
   initial begin
     clk_i = 1'b0;
     rst_ni = 1'b0;
@@ -136,6 +257,14 @@ module sap_vpu_core_gate_tb;
     @(negedge clk_i);
     rst_ni = 1'b1;
     repeat (4) @(posedge clk_i);
+
+    if ($value$plusargs("policy=%s", policy_name)) begin
+      if (!$value$plusargs("vcd=%s", vcd_file)) begin
+        vcd_file = "sap_vpu_core_gate_policy.vcd";
+      end
+      run_policy(policy_name, vcd_file);
+      $finish;
+    end
 
     $dumpfile("sap_vpu_core_gate_tb.vcd");
     $dumpvars(0, sap_vpu_core_gate_tb);
