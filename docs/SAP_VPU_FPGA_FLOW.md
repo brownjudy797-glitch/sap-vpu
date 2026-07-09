@@ -96,8 +96,9 @@ The flow writes:
   the exported post-synthesis functional netlist. It is stronger than RTL-SAIF
   smoke because it annotates almost all routed nets, but it is still standalone
   VPU-core activity, not TinyViT or full-SoC activity.
-- The current gate-level SAIF power run emits Vivado clock-consistency warnings
-  and a reset-activity warning. Keep these warnings with any cited number.
+- The gate-level smoke runs at the checkpoint's 140 MHz constraint and records
+  activity only after reset release. The current SAIF power run has no Vivado
+  clock-consistency or excessive-reset-activity warning.
 - Timing pass/fail is checked at the requested `FPGA_CLOCK_MHZ`; the Tcl exits
   nonzero on negative post-route worst slack.
 - Generated reports remain under ignored `work/` and must not be committed.
@@ -130,17 +131,17 @@ Current local SAIF power-flow smoke on the 140 MHz checkpoint:
 | Source | Activity file | Nets matched | Confidence | Total power W | Dynamic W | Static W | Status |
 | --- | --- | ---: | --- | ---: | ---: | ---: | --- |
 | `work/fpga/vpu_core_sliced_140_saif_power` | standalone VPU smoke SAIF | 159/4691 (3%) | Medium | 0.086 | 0.015 | 0.070 | flow smoke only |
-| `work/fpga/vpu_core_sliced_140_funcsim_saif_power` | post-synth functional XSim gate SAIF | 4673/4691 (99.6%) | High | 0.081 | 0.010 | 0.070 | standalone VPU activity |
+| `work/fpga/vpu_core_sliced_140_funcsim_saif_power` | post-synth functional XSim gate SAIF | 4673/4691 (99.6%) | High | 0.087 | 0.017 | 0.070 | standalone VPU activity |
 
 Do not use the RTL-SAIF smoke number as a final FPGA energy result; use it only
 to show that the Vivado activity import path exists. The gate-level SAIF number
-is the current best local FPGA activity-power checkpoint, but it still needs the
-clock/reset warnings and standalone-core boundary reported with it.
+is the current best local FPGA activity-power checkpoint, but it still carries
+the standalone-core boundary and is not representative TinyViT workload power.
 
 ## Next FPGA Steps
 
 1. Re-run the 140 MHz checkpoint after any RTL datapath change.
-2. Reduce or explain the gate-level SAIF clock/reset warnings before using the
-   activity-power number in a paper table.
+2. Replace smoke activity with a representative TinyViT kernel activity window
+   before using the power number in a paper table.
 3. Add a board-level top and constraints only after the standalone VPU-core
    report remains reproducible.

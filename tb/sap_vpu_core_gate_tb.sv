@@ -3,6 +3,8 @@
 module sap_vpu_core_gate_tb;
   import sap_vpu_pkg::*;
 
+  localparam realtime CLK_HALF_PERIOD_NS = 3.5715;
+
   logic       clk_i;
   logic       rst_ni;
   logic       cmd_valid_i;
@@ -35,7 +37,7 @@ module sap_vpu_core_gate_tb;
     .rsp_exc_o(rsp_exc_o)
   );
 
-  always #5 clk_i = ~clk_i;
+  always #(CLK_HALF_PERIOD_NS) clk_i = ~clk_i;
 
   task automatic gate_fail(input string message);
     begin
@@ -125,17 +127,18 @@ module sap_vpu_core_gate_tb;
   endtask
 
   initial begin
-    $dumpfile("sap_vpu_core_gate_tb.vcd");
-    $dumpvars(0, sap_vpu_core_gate_tb);
-
     clk_i = 1'b0;
     rst_ni = 1'b0;
     rsp_ready_i = 1'b1;
     clear_cmd();
 
-    repeat (6) @(posedge clk_i);
+    #100;
+    @(negedge clk_i);
     rst_ni = 1'b1;
     repeat (4) @(posedge clk_i);
+
+    $dumpfile("sap_vpu_core_gate_tb.vcd");
+    $dumpvars(0, sap_vpu_core_gate_tb);
 
     send_cmd(4'h1, SAP_OP_VDOT, 32'h0102_0304, 32'h0101_0101);
     expect_rsp(4'h1, 1'b1, 32'd10, 1'b0);
