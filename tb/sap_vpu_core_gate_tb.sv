@@ -128,34 +128,43 @@ module sap_vpu_core_gate_tb;
     end
   endtask
 
+  task automatic wait_rsp_retired;
+    begin
+      do begin
+        @(negedge clk_i);
+      end while (rsp_valid_o !== 1'b0);
+    end
+  endtask
+
   task automatic policy_config(
     input string        name,
     output logic [1:0]  precision,
     output logic [31:0] sparse,
     output logic [31:0] lanes,
-    output logic [31:0] expected_skip
+    output logic [31:0] expected_skip,
+    output logic [31:0] expected_total
   );
     begin
       if (name == "dense_int8") begin
-        precision = SAP_PREC_INT8; sparse = 32'h0f; lanes = 4; expected_skip = 0;
+        precision = SAP_PREC_INT8; sparse = 32'h0f; lanes = 4; expected_skip = 0; expected_total = 12096;
       end else if (name == "static_int4") begin
-        precision = SAP_PREC_INT4; sparse = 32'hff; lanes = 8; expected_skip = 0;
+        precision = SAP_PREC_INT4; sparse = 32'hff; lanes = 8; expected_skip = 0; expected_total = 14592;
       end else if (name == "static_int2") begin
-        precision = SAP_PREC_INT2; sparse = 32'hffff; lanes = 16; expected_skip = 0;
+        precision = SAP_PREC_INT2; sparse = 32'hffff; lanes = 16; expected_skip = 0; expected_total = 5120;
       end else if (name == "adaptive_int4") begin
-        precision = SAP_PREC_INT4; sparse = 32'h0f; lanes = 4; expected_skip = 2048;
+        precision = SAP_PREC_INT4; sparse = 32'h0f; lanes = 4; expected_skip = 2048; expected_total = 7296;
       end else if (name == "adaptive_sparse75") begin
-        precision = SAP_PREC_INT4; sparse = 32'h03; lanes = 2; expected_skip = 3072;
+        precision = SAP_PREC_INT4; sparse = 32'h03; lanes = 2; expected_skip = 3072; expected_total = 3648;
       end else if (name == "adaptive_unstructured") begin
-        precision = SAP_PREC_INT4; sparse = 32'h55; lanes = 8; expected_skip = 2048;
+        precision = SAP_PREC_INT4; sparse = 32'h55; lanes = 8; expected_skip = 2048; expected_total = 7296;
       end else if (name == "no_sparse") begin
-        precision = SAP_PREC_INT4; sparse = 32'hff; lanes = 4; expected_skip = 2048;
+        precision = SAP_PREC_INT4; sparse = 32'hff; lanes = 4; expected_skip = 2048; expected_total = 7296;
       end else if (name == "no_lane") begin
-        precision = SAP_PREC_INT4; sparse = 32'h0f; lanes = 8; expected_skip = 2048;
+        precision = SAP_PREC_INT4; sparse = 32'h0f; lanes = 8; expected_skip = 2048; expected_total = 7296;
       end else if (name == "no_precision") begin
-        precision = SAP_PREC_INT8; sparse = 32'h0f; lanes = 4; expected_skip = 0;
+        precision = SAP_PREC_INT8; sparse = 32'h0f; lanes = 4; expected_skip = 0; expected_total = 7296;
       end else begin
-        gate_fail($sformatf("unknown policy %s", name));
+        $fatal(1, "GATE_POLICY_FAIL: unknown policy %s", name);
       end
     end
   endtask
@@ -212,10 +221,13 @@ module sap_vpu_core_gate_tb;
     logic [31:0] sparse;
     logic [31:0] lanes;
     logic [31:0] expected_skip;
+    logic [31:0] expected_total;
+    logic [31:0] total_output;
     logic [31:0] rs1;
     logic [31:0] rs2;
     begin
-      policy_config(name, precision, sparse, lanes, expected_skip);
+      policy_config(name, precision, sparse, lanes, expected_skip, expected_total);
+      total_output = '0;
 
       send_cmd(4'h0, SAP_OP_VSETPREC, 32'(precision), 32'h0);
       expect_rsp(4'h0, 1'b1, 32'(precision), 1'b0);
@@ -225,6 +237,7 @@ module sap_vpu_core_gate_tb;
       expect_rsp(4'h2, 1'b1, lanes, 1'b0);
       send_cmd(4'h3, SAP_OP_VCLEARCNT, 32'h0, 32'h0);
       expect_rsp(4'h3, 1'b1, 32'h0, 1'b0);
+      wait_rsp_retired();
 
       $dumpfile(activity_file);
       $dumpvars(0, sap_vpu_core_gate_tb);
@@ -232,8 +245,14 @@ module sap_vpu_core_gate_tb;
         policy_operands(name, i, rs1, rs2);
         send_cmd(i[3:0], SAP_OP_VDOT, rs1, rs2);
         expect_rsp(i[3:0], 1'b0, 32'h0, 1'b0);
+        total_output = total_output + rsp_data_o;
       end
+      wait_rsp_retired();
       $dumpoff;
+      if (total_output !== expected_total) begin
+        $fatal(1, "GATE_POLICY_FAIL: %s output total mismatch: got %0d expected %0d",
+               name, total_output, expected_total);
+      end
 
       send_cmd(4'h4, SAP_OP_VREADCNT, 32'(SAP_CNT_MAC_ACTIVE), 32'h0);
       expect_rsp(4'h4, 1'b1, 32'd512, 1'b0);
