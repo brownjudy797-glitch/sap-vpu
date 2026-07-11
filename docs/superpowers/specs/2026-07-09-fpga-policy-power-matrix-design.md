@@ -26,20 +26,25 @@ No RTL or CV32E40X source changes are required.
 Each row runs 512 VDOT commands using a deterministic 32-VDOT operand stream
 repeated 16 times. Policy setup completes before activity capture starts.
 
-| Policy | Precision | Sparse bitmap | Active-lane limit | Expected skipped products |
-| --- | --- | ---: | ---: | ---: |
-| `dense_int8` | INT8 | `0x0f` | 4 | 0 |
-| `static_int4` | INT4 | `0xff` | 8 | 0 |
-| `static_int2` | INT2 | `0xffff` | 16 | 0 |
-| `adaptive_int4` | INT4 | `0x0f` | 4 | 2048 |
-| `adaptive_sparse75` | INT4 | `0x03` | 2 | 3072 |
-| `adaptive_unstructured` | INT4 | `0x55` | 8 | 2048 |
-| `no_sparse` | INT4 | `0xff` | 4 | 2048 |
-| `no_lane` | INT4 | `0x0f` | 8 | 2048 |
-| `no_precision` | INT8 | `0x0f` | 4 | 0 |
+| Policy | Precision | Sparse bitmap | Active-lane limit | Expected skipped products | Expected output | Evidence role |
+| --- | --- | ---: | ---: | ---: | ---: | --- |
+| `dense_int8` | INT8 | `0x0f` | 4 | 0 | 12096 | dense baseline |
+| `static_int4` | INT4 | `0xff` | 8 | 0 | 14592 | precision policy |
+| `static_int2` | INT2 | `0xffff` | 16 | 0 | 5120 | precision policy |
+| `adaptive_int4` | INT4 | `0x0f` | 4 | 2048 | 7296 | combined runtime policy |
+| `adaptive_sparse75` | INT4 | `0x03` | 2 | 3072 | 3648 | structured sparsity point |
+| `adaptive_unstructured` | INT4 | `0x55` | 8 | 2048 | 7296 | unstructured sparsity point |
+| `no_sparse` | INT4 | `0xff` | 4 | 2048 | 7296 | runtime policy ablation |
+| `no_lane` | INT4 | `0x0f` | 8 | 2048 | 7296 | runtime policy ablation |
+| `no_precision` | INT8 | `0x0f` | 4 | 0 | 7296 | runtime policy ablation |
 
-Every row must report `MAC_ACTIVE=512` and the configured precision, bitmap,
-and lane state.
+Every row must report `MAC_ACTIVE=512`, the expected accumulated output, and
+the configured precision, bitmap, and lane state.
+
+The three `no_*` rows disable one runtime control source by configuration. They
+are policy-level switching-activity ablations, not synthesized hardware-removal
+ablations. Any paper claim about removing gating logic requires separate RTL
+variants and synthesis results.
 
 `dense_x4` is excluded because it only extends the same steady-state VPU
 activity. `dense_reuse` and `adaptive_reuse` are excluded because their
@@ -54,8 +59,10 @@ Extend `sap_vpu_core_gate_tb.sv` instead of creating nine copies.
   lane limit.
 - Accept `vcd=<path>` so each policy writes a separate activity file.
 - Wait for the Xilinx 100 ns global startup reset as the current smoke does.
-- Start VCD recording after policy setup and before the first VDOT.
-- Stop after 512 checked VDOT responses and counter validation.
+- Start VCD recording only after policy setup and its final response have fully
+  retired.
+- Stop VCD recording only after the 512th VDOT response has fully retired.
+- Check every VDOT response, the accumulated output, and the policy counters.
 - Print `GATE_POLICY_PASS: <name>` only after all checks pass.
 - Reject unknown policy names with `GATE_POLICY_FAIL`.
 
@@ -78,9 +85,19 @@ The runner:
 5. Runs the existing Vivado SAIF power Tcl once per policy.
 6. Fails on simulation failure, missing or empty artifacts, Vivado failure,
    `Power 33-332`, `Power 33-334`, or less than 99% matched design nets.
-7. Writes one CSV and one Markdown matrix containing total, dynamic, and static
-   power, confidence, matched nets, and normalized dynamic power versus
-   `dense_int8`.
+7. Validates SAIF `(TIMESCALE 1 ps)` and reads its capture duration.
+8. Writes one CSV and one Markdown matrix containing total, dynamic, and static
+   power, confidence, matched nets, normalized dynamic power versus
+   `dense_int8`, capture duration, and dynamic energy per VDOT.
+
+For the fixed 512-operation window:
+
+```text
+dynamic_pj_per_vdot = dynamic_w * duration_ps / 512
+```
+
+Dynamic power and dynamic energy per VDOT are the primary comparison metrics;
+total power remains visible but is dominated by device static power.
 
 All generated artifacts remain under ignored `work/fpga/`.
 
@@ -92,9 +109,9 @@ Expose one Make target that calls the PowerShell runner:
 make fpga-vpu-policy-power-matrix
 ```
 
-The target accepts existing checkpoint/netlist directory overrides and a
-Vivado installation override. The default remains Vivado 2023.2 at the
-currently documented Windows installation.
+The runner keeps the current 140 MHz DCP, functional netlist, and Ubuntu-20.04
+layout fixed. Only the Vivado installation and generated output directory need
+overrides. The default remains Vivado 2023.2 at the documented Windows path.
 
 ## Verification
 
@@ -103,12 +120,14 @@ currently documented Windows installation.
 - Each VCD, SAIF, Vivado log, and power report is non-empty.
 - Each Vivado run matches at least 99% of routed design nets.
 - No clock-consistency or excessive-reset-activity warning is present.
+- Every SAIF uses a 1 ps timescale and all nine capture durations match.
 - The summary contains exactly nine policies in the defined order.
 - `make plan-check`, `make lint`, and `git diff --check` pass.
 
 ## Evidence Boundary
 
 The resulting matrix may be described as a 140 MHz Artix-7 standalone VPU
-gate-level, SAIF-annotated policy power comparison. It must not be described as
-full-system TinyViT power, board-measured power, or final FPGA energy
+gate-level, SAIF-annotated runtime policy power comparison with estimated
+dynamic energy per VDOT. It must not be described as a hardware-removal
+ablation, full-system TinyViT power, board-measured power, or final FPGA energy
 efficiency.

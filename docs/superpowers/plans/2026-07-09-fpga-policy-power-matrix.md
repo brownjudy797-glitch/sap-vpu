@@ -4,7 +4,7 @@
 
 **Goal:** Generate and summarize nine 140 MHz standalone SAP-VPU gate-level SAIF power points matching the current TinyViT precision, sparsity, and gating policies.
 
-**Architecture:** Extend the existing gate testbench with a policy plusarg while preserving its default smoke mode. A Windows PowerShell runner compiles the XSim snapshot once, runs one isolated activity capture per policy, converts VCD to SAIF through WSL, invokes the existing Vivado power Tcl, validates annotation quality, and writes CSV/Markdown summaries.
+**Architecture:** The gate testbench now provides nine checked policy activity modes while preserving its default smoke mode. A small Windows PowerShell runner compiles XSim once, captures each policy, converts VCD to SAIF through WSL, invokes the existing Vivado power Tcl, and summarizes dynamic power and dynamic energy per VDOT.
 
 **Tech Stack:** SystemVerilog, XSim/Vivado 2023.2, Synopsys `vcd2saif` in Ubuntu-20.04 WSL, PowerShell 7/Windows PowerShell, GNU Make.
 
@@ -21,10 +21,14 @@ No RTL, CV32E40X, synthesis Tcl, or bare-metal kernel change is part of this pla
 
 ### Task 1: Add Policy Activity Mode to the Gate Testbench
 
+**Status:** Completed by `bb57e34` and tightened after review by `83ff1c0`.
+The implementation validates accumulated outputs, drains responses at both VCD
+boundaries, and makes an unknown policy exit nonzero.
+
 **Files:**
 - Modify: `tb/sap_vpu_core_gate_tb.sv`
 
-- [ ] **Step 1: Run a failing policy-mode check**
+- [x] **Step 1: Run a failing policy-mode check**
 
 Use the current compiled snapshot to prove that policy mode does not exist:
 
@@ -41,7 +45,7 @@ Select-String '\\wsl.localhost\Ubuntu-20.04\home\rime\Program\sap-vpu\work\fpga\
 Expected: no match because the existing testbench only prints
 `GATE_SMOKE_PASS`.
 
-- [ ] **Step 2: Add policy configuration and deterministic operands**
+- [x] **Step 2: Add policy configuration and deterministic operands**
 
 Add these testbench state variables:
 
@@ -60,29 +64,30 @@ bare-metal TinyViT smoke:
     output logic [1:0] precision,
     output logic [31:0] sparse,
     output logic [31:0] lanes,
-    output logic [31:0] expected_skip
+    output logic [31:0] expected_skip,
+    output logic [31:0] expected_total
   );
     begin
       if (name == "dense_int8") begin
-        precision = SAP_PREC_INT8; sparse = 32'h0f; lanes = 4; expected_skip = 0;
+        precision = SAP_PREC_INT8; sparse = 32'h0f; lanes = 4; expected_skip = 0; expected_total = 12096;
       end else if (name == "static_int4") begin
-        precision = SAP_PREC_INT4; sparse = 32'hff; lanes = 8; expected_skip = 0;
+        precision = SAP_PREC_INT4; sparse = 32'hff; lanes = 8; expected_skip = 0; expected_total = 14592;
       end else if (name == "static_int2") begin
-        precision = SAP_PREC_INT2; sparse = 32'hffff; lanes = 16; expected_skip = 0;
+        precision = SAP_PREC_INT2; sparse = 32'hffff; lanes = 16; expected_skip = 0; expected_total = 5120;
       end else if (name == "adaptive_int4") begin
-        precision = SAP_PREC_INT4; sparse = 32'h0f; lanes = 4; expected_skip = 2048;
+        precision = SAP_PREC_INT4; sparse = 32'h0f; lanes = 4; expected_skip = 2048; expected_total = 7296;
       end else if (name == "adaptive_sparse75") begin
-        precision = SAP_PREC_INT4; sparse = 32'h03; lanes = 2; expected_skip = 3072;
+        precision = SAP_PREC_INT4; sparse = 32'h03; lanes = 2; expected_skip = 3072; expected_total = 3648;
       end else if (name == "adaptive_unstructured") begin
-        precision = SAP_PREC_INT4; sparse = 32'h55; lanes = 8; expected_skip = 2048;
+        precision = SAP_PREC_INT4; sparse = 32'h55; lanes = 8; expected_skip = 2048; expected_total = 7296;
       end else if (name == "no_sparse") begin
-        precision = SAP_PREC_INT4; sparse = 32'hff; lanes = 4; expected_skip = 2048;
+        precision = SAP_PREC_INT4; sparse = 32'hff; lanes = 4; expected_skip = 2048; expected_total = 7296;
       end else if (name == "no_lane") begin
-        precision = SAP_PREC_INT4; sparse = 32'h0f; lanes = 8; expected_skip = 2048;
+        precision = SAP_PREC_INT4; sparse = 32'h0f; lanes = 8; expected_skip = 2048; expected_total = 7296;
       end else if (name == "no_precision") begin
-        precision = SAP_PREC_INT8; sparse = 32'h0f; lanes = 4; expected_skip = 0;
+        precision = SAP_PREC_INT8; sparse = 32'h0f; lanes = 4; expected_skip = 0; expected_total = 7296;
       end else begin
-        gate_fail($sformatf("unknown policy %s", name));
+        $fatal(1, "GATE_POLICY_FAIL: unknown policy %s", name);
       end
     end
   endtask
@@ -140,20 +145,32 @@ bare-metal tile; the software tile repeats those four blocks twice:
   endtask
 ```
 
-- [ ] **Step 3: Add the isolated 512-VDOT capture**
+- [x] **Step 3: Add the isolated 512-VDOT capture**
 
-Add this task after the existing response helper:
+Add this response-drain helper and policy task after the existing response
+helper:
 
 ```systemverilog
+  task automatic wait_rsp_retired;
+    begin
+      do begin
+        @(negedge clk_i);
+      end while (rsp_valid_o !== 1'b0);
+    end
+  endtask
+
   task automatic run_policy(input string name, input string activity_file);
     logic [1:0] precision;
     logic [31:0] sparse;
     logic [31:0] lanes;
     logic [31:0] expected_skip;
+    logic [31:0] expected_total;
+    logic [31:0] total_output;
     logic [31:0] rs1;
     logic [31:0] rs2;
     begin
-      policy_config(name, precision, sparse, lanes, expected_skip);
+      policy_config(name, precision, sparse, lanes, expected_skip, expected_total);
+      total_output = '0;
 
       send_cmd(4'h0, SAP_OP_VSETPREC, 32'(precision), 32'h0);
       expect_rsp(4'h0, 1'b1, 32'(precision), 1'b0);
@@ -163,6 +180,7 @@ Add this task after the existing response helper:
       expect_rsp(4'h2, 1'b1, lanes, 1'b0);
       send_cmd(4'h3, SAP_OP_VCLEARCNT, 32'h0, 32'h0);
       expect_rsp(4'h3, 1'b1, 32'h0, 1'b0);
+      wait_rsp_retired();
 
       $dumpfile(activity_file);
       $dumpvars(0, sap_vpu_core_gate_tb);
@@ -170,8 +188,13 @@ Add this task after the existing response helper:
         policy_operands(name, i, rs1, rs2);
         send_cmd(i[3:0], SAP_OP_VDOT, rs1, rs2);
         expect_rsp(i[3:0], 1'b0, 32'h0, 1'b0);
+        total_output = total_output + rsp_data_o;
       end
+      wait_rsp_retired();
       $dumpoff;
+      if (total_output !== expected_total) begin
+        $fatal(1, "GATE_POLICY_FAIL: %s output total mismatch", name);
+      end
 
       send_cmd(4'h4, SAP_OP_VREADCNT, 32'(SAP_CNT_MAC_ACTIVE), 32'h0);
       expect_rsp(4'h4, 1'b1, 32'd512, 1'b0);
@@ -202,7 +225,7 @@ After reset release, select policy mode before the current smoke sequence:
     $dumpvars(0, sap_vpu_core_gate_tb);
 ```
 
-- [ ] **Step 4: Rebuild and verify RED becomes GREEN**
+- [x] **Step 4: Rebuild and verify RED becomes GREEN**
 
 Run Verilator lint:
 
@@ -224,9 +247,11 @@ Expected:
 GATE_POLICY_PASS: dense_int8
 ```
 
-Run the snapshot without plusargs and verify `GATE_SMOKE_PASS` remains present.
+Run the snapshot without plusargs, all nine policies, and one invalid policy.
+Verify the smoke and nine policy pass markers, equal VCD durations, and a
+nonzero invalid-policy exit containing `GATE_POLICY_FAIL`.
 
-- [ ] **Step 5: Commit the testbench**
+- [x] **Step 5: Commit the testbench**
 
 ```bash
 git add tb/sap_vpu_core_gate_tb.sv
@@ -255,10 +280,7 @@ Create the runner with these public parameters and fixed default policy order:
 ```powershell
 param(
   [string]$VivadoRoot = 'D:\Xilinx_2023_02\Vivado\2023.2',
-  [string]$Dcp = 'work\fpga\vpu_core_sliced_140\checkpoints\post_route.dcp',
-  [string]$Netlist = 'work\fpga\vpu_core_sliced_140_funcsim\sap_vpu_core_funcsim.v',
   [string]$OutDir = 'work\fpga\vpu_core_policy_power_matrix',
-  [string]$WslDistro = 'Ubuntu-20.04',
   [string[]]$Policies = @(
     'dense_int8', 'static_int4', 'static_int2',
     'adaptive_int4', 'adaptive_sparse75', 'adaptive_unstructured',
@@ -268,6 +290,9 @@ param(
 
 $ErrorActionPreference = 'Stop'
 $repo = (Resolve-Path (Join-Path $PSScriptRoot '..')).Path
+$WslDistro = 'Ubuntu-20.04'
+$Dcp = 'work\fpga\vpu_core_sliced_140\checkpoints\post_route.dcp'
+$Netlist = 'work\fpga\vpu_core_sliced_140_funcsim\sap_vpu_core_funcsim.v'
 $settings = Join-Path $VivadoRoot 'settings64.bat'
 $vcd2saif = '/opt/synopsys/syn/L-2016.03-SP1/bin/vcd2saif'
 ```
@@ -280,7 +305,7 @@ if ($repo -notmatch '^\\\\wsl\.localhost\\([^\\]+)\\(.+)$') {
 }
 $detectedDistro = $Matches[1]
 $linuxRepo = '/' + ($Matches[2] -replace '\\', '/')
-if ($WslDistro -ne $detectedDistro) {
+if ($detectedDistro -ne $WslDistro) {
   throw "WSL distro mismatch: expected $detectedDistro, got $WslDistro"
 }
 ```
@@ -360,6 +385,14 @@ $linuxSaif = "$linuxRepo/" + ($saifRel -replace '\\', '/')
   -input $linuxVcd `
   -output $linuxSaif
 if ($LASTEXITCODE -ne 0) { throw "vcd2saif failed: $policy" }
+
+$saifText = Get-Content (Join-Path $repo $saifRel) -Raw
+if ($saifText -notmatch '\(TIMESCALE 1 ps\)') {
+  throw "Unexpected SAIF timescale: $policy"
+}
+$durationMatch = [regex]::Match($saifText, '\(DURATION (\d+)\)')
+if (-not $durationMatch.Success) { throw "Missing SAIF duration: $policy" }
+$durationPs = [long]$durationMatch.Groups[1].Value
 ```
 
 Run the existing Tcl:
@@ -406,6 +439,7 @@ $rows += [pscustomobject]@{
   confidence = Read-ReportField $report 'Confidence Level'
   nets_matched = $matchedCount
   design_nets = $designCount
+  duration_ps = $durationPs
 }
 ```
 
@@ -421,17 +455,23 @@ work/fpga/vpu_core_policy_power_matrix/fpga_vpu_policy_power_matrix.md
 CSV columns:
 
 ```text
-policy,total_w,dynamic_w,static_w,dynamic_vs_dense,confidence,nets_matched,design_nets
+policy,total_w,dynamic_w,static_w,dynamic_vs_dense,duration_ps,dynamic_pj_per_vdot,confidence,nets_matched,design_nets
 ```
 
-Compute `dynamic_vs_dense` as `row.dynamic_w / dense_int8.dynamic_w`. The
-Markdown table uses the same row order as `$Policies` and includes the
-standalone VPU evidence warning below the table.
+Require all nine `duration_ps` values to match. Compute `dynamic_vs_dense` as
+`row.dynamic_w / dense_int8.dynamic_w` and `dynamic_pj_per_vdot` as
+`row.dynamic_w * row.duration_ps / 512`. The Markdown table uses the same row
+order as `$Policies` and includes the standalone VPU evidence warning below the
+table.
 
 Use:
 
 ```powershell
 $denseDynamic = $rows[0].dynamic_w
+$durationPs = $rows[0].duration_ps
+if ($rows.Where({ $_.duration_ps -ne $durationPs })) {
+  throw 'Policy SAIF durations do not match'
+}
 $summaryRows = foreach ($row in $rows) {
   [pscustomobject]@{
     policy = $row.policy
@@ -439,6 +479,8 @@ $summaryRows = foreach ($row in $rows) {
     dynamic_w = $row.dynamic_w.ToString('0.000')
     static_w = $row.static_w.ToString('0.000')
     dynamic_vs_dense = ($row.dynamic_w / $denseDynamic).ToString('0.000')
+    duration_ps = $row.duration_ps
+    dynamic_pj_per_vdot = ($row.dynamic_w * $row.duration_ps / 512).ToString('0.000')
     confidence = $row.confidence
     nets_matched = $row.nets_matched
     design_nets = $row.design_nets
@@ -451,14 +493,14 @@ $summaryRows | Export-Csv -NoTypeInformation -Encoding UTF8 $csvPath
 
 $md = @(
   '# SAP-VPU FPGA Policy Power Matrix', '',
-  '| Policy | Total W | Dynamic W | Static W | Dynamic vs dense | Confidence | Nets matched |',
-  '| --- | ---: | ---: | ---: | ---: | --- | ---: |'
+  '| Policy | Total W | Dynamic W | Static W | Dynamic vs dense | Dynamic pJ/VDOT | Confidence | Nets matched |',
+  '| --- | ---: | ---: | ---: | ---: | ---: | --- | ---: |'
 )
 foreach ($row in $summaryRows) {
-  $md += "| $($row.policy) | $($row.total_w) | $($row.dynamic_w) | $($row.static_w) | $($row.dynamic_vs_dense) | $($row.confidence) | $($row.nets_matched)/$($row.design_nets) |"
+  $md += "| $($row.policy) | $($row.total_w) | $($row.dynamic_w) | $($row.static_w) | $($row.dynamic_vs_dense) | $($row.dynamic_pj_per_vdot) | $($row.confidence) | $($row.nets_matched)/$($row.design_nets) |"
 }
 $md += ''
-$md += 'Standalone 140 MHz SAP-VPU gate-level compute activity; not full-SoC, board-measured, or end-to-end TinyViT power.'
+$md += 'Standalone 140 MHz SAP-VPU runtime-policy activity; not a hardware-removal ablation, full-SoC, board-measured, or end-to-end TinyViT result.'
 $md | Set-Content -Encoding UTF8 $mdPath
 ```
 
@@ -506,8 +548,6 @@ Add:
 ```make
 POWERSHELL ?= powershell.exe
 VIVADO_ROOT_WINDOWS ?= D:\Xilinx_2023_02\Vivado\2023.2
-FPGA_POLICY_DCP ?= work\fpga\vpu_core_sliced_140\checkpoints\post_route.dcp
-FPGA_POLICY_NETLIST ?= work\fpga\vpu_core_sliced_140_funcsim\sap_vpu_core_funcsim.v
 FPGA_POLICY_POWER_DIR ?= work\fpga\vpu_core_policy_power_matrix
 ```
 
@@ -519,8 +559,6 @@ fpga-vpu-policy-power-matrix:
 	$(POWERSHELL) -NoProfile -ExecutionPolicy Bypass \
 	  -File scripts/run_fpga_vpu_policy_matrix.ps1 \
 	  -VivadoRoot '$(VIVADO_ROOT_WINDOWS)' \
-	  -Dcp '$(FPGA_POLICY_DCP)' \
-	  -Netlist '$(FPGA_POLICY_NETLIST)' \
 	  -OutDir '$(FPGA_POLICY_POWER_DIR)'
 ```
 
@@ -573,6 +611,7 @@ $csv = Import-Csv '\\wsl.localhost\Ubuntu-20.04\home\rime\Program\sap-vpu\work\f
 if ($csv.Count -ne 9) { throw "Expected 9 policy rows, got $($csv.Count)" }
 if (($csv.policy -join ',') -ne 'dense_int8,static_int4,static_int2,adaptive_int4,adaptive_sparse75,adaptive_unstructured,no_sparse,no_lane,no_precision') { throw 'Unexpected policy order' }
 if ($csv.Where({ [double]$_.nets_matched / [double]$_.design_nets -lt 0.99 })) { throw 'Low net annotation' }
+if (($csv.duration_ps | Select-Object -Unique).Count -ne 1) { throw 'Mismatched capture durations' }
 ```
 
 Expected: exit 0.
@@ -585,7 +624,11 @@ In `docs/SAP_VPU_FPGA_FLOW.md`:
 - Add the generated CSV and Markdown paths to the artifact list.
 - Add the nine-row generated Markdown table under the local checkpoint.
 - State that captures exclude reset and policy setup, use 512 VDOT operations,
-  and report standalone VPU compute power.
+  and report standalone VPU runtime-policy switching activity.
+- Report dynamic power, normalized dynamic power, and estimated dynamic pJ/VDOT
+  as the primary comparison; retain total/static power for context.
+- Label `no_sparse`, `no_lane`, and `no_precision` as runtime policy ablations,
+  not synthesized hardware-removal ablations.
 - Keep the explicit non-full-SoC, non-board, non-end-to-end boundary.
 - Do not claim energy per inference.
 
