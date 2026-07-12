@@ -25,12 +25,13 @@ The paper must keep these boundaries explicit:
 | CV-X-IF attachment | `corev_min_soc` enables `X_EXT` and connects SAP-VPU through the flattened adapter. | `make lint-corev-soc`, `make hello-smoke` |
 | VPU instruction path | Bare-metal custom-0 smoke covers base, precision, sparse, lane, and counter ops. | `make vpu-smoke` |
 | Paper workload | TinyViT MLP smoke now repeats an eight-block, 2-token x 2-output-channel policy tile 16 times, includes a 64-round `dense_x4` larger-shape row, and exports INT8/INT4/INT2 policy, 50% and 75% structured sparse policy counters, unstructured sparse counters, ablations, dense/adaptive reuse rows, and observed RAM tile traffic; current numbers remain smoke-only evidence. | `make tinyvit-paper-table`, `docs/SAP_VPU_TINYVIT_SMOKE_RECORD.md` |
-| FPGA evidence | Standalone `sap_vpu_core` Vivado batch flow is defined for Artix-7-class utilization, timing, and default-switching power reports; no FPGA number is claimed until `make fpga-vpu-synth` runs on a Vivado machine. | `make fpga-vpu-synth`, `docs/SAP_VPU_FPGA_FLOW.md` |
-| ASIC evidence | Standalone `sap_vpu_core` Synopsys DC flow is defined against the local TSMC28 standard-cell `.db` path; no open PDK library is used for ASIC numbers. | `make dc-vpu-synth`, `docs/SAP_VPU_ASIC_FLOW.md` |
+| FPGA evidence | Standalone `sap_vpu_core` is mapped for Artix-7 `xc7a35tcsg324-1`; the 140 MHz gate-level SAIF flow meets timing with +0.044 ns WNS. This is core-only timing/power evidence, not a board or full-SoC result. | `make fpga-vpu-policy-power-matrix`, `docs/SAP_VPU_FPGA_FLOW.md` |
+| ASIC evidence | Standalone `sap_vpu_core` is mapped with Synopsys DC against the local TSMC28 `tt0p9v85c` `.db` at 10 ns. Policy SAIF runs are reproducible but retain `PWR-452` partial annotation, so their absolute power is preliminary. | `make dc-vpu-policy-power-matrix`, `docs/SAP_VPU_ASIC_FLOW.md` |
 
 The next milestone is not another interface feature. The next milestone is a
-larger TinyViT-style kernel shape with clearer separation between compute,
-sparsity policy, and memory-traffic evidence.
+longer TinyViT-style policy activity window that separates real compute,
+sparsity policy, and memory-traffic behavior before any power-reduction claim
+is made.
 
 ## Contribution Spine
 

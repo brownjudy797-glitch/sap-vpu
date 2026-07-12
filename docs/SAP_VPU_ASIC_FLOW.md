@@ -78,6 +78,16 @@ make dc-vpu-tinyvit-saif-power \
   DC_REPORT_DIR=reports/dc/tsmc28/vpu_core_sliced_10ns_tinyvit_saif_power
 ```
 
+Run the nine-policy standalone activity matrix:
+
+```sh
+make dc-vpu-policy-power-matrix
+```
+
+This runs the gate testbench for every policy, requires the same SAIF capture
+duration and partial-annotation count for all rows, and writes a CSV and
+Markdown table under `work/dc/tsmc28/vpu_policy_matrix/`.
+
 Start or verify the Synopsys license server before running the target if
 `27000@localhost` is not already active.
 
@@ -148,6 +158,32 @@ Current local TSMC28 `tt0p9v85c`, 10 ns, standalone `sap_vpu_core` evidence:
 These are local reproducibility checkpoints. Re-generate the reports before
 using them in paper tables, and keep the run directory, command line, library
 corner, clock period, and SAIF annotation warnings with the cited number.
+
+## Policy Activity Matrix
+
+The following matrix uses the standalone TSMC28 `tt0p9v85c` mapped DDC at 10
+ns. Each policy executes the same 512-`VDOT` activity window of 18,350,364 ps;
+every SAIF run reports 2,216 unmatched objects through `PWR-452` and no
+`PWR-362` total-annotation failure.
+
+| Policy | Dynamic power | Total power | Dynamic energy / VDOT |
+| --- | ---: | ---: | ---: |
+| `dense_int8` | 601.6616 uW | 674.1901 uW | 21.5639 pJ |
+| `static_int4` | 599.6133 uW | 672.1935 uW | 21.4905 pJ |
+| `static_int2` | 596.8261 uW | 669.5863 uW | 21.3906 pJ |
+| `adaptive_int4` | 600.6980 uW | 673.3472 uW | 21.5293 pJ |
+| `adaptive_sparse75` | 601.8975 uW | 674.5482 uW | 21.5723 pJ |
+| `adaptive_unstructured` | 600.7056 uW | 673.3791 uW | 21.5296 pJ |
+| `no_sparse` | 600.7356 uW | 673.4441 uW | 21.5307 pJ |
+| `no_lane` | 600.7091 uW | 673.3624 uW | 21.5297 pJ |
+| `no_precision` | 601.2965 uW | 673.8261 uW | 21.5508 pJ |
+
+The 5.0714 uW dynamic range is 0.84% of the dense reference. This short,
+fixed-latency activity window is therefore a reproducibility and policy-path
+sanity check, not evidence of a material power reduction. It does not remove
+hardware blocks, model the full SoC or memory system, validate a board, or
+measure TinyViT end-to-end energy. The CSV and generated Markdown table remain
+ignored local artifacts and must be regenerated for a paper result.
 
 ## Clock Sweep Status
 
