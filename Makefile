@@ -16,6 +16,7 @@ VIVADO ?= vivado
 XVLOG ?= xvlog
 XELAB ?= xelab
 XSIM ?= xsim
+POWERSHELL ?= powershell.exe
 SIM_DIR ?= $(ROOT_DIR)/work/sim
 COREV_RTL_FLIST := $(ROOT_DIR)/work/corev_rtl.f
 RISCV_AS ?= riscv64-linux-gnu-as
@@ -56,6 +57,8 @@ FPGA_FUNCSIM_XSIM_DIR ?= $(FPGA_FUNCSIM_DIR)/xsim_gate
 FPGA_FUNCSIM_VCD ?= $(FPGA_FUNCSIM_XSIM_DIR)/sap_vpu_core_gate_tb.vcd
 FPGA_FUNCSIM_SAIF ?= $(FPGA_FUNCSIM_DIR)/sap_vpu_core_gate.saif
 FPGA_FUNCSIM_SAIF_POWER_DIR ?= $(ROOT_DIR)/work/fpga/vpu_core_sliced_140_funcsim_saif_power
+VIVADO_ROOT_WINDOWS ?= D:\Xilinx_2023_02\Vivado\2023.2
+FPGA_POLICY_POWER_DIR ?= work\fpga\vpu_core_policy_power_matrix
 DC_CLOCK_PERIOD ?= 10.0
 DC_WORK_DIR ?= $(ROOT_DIR)/work/dc/tsmc28/vpu_core
 DC_REPORT_DIR ?= $(ROOT_DIR)/reports/dc/tsmc28/vpu_core
@@ -63,7 +66,7 @@ DC_NETLIST_DIR ?= $(ROOT_DIR)/netlist/dc/tsmc28/vpu_core
 
 .DEFAULT_GOAL := help
 
-.PHONY: help plan-check corev-fetch corev-rtl-flist lint-adapter lint-core lint lint-corev-soc sim-adapter sim-core sim-core-vcd sim-hello sim-vpu sim-tinyvit sim-tinyvit-vcd sim encoding-check legacy-summary hello-build hello-smoke vpu-build vpu-smoke tinyvit-build tinyvit-smoke tinyvit-summary tinyvit-paper-table fpga-vpu-synth fpga-vpu-funcsim-netlist fpga-vpu-funcsim-vcd fpga-vpu-funcsim-saif fpga-vpu-funcsim-saif-power fpga-vpu-saif-power fpga-vpu-summary dc-vpu-precheck dc-vpu-synth dc-vpu-power dc-vpu-saif-power dc-vpu-tinyvit-saif-power dc-vpu-summary
+.PHONY: help plan-check corev-fetch corev-rtl-flist lint-adapter lint-core lint lint-corev-soc sim-adapter sim-core sim-core-vcd sim-hello sim-vpu sim-tinyvit sim-tinyvit-vcd sim encoding-check legacy-summary hello-build hello-smoke vpu-build vpu-smoke tinyvit-build tinyvit-smoke tinyvit-summary tinyvit-paper-table fpga-vpu-synth fpga-vpu-funcsim-netlist fpga-vpu-funcsim-vcd fpga-vpu-funcsim-saif fpga-vpu-funcsim-saif-power fpga-vpu-policy-power-matrix fpga-vpu-saif-power fpga-vpu-summary dc-vpu-precheck dc-vpu-synth dc-vpu-power dc-vpu-saif-power dc-vpu-tinyvit-saif-power dc-vpu-summary
 
 help:
 	@printf '%s\n' \
@@ -89,6 +92,7 @@ help:
 	  'make fpga-vpu-funcsim-netlist [FPGA_FUNCSIM_DCP=work/fpga/vpu_core_sliced_140/checkpoints/post_synth.dcp]' \
 	  'make fpga-vpu-funcsim-vcd' \
 	  'make fpga-vpu-funcsim-saif-power [FPGA_SAIF_DCP=work/fpga/vpu_core_sliced_140/checkpoints/post_route.dcp]' \
+	  'make fpga-vpu-policy-power-matrix' \
 	  'make fpga-vpu-saif-power [FPGA_SAIF_DCP=work/fpga/vpu_core_sliced_140/checkpoints/post_route.dcp]' \
 	  'make fpga-vpu-summary' \
 	  'make dc-vpu-precheck [DC_CLOCK_PERIOD=10.0]' \
@@ -108,6 +112,7 @@ plan-check:
 	test -f tb/corev_min_soc_vpu_tb.sv
 	test -f tb/corev_min_soc_tinyvit_tb.sv
 	test -f tb/sap_vpu_core_gate_tb.sv
+	test -f scripts/run_fpga_vpu_policy_matrix.ps1
 	test -f sw/baremetal/sap_vpu_custom.h
 	test -f sw/baremetal/hello.S
 	test -f sw/baremetal/vpu_smoke.S
@@ -358,6 +363,12 @@ fpga-vpu-funcsim-saif-power: fpga-vpu-funcsim-saif
 	mkdir -p "$(FPGA_FUNCSIM_SAIF_POWER_DIR)"
 	$(VIVADO) -mode batch -source scripts/vivado_vpu_saif_power.tcl \
 	  -tclargs "$(FPGA_SAIF_DCP)" "$(FPGA_FUNCSIM_SAIF)" "$(FPGA_FUNCSIM_SAIF_POWER_DIR)" "$(FPGA_SAIF_STRIP_PATH)"
+
+fpga-vpu-policy-power-matrix:
+	$(POWERSHELL) -NoProfile -ExecutionPolicy Bypass \
+	  -File scripts/run_fpga_vpu_policy_matrix.ps1 \
+	  -VivadoRoot '$(VIVADO_ROOT_WINDOWS)' \
+	  -OutDir '$(FPGA_POLICY_POWER_DIR)'
 
 fpga-vpu-saif-power: sim-core-vcd
 	$(VCD2SAIF) -input "$(VPU_CORE_VCD)" -output "$(VPU_CORE_SAIF)"
