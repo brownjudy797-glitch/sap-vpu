@@ -63,10 +63,13 @@ DC_CLOCK_PERIOD ?= 10.0
 DC_WORK_DIR ?= $(ROOT_DIR)/work/dc/tsmc28/vpu_core
 DC_REPORT_DIR ?= $(ROOT_DIR)/reports/dc/tsmc28/vpu_core
 DC_NETLIST_DIR ?= $(ROOT_DIR)/netlist/dc/tsmc28/vpu_core
+DC_POLICY_MATRIX_WORK_DIR ?= $(ROOT_DIR)/work/dc/tsmc28/vpu_policy_matrix
+DC_POLICY_MATRIX_REPORT_DIR ?= $(ROOT_DIR)/reports/dc/tsmc28/vpu_policy_matrix
+DC_POLICY_NETLIST_DIR ?= $(ROOT_DIR)/netlist/dc/tsmc28/vpu_core_sliced_10ns_nopower
 
 .DEFAULT_GOAL := help
 
-.PHONY: help plan-check corev-fetch corev-rtl-flist lint-adapter lint-core lint lint-corev-soc sim-adapter sim-core sim-core-vcd sim-hello sim-vpu sim-tinyvit sim-tinyvit-vcd sim encoding-check legacy-summary hello-build hello-smoke vpu-build vpu-smoke tinyvit-build tinyvit-smoke tinyvit-summary tinyvit-paper-table fpga-vpu-synth fpga-vpu-funcsim-netlist fpga-vpu-funcsim-vcd fpga-vpu-funcsim-saif fpga-vpu-funcsim-saif-power fpga-vpu-policy-power-matrix fpga-vpu-saif-power fpga-vpu-summary dc-vpu-precheck dc-vpu-synth dc-vpu-power dc-vpu-saif-power dc-vpu-tinyvit-saif-power dc-vpu-summary
+.PHONY: help plan-check corev-fetch corev-rtl-flist lint-adapter lint-core lint lint-corev-soc sim-adapter sim-core sim-core-vcd sim-hello sim-vpu sim-tinyvit sim-tinyvit-vcd sim encoding-check legacy-summary hello-build hello-smoke vpu-build vpu-smoke tinyvit-build tinyvit-smoke tinyvit-summary tinyvit-paper-table fpga-vpu-synth fpga-vpu-funcsim-netlist fpga-vpu-funcsim-vcd fpga-vpu-funcsim-saif fpga-vpu-funcsim-saif-power fpga-vpu-policy-power-matrix fpga-vpu-saif-power fpga-vpu-summary dc-vpu-precheck dc-vpu-synth dc-vpu-power dc-vpu-saif-power dc-vpu-tinyvit-saif-power dc-vpu-policy-power-matrix dc-vpu-summary
 
 help:
 	@printf '%s\n' \
@@ -100,6 +103,7 @@ help:
 	  'make dc-vpu-power [DC_NETLIST_DIR=netlist/dc/tsmc28/vpu_core]' \
 	  'make dc-vpu-saif-power [DC_NETLIST_DIR=netlist/dc/tsmc28/vpu_core]' \
 	  'make dc-vpu-tinyvit-saif-power [DC_NETLIST_DIR=netlist/dc/tsmc28/vpu_core]' \
+	  'make dc-vpu-policy-power-matrix' \
 	  'make dc-vpu-summary'
 
 plan-check:
@@ -126,6 +130,7 @@ plan-check:
 	test -x scripts/summarize_vivado_reports.py
 	test -f scripts/dc_vpu_synth.tcl
 	test -x scripts/run_dc_vpu_synth.sh
+	test -x scripts/run_dc_vpu_policy_matrix.sh
 	test -x scripts/summarize_dc_reports.py
 	test -f docs/SAP_VPU_RESEARCH_PLAN.md
 	test -f docs/SAP_VPU_LITERATURE_MATRIX.md
@@ -414,6 +419,12 @@ dc-vpu-tinyvit-saif-power: sim-tinyvit-vcd
 	  DDC_FILE="$(DC_NETLIST_DIR)/sap_vpu_core.ddc" \
 	  SAIF_FILE="$(TINYVIT_SAIF)" SAIF_INSTANCE="$(TINYVIT_SAIF_INSTANCE)" \
 	  scripts/run_dc_vpu_synth.sh
+
+dc-vpu-policy-power-matrix:
+	DC_POLICY_MATRIX_WORK_DIR="$(DC_POLICY_MATRIX_WORK_DIR)" \
+	  DC_POLICY_MATRIX_REPORT_DIR="$(DC_POLICY_MATRIX_REPORT_DIR)" \
+	  DC_NETLIST_DIR="$(DC_POLICY_NETLIST_DIR)" \
+	  scripts/run_dc_vpu_policy_matrix.sh
 
 dc-vpu-summary:
 	$(PYTHON) scripts/summarize_dc_reports.py "$(DC_WORK_DIR)" "$(DC_REPORT_DIR)"
