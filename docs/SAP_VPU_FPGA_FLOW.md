@@ -57,6 +57,13 @@ make fpga-vpu-funcsim-saif-power \
   FPGA_FUNCSIM_SAIF_POWER_DIR=work/fpga/vpu_core_sliced_140_funcsim_saif_power
 ```
 
+Run the 512-VDOT TinyViT-oriented runtime-policy matrix through the same
+post-synthesis functional netlist and routed checkpoint:
+
+```sh
+make fpga-vpu-policy-power-matrix
+```
+
 Summarize generated reports:
 
 ```sh
@@ -78,6 +85,8 @@ The flow writes:
 - `work/fpga/vpu_core_sliced_140_funcsim/xsim_gate/sap_vpu_core_gate_tb.vcd`
 - `work/fpga/vpu_core_sliced_140_funcsim/sap_vpu_core_gate.saif`
 - `work/fpga/vpu_core_sliced_140_funcsim_saif_power/reports/post_route_saif_power.rpt`
+- `work/fpga/vpu_core_policy_power_matrix/fpga_vpu_policy_power_matrix.csv`
+- `work/fpga/vpu_core_policy_power_matrix/fpga_vpu_policy_power_matrix.md`
 - `work/fpga/vpu_core/checkpoints/post_synth.dcp`
 - `work/fpga/vpu_core/checkpoints/post_route.dcp`
 
@@ -99,6 +108,13 @@ The flow writes:
 - The gate-level smoke runs at the checkpoint's 140 MHz constraint and records
   activity only after reset release. The current SAIF power run has no Vivado
   clock-consistency or excessive-reset-activity warning.
+- The policy matrix records each 512-VDOT window after policy setup and after
+  the setup response has retired; capture ends after the final VDOT response
+  retires. It reports runtime policy switching activity, not RTL variants with
+  sparse, lane, or precision hardware removed.
+- Matrix comparison should use dynamic power and SAIF-derived dynamic pJ/VDOT.
+  Vivado reports power to 0.001 W here, so a table entry equal at that precision
+  is not evidence that the underlying policies have identical power.
 - Timing pass/fail is checked at the requested `FPGA_CLOCK_MHZ`; the Tcl exits
   nonzero on negative post-route worst slack.
 - Generated reports remain under ignored `work/` and must not be committed.
@@ -138,10 +154,31 @@ to show that the Vivado activity import path exists. The gate-level SAIF number
 is the current best local FPGA activity-power checkpoint, but it still carries
 the standalone-core boundary and is not representative TinyViT workload power.
 
+Current TinyViT-oriented runtime-policy gate SAIF matrix on the same 140 MHz
+checkpoint. Each row has a 18,295,784 ps capture window, `4673/4691` matched
+nets, High confidence, and no `Power 33-332/334` warning.
+
+| Policy | Total W | Dynamic W | Static W | Dynamic vs dense | Dynamic pJ/VDOT |
+| --- | ---: | ---: | ---: | ---: | ---: |
+| `dense_int8` | 0.086 | 0.016 | 0.070 | 1.000 | 571.743 |
+| `static_int4` | 0.087 | 0.017 | 0.070 | 1.063 | 607.477 |
+| `static_int2` | 0.086 | 0.016 | 0.070 | 1.000 | 571.743 |
+| `adaptive_int4` | 0.086 | 0.016 | 0.070 | 1.000 | 571.743 |
+| `adaptive_sparse75` | 0.086 | 0.016 | 0.070 | 1.000 | 571.743 |
+| `adaptive_unstructured` | 0.086 | 0.016 | 0.070 | 1.000 | 571.743 |
+| `no_sparse` | 0.086 | 0.016 | 0.070 | 1.000 | 571.743 |
+| `no_lane` | 0.086 | 0.016 | 0.070 | 1.000 | 571.743 |
+| `no_precision` | 0.085 | 0.015 | 0.070 | 0.938 | 536.009 |
+
+This is a standalone 140 MHz VPU compute comparison. It is not a
+hardware-removal ablation, full-SoC TinyViT power, board power, or energy per
+inference.
+
 ## Next FPGA Steps
 
 1. Re-run the 140 MHz checkpoint after any RTL datapath change.
-2. Replace smoke activity with a representative TinyViT kernel activity window
-   before using the power number in a paper table.
+2. Broaden the runtime activity from this deterministic tile to a larger MLP
+   shape before treating dynamic-power differences below Vivado report
+   resolution as evidence.
 3. Add a board-level top and constraints only after the standalone VPU-core
    report remains reproducible.
