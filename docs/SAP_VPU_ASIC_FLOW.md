@@ -144,6 +144,10 @@ Generated reports and netlists remain ignored local artifacts.
 - SAIF power runs may emit `PWR-452` partial annotation warnings. They are not
   the same as a total annotation failure, but the unmatched-object count must be
   reported with any activity-power number.
+- A 2026-07-12 operand-isolation trial reached analyze/elaborate but triggered
+  an internal DC L-2016.03-SP1 Pass 1 mapping failure under both the default
+  and low-map configurations. It produced no mapped DDC, so no post-change ASIC
+  PPA comparison is available from this installation.
 
 ## Local Checkpoint
 

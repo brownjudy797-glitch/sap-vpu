@@ -3,7 +3,7 @@
 module sap_vpu_core_gate_tb;
   import sap_vpu_pkg::*;
 
-  localparam realtime CLK_HALF_PERIOD_NS = 3.5715;
+  localparam realtime DEFAULT_CLK_HALF_PERIOD_NS = 3.5715;
 
   logic       clk_i;
   logic       rst_ni;
@@ -21,6 +21,7 @@ module sap_vpu_core_gate_tb;
   logic        rsp_exc_o;
   string       policy_name;
   string       vcd_file;
+  realtime     clk_half_period_ns = DEFAULT_CLK_HALF_PERIOD_NS;
 
   sap_vpu_core dut (
     .clk_i(clk_i),
@@ -39,7 +40,14 @@ module sap_vpu_core_gate_tb;
     .rsp_exc_o(rsp_exc_o)
   );
 
-  always #(CLK_HALF_PERIOD_NS) clk_i = ~clk_i;
+  always #(clk_half_period_ns) clk_i = ~clk_i;
+
+  initial begin
+    if ($value$plusargs("clock_half_ns=%f", clk_half_period_ns) &&
+        (clk_half_period_ns <= 0.0)) begin
+      $fatal(1, "clock_half_ns must be positive");
+    end
+  end
 
   task automatic gate_fail(input string message);
     begin

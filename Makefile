@@ -59,6 +59,9 @@ FPGA_FUNCSIM_SAIF ?= $(FPGA_FUNCSIM_DIR)/sap_vpu_core_gate.saif
 FPGA_FUNCSIM_SAIF_POWER_DIR ?= $(ROOT_DIR)/work/fpga/vpu_core_sliced_140_funcsim_saif_power
 VIVADO_ROOT_WINDOWS ?= D:\Xilinx_2023_02\Vivado\2023.2
 FPGA_POLICY_POWER_DIR ?= work\fpga\vpu_core_policy_power_matrix
+FPGA_POLICY_DCP ?= work\fpga\vpu_core_sliced_140\checkpoints\post_route.dcp
+FPGA_POLICY_NETLIST ?= work\fpga\vpu_core_sliced_140_funcsim\sap_vpu_core_funcsim.v
+FPGA_POLICY_CLOCK_MHZ ?= 140
 DC_CLOCK_PERIOD ?= 10.0
 DC_WORK_DIR ?= $(ROOT_DIR)/work/dc/tsmc28/vpu_core
 DC_REPORT_DIR ?= $(ROOT_DIR)/reports/dc/tsmc28/vpu_core
@@ -373,7 +376,10 @@ fpga-vpu-policy-power-matrix:
 	$(POWERSHELL) -NoProfile -ExecutionPolicy Bypass \
 	  -File scripts/run_fpga_vpu_policy_matrix.ps1 \
 	  -VivadoRoot '$(VIVADO_ROOT_WINDOWS)' \
-	  -OutDir '$(FPGA_POLICY_POWER_DIR)'
+	  -OutDir '$(FPGA_POLICY_POWER_DIR)' \
+	  -Dcp '$(FPGA_POLICY_DCP)' \
+	  -Netlist '$(FPGA_POLICY_NETLIST)' \
+	  -ClockMhz '$(FPGA_POLICY_CLOCK_MHZ)'
 
 fpga-vpu-saif-power: sim-core-vcd
 	$(VCD2SAIF) -input "$(VPU_CORE_VCD)" -output "$(VPU_CORE_SAIF)"

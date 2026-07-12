@@ -1,6 +1,9 @@
 param(
   [string]$VivadoRoot = 'D:\Xilinx_2023_02\Vivado\2023.2',
   [string]$OutDir = 'work\fpga\vpu_core_policy_power_matrix',
+  [string]$Dcp = 'work\fpga\vpu_core_sliced_140\checkpoints\post_route.dcp',
+  [string]$Netlist = 'work\fpga\vpu_core_sliced_140_funcsim\sap_vpu_core_funcsim.v',
+  [double]$ClockMhz = 140.0,
   [string[]]$Policies = @(
     'dense_int8', 'static_int4', 'static_int2',
     'adaptive_int4', 'adaptive_sparse75', 'adaptive_unstructured',
@@ -11,8 +14,6 @@ param(
 $ErrorActionPreference = 'Stop'
 $repo = (Get-Item (Join-Path $PSScriptRoot '..')).FullName
 $WslDistro = 'Ubuntu-20.04'
-$Dcp = 'work\fpga\vpu_core_sliced_140\checkpoints\post_route.dcp'
-$Netlist = 'work\fpga\vpu_core_sliced_140_funcsim\sap_vpu_core_funcsim.v'
 $settings = Join-Path $VivadoRoot 'settings64.bat'
 $vcd2saif = '/opt/synopsys/syn/L-2016.03-SP1/bin/vcd2saif'
 
@@ -24,8 +25,11 @@ $linuxRepo = '/' + ($Matches[2] -replace '\\', '/')
 if ($detectedDistro -ne $WslDistro) {
   throw "WSL distro mismatch: expected $WslDistro, got $detectedDistro"
 }
-if ([IO.Path]::IsPathRooted($OutDir) -or $OutDir -match '(^|[\\/])\.\.([\\/]|$)') {
-  throw "OutDir must be repository-relative: $OutDir"
+if ($ClockMhz -le 0.0) { throw 'ClockMhz must be positive' }
+foreach ($path in @($OutDir, $Dcp, $Netlist)) {
+  if ([IO.Path]::IsPathRooted($path) -or $path -match '(^|[\\/])\.\.([\\/]|$)') {
+    throw "Path must be repository-relative: $path"
+  }
 }
 if (!$Policies -or $Policies -cnotcontains 'dense_int8') {
   throw 'Policies must include dense_int8 for normalization'
@@ -36,6 +40,7 @@ if (@($Policies | Select-Object -Unique).Count -ne $Policies.Count) {
 foreach ($policy in $Policies) {
   if ($policy -notmatch '^[A-Za-z0-9_]+$') { throw "Invalid policy name: $policy" }
 }
+$clockHalfNs = (500.0 / $ClockMhz).ToString('0.############', [cultureinfo]::InvariantCulture)
 foreach ($path in @(
   $settings,
   (Join-Path $repo $Dcp),
@@ -78,7 +83,7 @@ foreach ($policy in $Policies) {
   New-Item -ItemType Directory -Force $policyPath | Out-Null
 
   Invoke-VivadoCmd (
-    'pushd "{0}" && xsim --nolog -R --testplusarg "{{policy={1} vcd=../{1}/{1}.vcd}}" sap_vpu_core_gate_tb_snapshot' -f $xsimDir, $policy
+    'pushd "{0}" && xsim --nolog -R --testplusarg "{{policy={1} vcd=../{1}/{1}.vcd clock_half_ns={2}}}" sap_vpu_core_gate_tb_snapshot' -f $xsimDir, $policy, $clockHalfNs
   ) $xsimLogRel
   foreach ($path in @((Join-Path $repo $vcdRel), (Join-Path $repo $xsimLogRel))) {
     if (!(Test-Path -LiteralPath $path) -or (Get-Item -LiteralPath $path).Length -eq 0) {
@@ -151,6 +156,7 @@ if ($rows | Where-Object { $_.duration_ps -ne $durationPs }) { throw 'Policy SAI
 $summaryRows = foreach ($row in $rows) {
   [pscustomobject]@{
     policy = $row.policy
+    clock_mhz = $ClockMhz.ToString('0.###', [cultureinfo]::InvariantCulture)
     total_w = $row.total_w.ToString('0.000', [cultureinfo]::InvariantCulture)
     dynamic_w = $row.dynamic_w.ToString('0.000', [cultureinfo]::InvariantCulture)
     static_w = $row.static_w.ToString('0.000', [cultureinfo]::InvariantCulture)
@@ -168,14 +174,14 @@ $mdPath = Join-Path $outPath 'fpga_vpu_policy_power_matrix.md'
 $summaryRows | Export-Csv -NoTypeInformation -Encoding UTF8 $csvPath
 $md = @(
   '# SAP-VPU FPGA Policy Power Matrix', '',
-  '| Policy | Total W | Dynamic W | Static W | Dynamic vs dense | Duration ps | Dynamic pJ/VDOT | Confidence | Nets matched |',
-  '| --- | ---: | ---: | ---: | ---: | ---: | ---: | --- | ---: |'
+  '| Policy | Clock MHz | Total W | Dynamic W | Static W | Dynamic vs dense | Duration ps | Dynamic pJ/VDOT | Confidence | Nets matched |',
+  '| --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | --- | ---: |'
 )
 foreach ($row in $summaryRows) {
-  $md += "| $($row.policy) | $($row.total_w) | $($row.dynamic_w) | $($row.static_w) | $($row.dynamic_vs_dense) | $($row.duration_ps) | $($row.dynamic_pj_per_vdot) | $($row.confidence) | $($row.nets_matched)/$($row.design_nets) |"
+  $md += "| $($row.policy) | $($row.clock_mhz) | $($row.total_w) | $($row.dynamic_w) | $($row.static_w) | $($row.dynamic_vs_dense) | $($row.duration_ps) | $($row.dynamic_pj_per_vdot) | $($row.confidence) | $($row.nets_matched)/$($row.design_nets) |"
 }
 $md += ''
-$md += 'Standalone 140 MHz SAP-VPU runtime-policy activity, not a hardware-removal ablation, full-SoC, board, or end-to-end result.'
+$md += "Standalone $($ClockMhz.ToString('0.###', [cultureinfo]::InvariantCulture)) MHz SAP-VPU runtime-policy activity, not a hardware-removal ablation, full-SoC, board, or end-to-end result."
 $md | Set-Content -Encoding UTF8 $mdPath
 foreach ($path in @($csvPath, $mdPath)) {
   if (!(Test-Path -LiteralPath $path) -or (Get-Item -LiteralPath $path).Length -eq 0) {

@@ -64,6 +64,18 @@ post-synthesis functional netlist and routed checkpoint:
 make fpga-vpu-policy-power-matrix
 ```
 
+The policy runner defaults to the 140 MHz checkpoint, but can be pointed at a
+different matched checkpoint and functional netlist. The XSim clock is derived
+from `FPGA_POLICY_CLOCK_MHZ`, so it must match the routed DCP constraint:
+
+```sh
+make fpga-vpu-policy-power-matrix \
+  FPGA_POLICY_DCP=work/fpga/example/checkpoints/post_route.dcp \
+  FPGA_POLICY_NETLIST=work/fpga/example_funcsim/sap_vpu_core_funcsim.v \
+  FPGA_POLICY_CLOCK_MHZ=135 \
+  FPGA_POLICY_POWER_DIR=work/fpga/example_policy_power
+```
+
 Summarize generated reports:
 
 ```sh
@@ -105,9 +117,9 @@ The flow writes:
   the exported post-synthesis functional netlist. It is stronger than RTL-SAIF
   smoke because it annotates almost all routed nets, but it is still standalone
   VPU-core activity, not TinyViT or full-SoC activity.
-- The gate-level smoke runs at the checkpoint's 140 MHz constraint and records
-  activity only after reset release. The current SAIF power run has no Vivado
-  clock-consistency or excessive-reset-activity warning.
+- The gate-level smoke uses `FPGA_POLICY_CLOCK_MHZ` and records activity only
+  after reset release. Its frequency must match the routed checkpoint; the
+  runner rejects Vivado `Power 33-332/334` clock-consistency warnings.
 - The policy matrix records each 512-VDOT window after policy setup and after
   the setup response has retired; capture ends after the final VDOT response
   retires. It reports runtime policy switching activity, not RTL variants with
@@ -174,11 +186,23 @@ This is a standalone 140 MHz VPU compute comparison. It is not a
 hardware-removal ablation, full-SoC TinyViT power, board power, or energy per
 inference.
 
+## Rejected Operand-Isolation Trial
+
+An experimental RTL variant that masked inputs of unselected precision
+multipliers was evaluated and then removed. It passed at 135 MHz with +0.019 ns
+WNS and used 2062 LUTs / 746 FFs, but failed at 140 MHz with -0.092 ns WNS.
+Its complete 135 MHz gate-SAIF matrix had 4855/4862 matched nets, High
+confidence, and no consistent policy-level dynamic-power reduction at Vivado's
+0.001 W reporting resolution. It is not part of the current design or a
+paper-facing result.
+
 ## Next FPGA Steps
 
 1. Re-run the 140 MHz checkpoint after any RTL datapath change.
 2. Broaden the runtime activity from this deterministic tile to a larger MLP
    shape before treating dynamic-power differences below Vivado report
    resolution as evidence.
-3. Add a board-level top and constraints only after the standalone VPU-core
+3. Add a structured sparse scheduling path that eliminates whole inactive VDOT
+   operations before claiming sparse speedup from the TinyViT kernel.
+4. Add a board-level top and constraints only after the standalone VPU-core
    report remains reproducible.
