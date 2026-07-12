@@ -1258,6 +1258,71 @@ _start:
   sw t6, 260(s2)
   sw t2, 264(s2)
 
+  sap_r 0x1d, 0x0, 0, 0, 0      /* VCLEARCNT x0, x0, x0 */
+
+  /* Structured 75% sparse schedule: issue only the live INT4 vector chunks. */
+  read_csr 8, 0xb00              /* s0 = mcycle */
+  read_csr 9, 0xb02              /* s1 = minstret */
+
+  li t0, 1
+  sap_r 0x18, 0x0, 0, 5, 0      /* VSETPREC INT4 */
+
+  li t0, 0xff
+  sap_r 0x1c, 0x0, 0, 5, 0      /* VSETSPARSE_BMP dense live chunks */
+
+  li t0, 8
+  sap_r 0x1b, 0x0, 0, 5, 0      /* VSETLANE 8 */
+
+  li t5, 0
+  li a0, 128                     /* One live vector per four logical vectors. */
+1:
+  lw t0, TILE_INT4_BASE + 0(a1)
+  lw t1, TILE_INT4_BASE + 8(a1)
+  sap_r 0x10, 0x0, 28, 5, 6
+  add t5, t5, t3
+
+  addi a0, a0, -1
+  bnez a0, 1b
+
+  li t4, 1024
+  bne t5, t4, fail_policy_sparse75_schedule_output
+
+  li t0, 2
+  sap_r 0x1a, 0x0, 28, 5, 0     /* VREADCNT MAC_ACTIVE */
+  mv s6, t3
+  li t4, 128
+  bne s6, t4, fail_policy_sparse75_schedule_mac
+
+  li t0, 3
+  sap_r 0x1a, 0x0, 28, 5, 0     /* VREADCNT SKIPPED */
+  mv s7, t3
+  bnez s7, fail_policy_sparse75_schedule_skip
+
+  li t0, 4
+  sap_r 0x1a, 0x0, 28, 5, 0     /* VREADCNT SPARSE */
+  mv s8, t3
+  li t4, 0xff
+  bne s8, t4, fail_policy_sparse75_schedule_sparse
+
+  li t0, 5
+  sap_r 0x1a, 0x0, 28, 5, 0     /* VREADCNT LANE */
+  mv s9, t3
+  li t4, 8
+  bne s9, t4, fail_policy_sparse75_schedule_lane
+
+  read_csr 31, 0xb00             /* t6 = scheduled sparse cycle delta */
+  sub t6, t6, s0
+  read_csr 7, 0xb02              /* t2 = scheduled sparse instret delta */
+  sub t2, t2, s1
+  li s2, RESULT_BASE
+  sw t5, 320(s2)
+  sw s6, 324(s2)
+  sw s7, 328(s2)
+  sw s8, 332(s2)
+  sw s9, 336(s2)
+  sw t6, 340(s2)
+  sw t2, 344(s2)
+
   exit_with 1
 
 fail_dense_output:
@@ -1346,6 +1411,21 @@ fail_policy_sparse75_sparse:
 
 fail_policy_sparse75_lane:
   exit_with 90
+
+fail_policy_sparse75_schedule_output:
+  exit_with 91
+
+fail_policy_sparse75_schedule_mac:
+  exit_with 92
+
+fail_policy_sparse75_schedule_skip:
+  exit_with 93
+
+fail_policy_sparse75_schedule_sparse:
+  exit_with 94
+
+fail_policy_sparse75_schedule_lane:
+  exit_with 95
 
 fail_policy_reuse_output:
   exit_with 36

@@ -17,8 +17,9 @@ Current boundary:
   final performance claim.
 - Operand and weight words are loaded from a deterministic RAM tile. The traffic
   numbers are still smoke-kernel tile traffic, not a final cache/off-chip model.
-- The skip ratio is product-level, computed from issued VDOT lanes and the
-  hardware skipped-products counter rather than raw VDOT issue count.
+- The skip ratio is product-level. It distinguishes VPU hardware bitmap skips
+  from software-scheduled whole-vector skips, rather than treating raw VDOT
+  issue count as a hardware skip counter.
 - FPGA and ASIC PPA are not covered by this record.
 
 ## Reproduction
@@ -63,14 +64,18 @@ The current smoke covers the next paper-roadmap evidence hooks:
   bitmap policy row.
 - A structured `adaptive_sparse75` policy row with 25% active INT4 lanes and
   75% product-level skip.
+- A structured `adaptive_sparse75_schedule` row that schedules one live INT4
+  vector for every four logical vectors. It preserves 1,024 active products,
+  records 3,072 software-scheduled skips, and issues 128 VDOTs instead of 512.
 - Three policy-level ablations: no sparse skip, no lane gating, and no
   precision gating.
-- Testbench assertion that the smoke performs 11008 operand/weight reads from
+- Testbench assertion that the smoke performs 11264 operand/weight reads from
   the RAM tile scratch region.
 - CSV export for observed per-kernel operand reads, weight reads, and total RAM
   tile reads.
-- Counter export for cycles, instruction count, MAC active count, skip count,
-  sparse state, lane state, and RAM-loaded packed-word tile traffic.
+- Counter export for cycles, instruction count, MAC active count, hardware skip
+  count, software-scheduled skip count, sparse state, lane state, and
+  RAM-loaded packed-word tile traffic.
 - Derived compute-shape reporting for vector lanes, issued VDOT ops, active
   products, skipped products, and active products per cycle.
 
@@ -84,6 +89,15 @@ still too small for final performance claims.
 The `dense_reuse` and `adaptive_reuse` rows are direct memory-reuse sanity
 checks: they preserve the corresponding output and VDOT count while reducing
 repeated weight loads inside each block.
+
+`adaptive_sparse75_schedule` is a software mapping experiment, not a new VPU
+hardware sparse-skip mechanism. In the current smoke it uses 128 issued VDOTs,
+1,024 active products, 3,072 scheduled product skips, 256 RAM tile reads, and
+1,700 cycles. The existing bitmap-only `adaptive_sparse75` row has the same
+counter-visible active-product count but 512 issued VDOTs, 768 RAM tile reads,
+and 4,696 cycles. The 2.762x cycle ratio is therefore useful evidence that a
+structured workload schedule can reduce issued work and traffic; it is not a
+direct hardware-bitmap speedup or a final TinyViT claim.
 
 Use this record to justify that SAP-VPU now has a repeatable TinyViT-oriented
 kernel path. The next evidence step should broaden the kernel shape, add more

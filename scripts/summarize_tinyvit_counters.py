@@ -53,6 +53,11 @@ def as_int(row: dict[str, str], key: str) -> int:
     return int(row[key], 0)
 
 
+def as_int_or_zero(row: dict[str, str], key: str) -> int:
+    value = row.get(key)
+    return int(value, 0) if value else 0
+
+
 def skip_ratio(row: dict[str, str]) -> float:
     counts = product_counts(row)
     active = counts.active_total
@@ -71,12 +76,15 @@ def vector_lanes(row: dict[str, str]) -> int:
 def product_counts(row: dict[str, str]) -> ProductCounts:
     lanes = vector_lanes(row)
     dot_ops = as_int(row, "mac_active")
-    skipped_total = as_int(row, "skip")
-    issued_total = dot_ops * lanes
+    hardware_skipped = as_int(row, "skip")
+    scheduled_skipped = as_int_or_zero(row, "scheduled_skip")
+    active_total = (dot_ops * lanes) - hardware_skipped
+    skipped_total = hardware_skipped + scheduled_skipped
+    issued_total = active_total + skipped_total
     return ProductCounts(
         vector_lanes=lanes,
         issued_total=issued_total,
-        active_total=issued_total - skipped_total,
+        active_total=active_total,
         skipped_total=skipped_total,
     )
 
@@ -90,12 +98,20 @@ def dense_baseline(rows: list[dict[str, str]]) -> dict[str, str]:
     raise ValueError("missing nonzero dense baseline cycle count")
 
 
+def logical_vdot_ops(row: dict[str, str]) -> int:
+    lanes = vector_lanes(row)
+    scheduled_skipped = as_int_or_zero(row, "scheduled_skip")
+    if scheduled_skipped % lanes:
+        raise ValueError(f"{row['kernel']} scheduled_skip is not lane-aligned")
+    return as_int(row, "mac_active") + (scheduled_skipped // lanes)
+
+
 def dense_speedup(row: dict[str, str], baseline: dict[str, str]) -> float:
     cycles = as_int(row, "cycle_delta")
-    baseline_mac = as_int(baseline, "mac_active")
-    if cycles <= 0 or baseline_mac <= 0:
+    baseline_vdots = logical_vdot_ops(baseline)
+    if cycles <= 0 or baseline_vdots <= 0:
         return 0.0
-    normalized_dense_cycles = as_int(baseline, "cycle_delta") * as_int(row, "mac_active") / baseline_mac
+    normalized_dense_cycles = as_int(baseline, "cycle_delta") * logical_vdot_ops(row) / baseline_vdots
     return normalized_dense_cycles / cycles
 
 
@@ -240,6 +256,11 @@ def self_test() -> int:
     assert product_counts(rows[8]) == ProductCounts(16, 8192, 8192, 0)
     assert skip_ratio(rows[3]) == 0.5
     assert skip_ratio(rows[5]) == 0.75
+    scheduled = dict(rows[5])
+    scheduled.update({"mac_active": "128", "skip": "0", "scheduled_skip": "3072", "cycle_delta": "25"})
+    assert product_counts(scheduled) == ProductCounts(8, 4096, 1024, 3072)
+    assert skip_ratio(scheduled) == 0.75
+    assert dense_speedup(scheduled, rows[0]) == 4.0
     for row in rows:
         validate_traffic(row)
     assert traffic_bytes(rows[0]) == (1024, 2048, 2048)
@@ -281,12 +302,13 @@ def main() -> int:
     print()
     print(f"Source: `{csv_path}`")
     print()
-    print("| Kernel | Precision | Sparse | Output | MAC active | Skip | Skip ratio | Sparse state | Lane state | Cycles | Instructions |")
-    print("| --- | --- | --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: |")
+    print("| Kernel | Precision | Sparse | Output | MAC active | Hardware skip | Scheduled skip | Skip ratio | Sparse state | Lane state | Cycles | Instructions |")
+    print("| --- | --- | --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: |")
     for row in rows:
         print(
             f"| {row['kernel']} | {row['precision']} | {row['sparse']} | "
             f"{as_int(row, 'output')} | {as_int(row, 'mac_active')} | {as_int(row, 'skip')} | "
+            f"{as_int_or_zero(row, 'scheduled_skip')} | "
             f"{skip_ratio(row):.3f} | {as_int(row, 'sparse_state')} | {as_int(row, 'lane_state')} | "
             f"{as_int(row, 'cycle_delta')} | {as_int(row, 'instret_delta')} |"
         )
@@ -319,7 +341,7 @@ def main() -> int:
     print()
     print("## Paper Table Draft")
     print()
-    print("| Kernel | Precision | Sparse | Output | Cycles | Dense-normalized speedup | Skip ratio | Active lanes | RAM tile reads | Operand bytes | Weight bytes | Partial sum bytes | Total bytes |")
+    print("| Kernel | Precision | Sparse | Output | Cycles | Logical-VDOT normalized speedup | Skip ratio | Active lanes | RAM tile reads | Operand bytes | Weight bytes | Partial sum bytes | Total bytes |")
     print("| --- | --- | --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: |")
     for row in rows:
         cycles = as_int(row, "cycle_delta")
@@ -334,8 +356,8 @@ def main() -> int:
             f"{partial_sum_bytes} | {total_bytes} |"
         )
     print()
-    print("Dense-normalized speedup scales the dense baseline by VDOT count; use this as table plumbing, not as a paper claim.")
-    print("Skip ratio is product-level: skipped products divided by active plus skipped products.")
+    print("Logical-VDOT normalized speedup includes software-scheduled whole-vector skips; use it as table plumbing, not as a paper claim.")
+    print("Skip ratio includes hardware bitmap skips and software-scheduled whole-vector skips.")
     print("Traffic uses observed RAM tile operand/weight reads from the testbench plus one partial-sum word per VDOT.")
     print()
     print("Use this smoke table as a functional counter sanity check only; paper-facing tables need expanded kernels and policies.")
