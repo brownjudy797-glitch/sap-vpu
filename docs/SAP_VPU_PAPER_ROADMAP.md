@@ -24,14 +24,13 @@ The paper must keep these boundaries explicit:
 | Minimal CORE-V SoC | CV32E40X wrapper with ROM, RAM, UART, exit MMIO, and OBI timing smoke. | `make hello-smoke` |
 | CV-X-IF attachment | `corev_min_soc` enables `X_EXT` and connects SAP-VPU through the flattened adapter. | `make lint-corev-soc`, `make hello-smoke` |
 | VPU instruction path | Bare-metal custom-0 smoke covers base, precision, sparse, lane, and counter ops. | `make vpu-smoke` |
-| Paper workload | TinyViT MLP smoke now repeats an eight-block, 2-token x 2-output-channel policy tile 16 times, includes a 64-round `dense_x4` larger-shape row, and exports INT8/INT4/INT2 policy, bitmap sparse counters, a software-scheduled 75% whole-vector sparse row, unstructured sparse counters, ablations, dense/adaptive reuse rows, and observed RAM tile traffic; current numbers remain smoke-only evidence. | `make tinyvit-paper-table`, `docs/SAP_VPU_TINYVIT_SMOKE_RECORD.md` |
+| Paper workload | TinyViT MLP smoke now repeats an eight-block, 2-token x 2-output-channel policy tile 16 times, includes a 64-round `dense_x4` larger-shape row and a data-dependent 2-token 4-input -> 4-hidden -> 2-output INT8 projection, and exports INT8/INT4/INT2 policy, bitmap sparse counters, a software-scheduled 75% whole-vector sparse row, unstructured sparse counters, ablations, dense/adaptive reuse rows, and observed RAM tile traffic; current numbers remain smoke-only evidence. | `make tinyvit-paper-table`, `docs/SAP_VPU_TINYVIT_SMOKE_RECORD.md` |
 | FPGA evidence | Standalone `sap_vpu_core` is mapped for Artix-7 `xc7a35tcsg324-1`; the 140 MHz gate-level SAIF flow meets timing with +0.044 ns WNS. This is core-only timing/power evidence, not a board or full-SoC result. | `make fpga-vpu-policy-power-matrix`, `docs/SAP_VPU_FPGA_FLOW.md` |
 | ASIC evidence | Standalone `sap_vpu_core` is mapped with Synopsys DC against the local TSMC28 `tt0p9v85c` `.db` at 10 ns. Policy SAIF runs are reproducible but retain `PWR-452` partial annotation, so their absolute power is preliminary. | `make dc-vpu-policy-power-matrix`, `docs/SAP_VPU_ASIC_FLOW.md` |
 
-The next milestone is not another interface feature. It is a broader
-TinyViT-style kernel shape that tests the same separation of real compute,
-sparsity policy, and memory traffic beyond this deterministic smoke window,
-before any power-reduction claim is made.
+The next milestone is not another interface feature. It is a data-accurate
+TinyViT MLP shape with activation, quantization error accounting, and more
+realistic dimensions, before any power-reduction claim is made.
 
 ## Contribution Spine
 

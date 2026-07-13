@@ -67,9 +67,12 @@ The current smoke covers the next paper-roadmap evidence hooks:
 - A structured `adaptive_sparse75_schedule` row that schedules one live INT4
   vector for every four logical vectors. It preserves 1,024 active products,
   records 3,072 software-scheduled skips, and issues 128 VDOTs instead of 512.
+- An INT8 `tinyvit_mlp2` projection with two tokens and a real data dependency:
+  4 input -> 4 register-packed hidden -> 2 output. It is a two-linear-layer
+  MLP-shaped smoke, not a full activation/residual block.
 - Three policy-level ablations: no sparse skip, no lane gating, and no
   precision gating.
-- Testbench assertion that the smoke performs 11264 operand/weight reads from
+- Testbench assertion that the smoke performs 11392 operand/weight reads from
   the RAM tile scratch region.
 - CSV export for observed per-kernel operand reads, weight reads, and total RAM
   tile reads.
@@ -98,6 +101,13 @@ counter-visible active-product count but 512 issued VDOTs, 768 RAM tile reads,
 and 4,696 cycles. The 2.762x cycle ratio is therefore useful evidence that a
 structured workload schedule can reduce issued work and traffic; it is not a
 direct hardware-bitmap speedup or a final TinyViT claim.
+
+`tinyvit_mlp2` provides the first data-dependent projection pair rather than a
+repeat of an independent 2x2 macro-tile. Across 16 deterministic repeats it
+checks output 1,280, 192 active VDOTs, no hardware skips, and 32 operand plus
+96 shared-weight RAM reads. The current 1,604-cycle result is functional smoke
+evidence only: it has no activation, residual path, quantization-scale error,
+or full TinyViT dimensions.
 
 Use this record to justify that SAP-VPU now has a repeatable TinyViT-oriented
 kernel path. The next evidence step should broaden the kernel shape, add more

@@ -17,6 +17,7 @@
   .equ TILE_INT2_STRIDE, 16
   .equ TILE_INT8_BASE, 384
   .equ TILE_INT8_STRIDE, 16
+  .equ TILE_MLP2_BASE, 512
 
   .macro sap_r funct7, funct3, rd, rs1, rs2
     .word ((\funct7 << 25) | (\rs2 << 20) | (\rs1 << 15) | (\funct3 << 12) | (\rd << 7) | 0x0b)
@@ -302,6 +303,24 @@ _start:
   sw t0, TILE_INT8_BASE + 120(a1)
   li t0, 0x01010101
   sw t0, TILE_INT8_BASE + 124(a1)
+
+  /* Two-token INT8 MLP projection: 4 input -> 4 hidden -> 2 output. */
+  li t0, 0x04030201             /* token0: [1, 2, 3, 4] */
+  sw t0, TILE_MLP2_BASE + 0(a1)
+  li t0, 0x01020304             /* token1: [4, 3, 2, 1] */
+  sw t0, TILE_MLP2_BASE + 4(a1)
+  li t0, 0x01010101             /* hidden weight0: [1, 1, 1, 1] */
+  sw t0, TILE_MLP2_BASE + 8(a1)
+  li t0, 0x00010001             /* hidden weight1: [1, 0, 1, 0] */
+  sw t0, TILE_MLP2_BASE + 12(a1)
+  li t0, 0x01000100             /* hidden weight2: [0, 1, 0, 1] */
+  sw t0, TILE_MLP2_BASE + 16(a1)
+  li t0, 0x00000101             /* hidden weight3: [1, 1, 0, 0] */
+  sw t0, TILE_MLP2_BASE + 20(a1)
+  li t0, 0x01010101             /* output weight0: [1, 1, 1, 1] */
+  sw t0, TILE_MLP2_BASE + 24(a1)
+  li t0, 0x00010001             /* output weight1: [1, 0, 1, 0] */
+  sw t0, TILE_MLP2_BASE + 28(a1)
 
   /* TinyViT MLP/GEMM-like INT8 dense 4-block tile, repeated to expose kernel cost. */
   read_csr 8, 0xb00              /* s0 = mcycle */
@@ -1323,6 +1342,125 @@ _start:
   sw t6, 340(s2)
   sw t2, 344(s2)
 
+  sap_r 0x1d, 0x0, 0, 0, 0      /* VCLEARCNT x0, x0, x0 */
+
+  /* Two-stage MLP projection with register-packed hidden activations. */
+  read_csr 8, 0xb00              /* s0 = mcycle */
+  read_csr 9, 0xb02              /* s1 = minstret */
+
+  li t0, 0
+  sap_r 0x18, 0x0, 0, 5, 0      /* VSETPREC INT8 */
+
+  li t0, 0x0f
+  sap_r 0x1c, 0x0, 0, 5, 0      /* VSETSPARSE_BMP dense INT8 lanes */
+
+  li t0, 4
+  sap_r 0x1b, 0x0, 0, 5, 0      /* VSETLANE 4 */
+
+  li t5, 0
+  li a0, TINYVIT_ITERS
+1:
+  addi a2, a1, TILE_MLP2_BASE
+
+  lw s3, 8(a2)                   /* hidden weight0 */
+  lw s4, 12(a2)                  /* hidden weight1 */
+  lw s5, 16(a2)                  /* hidden weight2 */
+  lw s10, 20(a2)                 /* hidden weight3 */
+  lw s11, 24(a2)                 /* output weight0 */
+  lw a7, 28(a2)                  /* output weight1 */
+
+  lw t0, 0(a2)                   /* token0 */
+  mv t1, s3
+  sap_r 0x10, 0x0, 28, 5, 6
+  mv a3, t3
+  mv t1, s4
+  sap_r 0x10, 0x0, 28, 5, 6
+  mv a4, t3
+  mv t1, s5
+  sap_r 0x10, 0x0, 28, 5, 6
+  mv a5, t3
+  mv t1, s10
+  sap_r 0x10, 0x0, 28, 5, 6
+  mv a6, t3
+  slli a4, a4, 8
+  slli a5, a5, 16
+  slli a6, a6, 24
+  or t0, a3, a4
+  or t0, t0, a5
+  or t0, t0, a6
+  mv t1, s11
+  sap_r 0x10, 0x0, 28, 5, 6
+  add t5, t5, t3
+  mv t1, a7
+  sap_r 0x10, 0x0, 28, 5, 6
+  add t5, t5, t3
+
+  lw t0, 4(a2)                   /* token1 */
+  mv t1, s3
+  sap_r 0x10, 0x0, 28, 5, 6
+  mv a3, t3
+  mv t1, s4
+  sap_r 0x10, 0x0, 28, 5, 6
+  mv a4, t3
+  mv t1, s5
+  sap_r 0x10, 0x0, 28, 5, 6
+  mv a5, t3
+  mv t1, s10
+  sap_r 0x10, 0x0, 28, 5, 6
+  mv a6, t3
+  slli a4, a4, 8
+  slli a5, a5, 16
+  slli a6, a6, 24
+  or t0, a3, a4
+  or t0, t0, a5
+  or t0, t0, a6
+  mv t1, s11
+  sap_r 0x10, 0x0, 28, 5, 6
+  add t5, t5, t3
+  mv t1, a7
+  sap_r 0x10, 0x0, 28, 5, 6
+  add t5, t5, t3
+
+  addi a0, a0, -1
+  bnez a0, 1b
+
+  li t4, 1280
+  bne t5, t4, fail_mlp2_output
+
+  li t0, 2
+  sap_r 0x1a, 0x0, 28, 5, 0     /* VREADCNT MAC_ACTIVE */
+  mv s6, t3
+  li t4, 192
+  bne s6, t4, fail_mlp2_mac
+
+  li t0, 3
+  sap_r 0x1a, 0x0, 28, 5, 0     /* VREADCNT SKIPPED */
+  mv s7, t3
+  bnez s7, fail_mlp2_skip
+
+  li t0, 4
+  sap_r 0x1a, 0x0, 28, 5, 0     /* VREADCNT SPARSE */
+  mv s8, t3
+  li t4, 0x0f
+  bne s8, t4, fail_mlp2_sparse
+
+  li t0, 5
+  sap_r 0x1a, 0x0, 28, 5, 0     /* VREADCNT LANE */
+  mv s9, t3
+  li t4, 4
+  bne s9, t4, fail_mlp2_lane
+
+  read_csr 31, 0xb00             /* t6 = MLP2 cycle delta */
+  sub t6, t6, s0
+  read_csr 7, 0xb02              /* t2 = MLP2 instret delta */
+  sub t2, t2, s1
+  li s2, RESULT_BASE
+  sw t5, 348(s2)
+  sw s6, 352(s2)
+  sw s7, 356(s2)
+  sw t6, 360(s2)
+  sw t2, 364(s2)
+
   exit_with 1
 
 fail_dense_output:
@@ -1426,6 +1564,21 @@ fail_policy_sparse75_schedule_sparse:
 
 fail_policy_sparse75_schedule_lane:
   exit_with 95
+
+fail_mlp2_output:
+  exit_with 96
+
+fail_mlp2_mac:
+  exit_with 97
+
+fail_mlp2_skip:
+  exit_with 98
+
+fail_mlp2_sparse:
+  exit_with 99
+
+fail_mlp2_lane:
+  exit_with 100
 
 fail_policy_reuse_output:
   exit_with 36

@@ -6,8 +6,9 @@ module corev_min_soc_tinyvit_tb;
   localparam int unsigned TINYVIT_ITERS = 16;
   localparam logic [31:0] RESULT_BASE = 32'h0001_0000;
   localparam logic [31:0] TINYVIT_TILE_BASE = 32'h0001_0200;
-  localparam logic [31:0] TINYVIT_TILE_LIMIT = TINYVIT_TILE_BASE + 32'd512;
-  localparam int unsigned EXPECTED_TILE_READS = 11264;
+  localparam logic [31:0] TINYVIT_MLP2_BASE = TINYVIT_TILE_BASE + 32'd512;
+  localparam logic [31:0] TINYVIT_TILE_LIMIT = TINYVIT_MLP2_BASE + 32'd32;
+  localparam int unsigned EXPECTED_TILE_READS = 11392;
   localparam int unsigned K_DENSE = 0;
   localparam int unsigned K_STATIC_LOWBIT = 1;
   localparam int unsigned K_STATIC_INT2 = 2;
@@ -21,7 +22,8 @@ module corev_min_soc_tinyvit_tb;
   localparam int unsigned K_ADAPTIVE_SPARSE75 = 10;
   localparam int unsigned K_DENSE_X4 = 11;
   localparam int unsigned K_ADAPTIVE_SPARSE75_SCHEDULE = 12;
-  localparam int unsigned K_DONE = 13;
+  localparam int unsigned K_MLP2 = 13;
+  localparam int unsigned K_DONE = 14;
 
   logic clk;
   logic rst_n;
@@ -34,9 +36,9 @@ module corev_min_soc_tinyvit_tb;
   int result_fd;
   int unsigned current_kernel;
   int unsigned tile_read_count;
-  int unsigned operand_read_count [0:12];
-  int unsigned weight_read_count [0:12];
-  int unsigned kernel_tile_read_count [0:12];
+  int unsigned operand_read_count [0:13];
+  int unsigned weight_read_count [0:13];
+  int unsigned kernel_tile_read_count [0:13];
   string vcd_file;
 
   corev_min_soc #(
@@ -90,16 +92,26 @@ module corev_min_soc_tinyvit_tb;
   function automatic bit is_operand_addr(input logic [31:0] addr);
     logic [31:0] block_offset;
     begin
-      block_offset = (addr - TINYVIT_TILE_BASE) & 32'hf;
-      is_operand_addr = (block_offset == 32'd0) || (block_offset == 32'd4);
+      if (addr >= TINYVIT_MLP2_BASE) begin
+        block_offset = addr - TINYVIT_MLP2_BASE;
+        is_operand_addr = (block_offset == 32'd0) || (block_offset == 32'd4);
+      end else begin
+        block_offset = (addr - TINYVIT_TILE_BASE) & 32'hf;
+        is_operand_addr = (block_offset == 32'd0) || (block_offset == 32'd4);
+      end
     end
   endfunction
 
   function automatic bit is_weight_addr(input logic [31:0] addr);
     logic [31:0] block_offset;
     begin
-      block_offset = (addr - TINYVIT_TILE_BASE) & 32'hf;
-      is_weight_addr = (block_offset == 32'd8) || (block_offset == 32'd12);
+      if (addr >= TINYVIT_MLP2_BASE) begin
+        block_offset = addr - TINYVIT_MLP2_BASE;
+        is_weight_addr = (block_offset >= 32'd8) && (block_offset < 32'd32);
+      end else begin
+        block_offset = (addr - TINYVIT_TILE_BASE) & 32'hf;
+        is_weight_addr = (block_offset == 32'd8) || (block_offset == 32'd12);
+      end
     end
   endfunction
 
@@ -107,7 +119,7 @@ module corev_min_soc_tinyvit_tb;
     if (!rst_n) begin
       current_kernel <= K_DENSE;
       tile_read_count <= 0;
-      for (int unsigned i = 0; i < 13; i++) begin
+      for (int unsigned i = 0; i < 14; i++) begin
         operand_read_count[i] <= 0;
         weight_read_count[i] <= 0;
         kernel_tile_read_count[i] <= 0;
@@ -144,7 +156,8 @@ module corev_min_soc_tinyvit_tb;
           RESULT_BASE + 32'd160: current_kernel <= K_DENSE_REUSE;
           RESULT_BASE + 32'd236: current_kernel <= K_ADAPTIVE_REUSE;
           RESULT_BASE + 32'd264: current_kernel <= K_ADAPTIVE_SPARSE75_SCHEDULE;
-          RESULT_BASE + 32'd344: current_kernel <= K_DONE;
+          RESULT_BASE + 32'd344: current_kernel <= K_MLP2;
+          RESULT_BASE + 32'd364: current_kernel <= K_DONE;
           default: begin
           end
         endcase
@@ -174,6 +187,7 @@ module corev_min_soc_tinyvit_tb;
         expect_traffic(K_DENSE_REUSE, 256, 256);
         expect_traffic(K_ADAPTIVE_REUSE, 256, 256);
         expect_traffic(K_ADAPTIVE_SPARSE75_SCHEDULE, 128, 128);
+        expect_traffic(K_MLP2, 32, 96);
         if (dut.ram[0] !== RESULT_MAGIC) begin
           $fatal(1, "TinyViT result magic expected 0x%08x got 0x%08x", RESULT_MAGIC, dut.ram[0]);
         end
@@ -218,6 +232,9 @@ module corev_min_soc_tinyvit_tb;
         expect_result(82, 32'd0);
         expect_result(83, 32'd255);
         expect_result(84, 32'd8);
+        expect_result(87, 32'd1280);
+        expect_result(88, 32'd192);
+        expect_result(89, 32'd0);
         if ((dut.ram[4] == 32'd0) || (dut.ram[5] == 32'd0) ||
             (dut.ram[11] == 32'd0) || (dut.ram[12] == 32'd0) ||
             (dut.ram[18] == 32'd0) || (dut.ram[19] == 32'd0) ||
@@ -230,6 +247,7 @@ module corev_min_soc_tinyvit_tb;
             (dut.ram[65] == 32'd0) || (dut.ram[66] == 32'd0) ||
             (dut.ram[72] == 32'd0) || (dut.ram[73] == 32'd0) ||
             (dut.ram[85] == 32'd0) || (dut.ram[86] == 32'd0) ||
+            (dut.ram[90] == 32'd0) || (dut.ram[91] == 32'd0) ||
             (dut.ram[77] == 32'd0) || (dut.ram[78] == 32'd0)) begin
           $fatal(1, "TinyViT cycle/inst counters must be nonzero");
         end
@@ -277,6 +295,10 @@ module corev_min_soc_tinyvit_tb;
                   dut.ram[85], dut.ram[86], operand_read_count[K_ADAPTIVE_SPARSE75_SCHEDULE],
                   weight_read_count[K_ADAPTIVE_SPARSE75_SCHEDULE],
                   kernel_tile_read_count[K_ADAPTIVE_SPARSE75_SCHEDULE], 32'd3072);
+        $fdisplay(result_fd, "tinyvit_mlp2,int8,none,%0d,%0d,%0d,15,4,%0d,%0d,%0d,%0d,%0d,0",
+                  dut.ram[87], dut.ram[88], dut.ram[89], dut.ram[90], dut.ram[91],
+                  operand_read_count[K_MLP2], weight_read_count[K_MLP2],
+                  kernel_tile_read_count[K_MLP2]);
         $fdisplay(result_fd, "adaptive_unstructured,int4,bitmap_unstructured,%0d,%0d,%0d,%0d,%0d,%0d,%0d,%0d,%0d,%0d,0",
                   dut.ram[48], dut.ram[49], dut.ram[50], dut.ram[51], dut.ram[52],
                   dut.ram[53], dut.ram[54], operand_read_count[K_ADAPTIVE_UNSTRUCTURED],
