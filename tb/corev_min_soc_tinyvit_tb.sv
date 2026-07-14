@@ -232,7 +232,7 @@ module corev_min_soc_tinyvit_tb;
         expect_result(82, 32'd0);
         expect_result(83, 32'd255);
         expect_result(84, 32'd8);
-        expect_result(87, 32'd1280);
+        expect_result(87, 32'd1120);
         expect_result(88, 32'd192);
         expect_result(89, 32'd0);
         if ((dut.ram[4] == 32'd0) || (dut.ram[5] == 32'd0) ||

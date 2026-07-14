@@ -27,6 +27,12 @@
     .word ((\csr << 20) | (0 << 15) | (0x2 << 12) | (\rd << 7) | 0x73)
   .endm
 
+  .macro relu reg
+    bgez \reg, .Lrelu_\@
+    li \reg, 0
+.Lrelu_\@:
+  .endm
+
   .macro exit_with code
     li t0, EXIT_ADDR
     li t1, \code
@@ -315,7 +321,7 @@ _start:
   sw t0, TILE_MLP2_BASE + 12(a1)
   li t0, 0x01000100             /* hidden weight2: [0, 1, 0, 1] */
   sw t0, TILE_MLP2_BASE + 16(a1)
-  li t0, 0x00000101             /* hidden weight3: [1, 1, 0, 0] */
+  li t0, 0x0000ffff             /* hidden weight3: [-1, -1, 0, 0] */
   sw t0, TILE_MLP2_BASE + 20(a1)
   li t0, 0x01010101             /* output weight0: [1, 1, 1, 1] */
   sw t0, TILE_MLP2_BASE + 24(a1)
@@ -1344,7 +1350,7 @@ _start:
 
   sap_r 0x1d, 0x0, 0, 0, 0      /* VCLEARCNT x0, x0, x0 */
 
-  /* Two-stage MLP projection with register-packed hidden activations. */
+  /* Two-stage MLP projection with ReLU and register-packed hidden activations. */
   read_csr 8, 0xb00              /* s0 = mcycle */
   read_csr 9, 0xb02              /* s1 = minstret */
 
@@ -1382,6 +1388,10 @@ _start:
   mv t1, s10
   sap_r 0x10, 0x0, 28, 5, 6
   mv a6, t3
+  relu a3
+  relu a4
+  relu a5
+  relu a6
   slli a4, a4, 8
   slli a5, a5, 16
   slli a6, a6, 24
@@ -1408,6 +1418,10 @@ _start:
   mv t1, s10
   sap_r 0x10, 0x0, 28, 5, 6
   mv a6, t3
+  relu a3
+  relu a4
+  relu a5
+  relu a6
   slli a4, a4, 8
   slli a5, a5, 16
   slli a6, a6, 24
@@ -1424,7 +1438,7 @@ _start:
   addi a0, a0, -1
   bnez a0, 1b
 
-  li t4, 1280
+  li t4, 1120
   bne t5, t4, fail_mlp2_output
 
   li t0, 2

@@ -68,8 +68,8 @@ The current smoke covers the next paper-roadmap evidence hooks:
   vector for every four logical vectors. It preserves 1,024 active products,
   records 3,072 software-scheduled skips, and issues 128 VDOTs instead of 512.
 - An INT8 `tinyvit_mlp2` projection with two tokens and a real data dependency:
-  4 input -> 4 register-packed hidden -> 2 output. It is a two-linear-layer
-  MLP-shaped smoke, not a full activation/residual block.
+  4 input -> 4 register-packed hidden -> ReLU -> 2 output. It is a
+  MLP-shaped smoke, not a full residual block.
 - Three policy-level ablations: no sparse skip, no lane gating, and no
   precision gating.
 - Testbench assertion that the smoke performs 11392 operand/weight reads from
@@ -104,12 +104,13 @@ direct hardware-bitmap speedup or a final TinyViT claim.
 
 `tinyvit_mlp2` provides the first data-dependent projection pair rather than a
 repeat of an independent 2x2 macro-tile. Across 16 deterministic repeats it
-checks output 1,280, 192 active VDOTs, no hardware skips, and 32 operand plus
-96 shared-weight RAM reads. The current 1,604-cycle result is functional smoke
-evidence only: it has no activation, residual path, quantization-scale error,
-or full TinyViT dimensions.
+checks output 1,120, 192 active VDOTs, no hardware skips, and 32 operand plus
+96 shared-weight RAM reads. Its negative fourth hidden channel is clamped by
+ReLU before the output projection. The current 2,004-cycle result is functional
+smoke evidence only: it has no residual path, quantization-scale error, or full
+TinyViT dimensions.
 
 Use this record to justify that SAP-VPU now has a repeatable TinyViT-oriented
-kernel path. The next evidence step should broaden the kernel shape, add more
-realistic MLP dimensions, and separate compute effects from memory traffic
-before making performance comparisons.
+kernel path. The next evidence step needs an exported TinyViT checkpoint or
+quantized tensor fixture, so dimensions, scales, and error can be measured
+instead of synthesized by the smoke kernel.
