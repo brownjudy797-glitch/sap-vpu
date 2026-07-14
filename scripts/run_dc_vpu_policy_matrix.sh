@@ -2,14 +2,16 @@
 set -euo pipefail
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-VERILATOR="${VERILATOR:-verilator}"
-VERILATOR_CXX="${VERILATOR_CXX:-clang++-12}"
-VERILATOR_TIMING_CFLAGS="${VERILATOR_TIMING_CFLAGS:--std=c++20 -O0 -Wno-unknown-warning-option}"
-VERILATOR_TIMING_LDFLAGS="${VERILATOR_TIMING_LDFLAGS:--no-pie}"
 VCD2SAIF="${VCD2SAIF:-/opt/synopsys/syn/L-2016.03-SP1/linux64/syn/bin/vcd2saif}"
-DC_NETLIST_DIR="${DC_NETLIST_DIR:-$ROOT_DIR/netlist/dc/tsmc28/vpu_core_sliced_10ns_nopower}"
+SYNOPSYS_ENV_FILE="${SYNOPSYS_ENV_FILE:-$HOME/synopsys_env.sh}"
+VCS_MX_HOME="${VCS_MX_HOME:-/opt/synopsys/vcs-mx/O-2018.09-SP2}"
+VCS_MX="${VCS_MX:-$VCS_MX_HOME/bin/vcs}"
+TSMC28_ROOT="${TSMC28_ROOT:-/opt/pdk/tsmc28hpcplus/tcbn28hpcplusbwp7t40p140_180b}"
+TSMC28_VERILOG="${TSMC28_VERILOG:-$TSMC28_ROOT/Front_End/verilog/tcbn28hpcplusbwp7t40p140_110a/tcbn28hpcplusbwp7t40p140.v}"
+DC_NETLIST_DIR="${DC_NETLIST_DIR:-$ROOT_DIR/netlist/dc/tsmc28/vpu_core_gate}"
 DC_POLICY_MATRIX_WORK_DIR="${DC_POLICY_MATRIX_WORK_DIR:-$ROOT_DIR/work/dc/tsmc28/vpu_policy_matrix}"
 DC_POLICY_MATRIX_REPORT_DIR="${DC_POLICY_MATRIX_REPORT_DIR:-$ROOT_DIR/reports/dc/tsmc28/vpu_policy_matrix}"
+DC_NETLIST_DIR="$(cd "$DC_NETLIST_DIR" && pwd)"
 DDC_FILE="$DC_NETLIST_DIR/sap_vpu_core.ddc"
 SAIF_INSTANCE="sap_vpu_core_gate_tb/dut"
 POLICIES=(
@@ -18,20 +20,28 @@ POLICIES=(
 )
 
 test -x "$VCD2SAIF"
+test -f "$SYNOPSYS_ENV_FILE"
+test -x "$VCS_MX"
+test -s "$TSMC28_VERILOG"
 test -s "$DDC_FILE"
+test -s "$DC_NETLIST_DIR/sap_vpu_core.v"
+! grep -q 'SYNOPSYS_UNCONNECTED' "$DC_NETLIST_DIR/sap_vpu_core.v"
 mkdir -p "$DC_POLICY_MATRIX_WORK_DIR" "$DC_POLICY_MATRIX_REPORT_DIR"
 
 OBJ_DIR="$DC_POLICY_MATRIX_WORK_DIR/obj"
 SIM_BIN="$OBJ_DIR/sap_vpu_core_gate_tb"
-"$VERILATOR" --binary --timing --trace -sv -Wno-fatal \
-  "$ROOT_DIR/rtl/sap_vpu_pkg.sv" \
-  "$ROOT_DIR/rtl/sap_vpu_core.sv" \
-  "$ROOT_DIR/tb/sap_vpu_core_gate_tb.sv" \
-  --Mdir "$OBJ_DIR" \
-  -MAKEFLAGS "CXX=$VERILATOR_CXX" \
-  -CFLAGS "$VERILATOR_TIMING_CFLAGS" \
-  -LDFLAGS "$VERILATOR_TIMING_LDFLAGS" \
-  -o sap_vpu_core_gate_tb
+source "$SYNOPSYS_ENV_FILE"
+lmstart || true
+mkdir -p "$OBJ_DIR"
+(
+  cd "$OBJ_DIR"
+  VCS_HOME="$VCS_MX_HOME" VCS_ARCH_OVERRIDE=linux "$VCS_MX" -full64 -sverilog \
+    -LDFLAGS "-Wl,--no-as-needed" -o sap_vpu_core_gate_tb \
+    "$ROOT_DIR/rtl/sap_vpu_pkg.sv" \
+    "$ROOT_DIR/tb/sap_vpu_core_gate_tb.sv" \
+    "$TSMC28_VERILOG" \
+    "$DC_NETLIST_DIR/sap_vpu_core.v"
+)
 
 CSV_FILE="$DC_POLICY_MATRIX_WORK_DIR/dc_vpu_policy_power_matrix.csv"
 MD_FILE="$DC_POLICY_MATRIX_WORK_DIR/dc_vpu_policy_power_matrix.md"
@@ -50,7 +60,7 @@ for policy in "${POLICIES[@]}"; do
   power_report="$report_dir/power.rpt"
   mkdir -p "$policy_dir" "$report_dir"
 
-  "$SIM_BIN" "+policy=$policy" "+vcd=$vcd_file" | tee "$sim_log"
+  VCS_HOME="$VCS_MX_HOME" "$SIM_BIN" "+policy=$policy" "+vcd=$vcd_file" | tee "$sim_log"
   grep -q "GATE_POLICY_PASS: $policy" "$sim_log"
   ! grep -q 'GATE_.*_FAIL' "$sim_log"
   test -s "$vcd_file"
@@ -82,6 +92,10 @@ for policy in "${POLICIES[@]}"; do
 
   unmatched="$(sed -n 's/.*There are \([0-9][0-9]*\) objects not found during annotation.*PWR-452.*/\1/p' "$dc_log" | head -n1)"
   unmatched="${unmatched:-0}"
+  if [[ "$unmatched" != "0" ]]; then
+    echo "Gate SAIF annotation mismatch for $policy: $unmatched unmatched objects" >&2
+    exit 10
+  fi
   if [[ -z "$expected_unmatched" ]]; then
     expected_unmatched="$unmatched"
   elif [[ "$unmatched" != "$expected_unmatched" ]]; then
@@ -111,7 +125,7 @@ done
     printf '| %s | %s | %s | %s | %s | %s | %s | %s |\n' \
       "$policy" "$internal" "$switching" "$dynamic" "$leakage" "$total" "$energy" "$unmatched"
   done
-  printf '\n%s\n' "Standalone TSMC28 TT 10 ns runtime-policy activity. All rows use a ${expected_duration} ps capture window and share ${expected_unmatched} unmatched SAIF objects; this is not a hardware-removal, full-SoC, board, or end-to-end result."
+  printf '\n%s\n' "Standalone TSMC28 TT 10 ns gate-level runtime-policy activity. All rows use a ${expected_duration} ps capture window and have ${expected_unmatched} unmatched SAIF objects; this is not a hardware-removal, full-SoC, board, or end-to-end result."
 } > "$MD_FILE"
 
 test -s "$MD_FILE"

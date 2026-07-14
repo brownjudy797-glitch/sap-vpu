@@ -96,9 +96,10 @@ Run the nine-policy standalone activity matrix:
 make dc-vpu-policy-power-matrix
 ```
 
-This runs the policy testbench against RTL for every policy, requires the same
-SAIF capture duration and partial-annotation count for all rows, and writes a
-CSV and Markdown table under `work/dc/tsmc28/vpu_policy_matrix/`.
+After `make dc-vpu-gate-synth`, this runs the policy testbench against the
+clean TSMC28 gate netlist for every policy. Every row must have zero
+`PWR-452` annotations; it writes a CSV and Markdown table under
+`work/dc/tsmc28/vpu_policy_matrix/`.
 
 Start or verify the Synopsys license server before running the target if
 `27000@localhost` is not already active.
@@ -208,28 +209,26 @@ gate-level activity power.
 
 ## Policy Activity Matrix
 
-The following legacy matrix uses RTL-originated activity against the standalone
-TSMC28 `tt0p9v85c` mapped DDC at 10 ns. Each policy executes the same
-512-`VDOT` activity window of 18,350,364 ps; every SAIF run reports 2,216
-unmatched objects through `PWR-452` and no `PWR-362` total-annotation failure.
-It is a reproducibility reference only and must not be cited as gate-level
-policy-power evidence until regenerated from the clean gate checkpoint.
+The current matrix uses VCS-MX gate-level activity from the clean standalone
+TSMC28 `tt0p9v85c` 10 ns checkpoint. Each policy executes the same
+512-`VDOT` window of 18,295,784 ps; all nine SAIF runs have zero `PWR-452` and
+no `PWR-362` total-annotation failure.
 
 | Policy | Dynamic power | Total power | Dynamic energy / VDOT |
 | --- | ---: | ---: | ---: |
-| `dense_int8` | 601.6616 uW | 674.1901 uW | 21.5639 pJ |
-| `static_int4` | 599.6133 uW | 672.1935 uW | 21.4905 pJ |
-| `static_int2` | 596.8261 uW | 669.5863 uW | 21.3906 pJ |
-| `adaptive_int4` | 600.6980 uW | 673.3472 uW | 21.5293 pJ |
-| `adaptive_sparse75` | 601.8975 uW | 674.5482 uW | 21.5723 pJ |
-| `adaptive_unstructured` | 600.7056 uW | 673.3791 uW | 21.5296 pJ |
-| `no_sparse` | 600.7356 uW | 673.4441 uW | 21.5307 pJ |
-| `no_lane` | 600.7091 uW | 673.3624 uW | 21.5297 pJ |
-| `no_precision` | 601.2965 uW | 673.8261 uW | 21.5508 pJ |
+| `dense_int8` | 654.2315 uW | 727.0549 uW | 23.3783 pJ |
+| `static_int4` | 665.3819 uW | 738.4317 uW | 23.7767 pJ |
+| `static_int2` | 645.8332 uW | 719.0030 uW | 23.0782 pJ |
+| `adaptive_int4` | 652.1932 uW | 725.0756 uW | 23.3054 pJ |
+| `adaptive_sparse75` | 646.1122 uW | 718.8912 uW | 23.0881 pJ |
+| `adaptive_unstructured` | 652.8008 uW | 725.7202 uW | 23.3272 pJ |
+| `no_sparse` | 652.2072 uW | 725.1568 uW | 23.3059 pJ |
+| `no_lane` | 652.1925 uW | 725.0790 uW | 23.3054 pJ |
+| `no_precision` | 654.1928 uW | 726.9947 uW | 23.3769 pJ |
 
-The 5.0714 uW dynamic range is 0.84% of the dense reference. This short,
-fixed-latency activity window is therefore a reproducibility and policy-path
-sanity check, not evidence of a material power reduction. It does not remove
+The 19.5487 uW dynamic range is 2.99% of the dense reference. This short,
+fixed-latency activity window is valid gate-level policy-path evidence, but it
+does not yet demonstrate a material power reduction. It does not remove
 hardware blocks, model the full SoC or memory system, validate a board, or
 measure TinyViT end-to-end energy. The CSV and generated Markdown table remain
 ignored local artifacts and must be regenerated for a paper result.
