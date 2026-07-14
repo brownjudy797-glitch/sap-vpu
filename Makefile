@@ -72,7 +72,7 @@ DC_POLICY_NETLIST_DIR ?= $(ROOT_DIR)/netlist/dc/tsmc28/vpu_core_sliced_10ns_nopo
 
 .DEFAULT_GOAL := help
 
-.PHONY: help plan-check corev-fetch corev-rtl-flist lint-adapter lint-core lint lint-corev-soc sim-adapter sim-core sim-core-vcd sim-hello sim-vpu sim-tinyvit sim-tinyvit-vcd sim encoding-check legacy-summary hello-build hello-smoke vpu-build vpu-smoke tinyvit-build tinyvit-smoke tinyvit-summary tinyvit-paper-table fpga-vpu-synth fpga-vpu-funcsim-netlist fpga-vpu-funcsim-vcd fpga-vpu-funcsim-saif fpga-vpu-funcsim-saif-power fpga-vpu-policy-power-matrix fpga-vpu-saif-power fpga-vpu-summary dc-vpu-precheck dc-vpu-synth dc-vpu-power dc-vpu-saif-power dc-vpu-tinyvit-saif-power dc-vpu-policy-power-matrix dc-vpu-summary
+.PHONY: help plan-check corev-fetch corev-rtl-flist lint-adapter lint-core lint lint-corev-soc sim-adapter sim-core sim-core-vcd sim-hello sim-vpu sim-tinyvit sim-tinyvit-vcd sim encoding-check legacy-summary hello-build hello-smoke vpu-build vpu-smoke tinyvit-build tinyvit-smoke tinyvit-summary tinyvit-paper-table fpga-vpu-synth fpga-vpu-funcsim-netlist fpga-vpu-funcsim-vcd fpga-vpu-funcsim-saif fpga-vpu-funcsim-saif-power fpga-vpu-policy-power-matrix fpga-vpu-saif-power fpga-vpu-summary dc-vpu-gate-netlist-check dc-vpu-precheck dc-vpu-synth dc-vpu-power dc-vpu-saif-power dc-vpu-tinyvit-saif-power dc-vpu-policy-power-matrix dc-vpu-summary
 
 help:
 	@printf '%s\n' \
@@ -101,6 +101,7 @@ help:
 	  'make fpga-vpu-policy-power-matrix' \
 	  'make fpga-vpu-saif-power [FPGA_SAIF_DCP=work/fpga/vpu_core_sliced_140/checkpoints/post_route.dcp]' \
 	  'make fpga-vpu-summary' \
+	  'make dc-vpu-gate-netlist-check [DC_NETLIST_DIR=netlist/dc/tsmc28/vpu_core]' \
 	  'make dc-vpu-precheck [DC_CLOCK_PERIOD=10.0]' \
 	  'make dc-vpu-synth [DC_CLOCK_PERIOD=10.0]' \
 	  'make dc-vpu-power [DC_NETLIST_DIR=netlist/dc/tsmc28/vpu_core]' \
@@ -391,6 +392,13 @@ fpga-vpu-saif-power: sim-core-vcd
 
 fpga-vpu-summary:
 	$(PYTHON) scripts/summarize_vivado_reports.py "$(FPGA_BUILD_DIR)"
+
+dc-vpu-gate-netlist-check:
+	test -s "$(DC_NETLIST_DIR)/sap_vpu_core.v"
+	@if grep -n "SYNOPSYS_UNCONNECTED" "$(DC_NETLIST_DIR)/sap_vpu_core.v"; then \
+	  echo "Gate netlist has unconnected outputs; do not generate gate-level SAIF." >&2; \
+	  exit 1; \
+	fi
 
 dc-vpu-precheck:
 	PRECHECK_ONLY=1 CLOCK_PERIOD="$(DC_CLOCK_PERIOD)" \

@@ -144,6 +144,17 @@ Generated reports and netlists remain ignored local artifacts.
 - SAIF power runs may emit `PWR-452` partial annotation warnings. They are not
   the same as a total annotation failure, but the unmatched-object count must be
   reported with any activity-power number.
+- Gate-level SAIF has a stricter precondition than RTL-to-DDC SAIF annotation:
+  run `make dc-vpu-gate-netlist-check` against the emitted netlist first. The
+  current `vpu_core_sliced_10ns_nopower` Verilog contains
+  `SYNOPSYS_UNCONNECTED_1/2` in a DesignWare adder `SUM` connection. Those
+  unconnected bits feed response-data state, so this netlist is not suitable
+  for functional gate simulation or a gate-level SAIF claim.
+- Local VCS O-2018.09-SP2 can parse the TSMC28 model when launched with
+  `VCS_ARCH_OVERRIDE=linux` and `-full64`, but its generated simulator
+  terminates on the current WSL2 runtime. A clean DC re-export and a supported
+  gate simulator are required before replacing the preliminary `PWR-452`
+  activity numbers with gate-level activity power.
 - A 2026-07-12 operand-isolation trial reached analyze/elaborate but triggered
   an internal DC L-2016.03-SP1 Pass 1 mapping failure under both the default
   and low-map configurations. It produced no mapped DDC, so no post-change ASIC
@@ -162,6 +173,21 @@ Current local TSMC28 `tt0p9v85c`, 10 ns, standalone `sap_vpu_core` evidence:
 These are local reproducibility checkpoints. Re-generate the reports before
 using them in paper tables, and keep the run directory, command line, library
 corner, clock period, and SAIF annotation warnings with the cited number.
+
+## Gate-Level SAIF Preflight
+
+Run this check on every emitted Verilog netlist before using it to generate a
+gate-level VCD or SAIF:
+
+```sh
+make dc-vpu-gate-netlist-check \
+  DC_NETLIST_DIR=netlist/dc/tsmc28/vpu_core_sliced_10ns_nopower
+```
+
+The check rejects `SYNOPSYS_UNCONNECTED` markers. It intentionally fails on
+the current 10 ns checkpoint; this does not invalidate the DDC-based
+preliminary matrix below, but it prevents that matrix from being mislabelled
+as gate-level activity power.
 
 ## Policy Activity Matrix
 

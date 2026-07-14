@@ -37,6 +37,8 @@ command.log
 filenames*.log
 crte_*.txt
 sap_vpu_core.db
+stack.info.*/
+ucli.key
 
 # Vivado generated side files
 vivado*.jou
