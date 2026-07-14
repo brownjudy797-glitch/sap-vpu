@@ -48,6 +48,18 @@ number generated from them.
 
 ## Commands
 
+Generate a clean gate-simulation checkpoint, then run the gate-SAIF smoke:
+
+```sh
+make dc-vpu-gate-synth
+make dc-vpu-gate-saif-power
+```
+
+The first command uses `COMPILE_ULTRA=0` and writes a separate DDC/netlist
+under `netlist/dc/tsmc28/vpu_core_gate/`. The second command requires that
+checkpoint, runs the TSMC28 gate smoke with VCS-MX, records only DUT-top-level
+VCD signals, converts the VCD to SAIF, and rejects `PWR-452` annotation output.
+
 Run DC synthesis:
 
 ```sh
@@ -84,9 +96,9 @@ Run the nine-policy standalone activity matrix:
 make dc-vpu-policy-power-matrix
 ```
 
-This runs the gate testbench for every policy, requires the same SAIF capture
-duration and partial-annotation count for all rows, and writes a CSV and
-Markdown table under `work/dc/tsmc28/vpu_policy_matrix/`.
+This runs the policy testbench against RTL for every policy, requires the same
+SAIF capture duration and partial-annotation count for all rows, and writes a
+CSV and Markdown table under `work/dc/tsmc28/vpu_policy_matrix/`.
 
 Start or verify the Synopsys license server before running the target if
 `27000@localhost` is not already active.
@@ -137,24 +149,23 @@ Generated reports and netlists remain ignored local artifacts.
 - SRAMs are not modeled as foundry macros in this standalone core flow.
 - Power is vectorless DC power unless SAIF/VCD activity is explicitly provided.
 - Treat the numbers as early ASIC synthesis evidence, not final silicon PPA.
-- On the current local DC L-2016.03-SP1 installation, TSMC28 mapping now has a
-  complete 10 ns standalone VPU checkpoint under
-  `vpu_core_sliced_10ns_nopower`. The local `.db` still emits an `LDB-4`
-  library-view warning during load; keep that warning with the report package.
-- SAIF power runs may emit `PWR-452` partial annotation warnings. They are not
-  the same as a total annotation failure, but the unmatched-object count must be
-  reported with any activity-power number.
-- Gate-level SAIF has a stricter precondition than RTL-to-DDC SAIF annotation:
-  run `make dc-vpu-gate-netlist-check` against the emitted netlist first. The
-  current `vpu_core_sliced_10ns_nopower` Verilog contains
-  `SYNOPSYS_UNCONNECTED_1/2` in a DesignWare adder `SUM` connection. Those
-  unconnected bits feed response-data state, so this netlist is not suitable
-  for functional gate simulation or a gate-level SAIF claim.
-- Local VCS O-2018.09-SP2 can parse the TSMC28 model when launched with
-  `VCS_ARCH_OVERRIDE=linux` and `-full64`, but its generated simulator
-  terminates on the current WSL2 runtime. A clean DC re-export and a supported
-  gate simulator are required before replacing the preliminary `PWR-452`
-  activity numbers with gate-level activity power.
+- The legacy `vpu_core_sliced_10ns_nopower` Verilog contains
+  `SYNOPSYS_UNCONNECTED_1/2` in a DesignWare adder `SUM` connection. It remains
+  unsuitable for functional gate simulation and must not be used for a
+  gate-level SAIF claim.
+- A separate accepted `COMPILE_ULTRA=0` checkpoint passes
+  `dc-vpu-gate-netlist-check`. VCS-MX O-2018.09-SP2, launched with
+  `VCS_ARCH_OVERRIDE=linux` and `-full64`, passes `GATE_SMOKE_PASS` on this
+  TSMC28 gate netlist.
+- Gate VCD capture is limited to one DUT hierarchy level. This excludes
+  behavioral standard-cell-model internals that are not DDC objects. The
+  resulting gate SAIF annotates the clean DDC without `PWR-452`.
+- DC L-2016.03-SP1 remains intermittently unstable under WSL during startup or
+  mapping. A failed synthesis produces no evidence; keep a successful run's
+  DDC, netlist, reports, and command log together rather than retrying power
+  analysis against a partial artifact.
+- The local `.db` can emit an `LDB-4` library-view warning during load; keep
+  that warning with the report package.
 - A 2026-07-12 operand-isolation trial reached analyze/elaborate but triggered
   an internal DC L-2016.03-SP1 Pass 1 mapping failure under both the default
   and low-map configurations. It produced no mapped DDC, so no post-change ASIC
@@ -169,10 +180,15 @@ Current local TSMC28 `tt0p9v85c`, 10 ns, standalone `sap_vpu_core` evidence:
 | Vectorless DC | 0.3952 mW | 3.5926e-03 mW | 7.1120e+04 nW | 0.4699 mW |
 | Standalone VPU smoke SAIF | 0.4127 mW | 1.9090e-02 mW | 7.2433e+04 nW | 0.5042 mW |
 | TinyViT smoke VPU-instance SAIF | 0.4065 mW | 1.4669e-02 mW | 7.2839e+04 nW | 0.4940 mW |
+| Clean gate smoke SAIF | 0.5820 mW | 3.5651e-02 mW | 7.2731e-02 mW | 0.6904 mW |
 
 These are local reproducibility checkpoints. Re-generate the reports before
 using them in paper tables, and keep the run directory, command line, library
 corner, clock period, and SAIF annotation warnings with the cited number.
+
+The clean gate row is a 275.044 ns functional smoke with `PWR-452` absent. It
+is a valid gate-level annotation smoke, not a policy comparison, full-SoC
+power number, or end-to-end TinyViT energy result.
 
 ## Gate-Level SAIF Preflight
 
@@ -180,21 +196,24 @@ Run this check on every emitted Verilog netlist before using it to generate a
 gate-level VCD or SAIF:
 
 ```sh
-make dc-vpu-gate-netlist-check \
-  DC_NETLIST_DIR=netlist/dc/tsmc28/vpu_core_sliced_10ns_nopower
+make dc-vpu-gate-synth
+make dc-vpu-gate-saif-power
 ```
 
-The check rejects `SYNOPSYS_UNCONNECTED` markers. It intentionally fails on
-the current 10 ns checkpoint; this does not invalidate the DDC-based
-preliminary matrix below, but it prevents that matrix from being mislabelled
-as gate-level activity power.
+`dc-vpu-gate-synth` rejects `SYNOPSYS_UNCONNECTED` markers before it creates a
+gate checkpoint. `dc-vpu-gate-saif-power` additionally requires a passing gate
+smoke and zero `PWR-452` annotations. The legacy checkpoint still intentionally
+fails `dc-vpu-gate-netlist-check`; this prevents it from being mislabelled as
+gate-level activity power.
 
 ## Policy Activity Matrix
 
-The following matrix uses the standalone TSMC28 `tt0p9v85c` mapped DDC at 10
-ns. Each policy executes the same 512-`VDOT` activity window of 18,350,364 ps;
-every SAIF run reports 2,216 unmatched objects through `PWR-452` and no
-`PWR-362` total-annotation failure.
+The following legacy matrix uses RTL-originated activity against the standalone
+TSMC28 `tt0p9v85c` mapped DDC at 10 ns. Each policy executes the same
+512-`VDOT` activity window of 18,350,364 ps; every SAIF run reports 2,216
+unmatched objects through `PWR-452` and no `PWR-362` total-annotation failure.
+It is a reproducibility reference only and must not be cited as gate-level
+policy-power evidence until regenerated from the clean gate checkpoint.
 
 | Policy | Dynamic power | Total power | Dynamic energy / VDOT |
 | --- | ---: | ---: | ---: |

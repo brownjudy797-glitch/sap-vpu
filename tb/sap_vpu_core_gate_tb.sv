@@ -248,7 +248,7 @@ module sap_vpu_core_gate_tb;
       wait_rsp_retired();
 
       $dumpfile(activity_file);
-      $dumpvars(0, sap_vpu_core_gate_tb);
+      $dumpvars(1, dut);
       for (int unsigned i = 0; i < 512; i++) begin
         policy_operands(name, i, rs1, rs2);
         send_cmd(i[3:0], SAP_OP_VDOT, rs1, rs2);
@@ -294,7 +294,7 @@ module sap_vpu_core_gate_tb;
     end
 
     $dumpfile("sap_vpu_core_gate_tb.vcd");
-    $dumpvars(0, sap_vpu_core_gate_tb);
+    $dumpvars(1, dut);
 
     send_cmd(4'h1, SAP_OP_VDOT, 32'h0102_0304, 32'h0101_0101);
     expect_rsp(4'h1, 1'b1, 32'd10, 1'b0);

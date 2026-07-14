@@ -42,7 +42,7 @@ VPU_CORE_SAIF ?= $(VPU_CORE_ACTIVITY_DIR)/sap_vpu_core.saif
 TINYVIT_ACTIVITY_DIR ?= $(ROOT_DIR)/work/activity/tinyvit
 TINYVIT_VCD ?= $(TINYVIT_ACTIVITY_DIR)/corev_min_soc_tinyvit_tb.vcd
 TINYVIT_SAIF ?= $(TINYVIT_ACTIVITY_DIR)/sap_vpu_tinyvit.saif
-VCD2SAIF ?= /opt/synopsys/syn/L-2016.03-SP1/bin/vcd2saif
+VCD2SAIF ?= /opt/synopsys/syn/L-2016.03-SP1/linux64/syn/bin/vcd2saif
 SAIF_INSTANCE ?= sap_vpu_core_tb/dut
 TINYVIT_SAIF_INSTANCE ?= corev_min_soc_tinyvit_tb/dut/vpu_i
 FPGA_PART ?= xc7a35tcsg324-1
@@ -69,10 +69,22 @@ DC_NETLIST_DIR ?= $(ROOT_DIR)/netlist/dc/tsmc28/vpu_core
 DC_POLICY_MATRIX_WORK_DIR ?= $(ROOT_DIR)/work/dc/tsmc28/vpu_policy_matrix
 DC_POLICY_MATRIX_REPORT_DIR ?= $(ROOT_DIR)/reports/dc/tsmc28/vpu_policy_matrix
 DC_POLICY_NETLIST_DIR ?= $(ROOT_DIR)/netlist/dc/tsmc28/vpu_core_sliced_10ns_nopower
+SYNOPSYS_ENV_FILE ?= $(HOME)/synopsys_env.sh
+VCS_MX_HOME ?= /opt/synopsys/vcs-mx/O-2018.09-SP2
+VCS_MX ?= $(VCS_MX_HOME)/bin/vcs
+TSMC28_VERILOG ?= /opt/pdk/tsmc28hpcplus/tcbn28hpcplusbwp7t40p140_180b/Front_End/verilog/tcbn28hpcplusbwp7t40p140_110a/tcbn28hpcplusbwp7t40p140.v
+DC_GATE_WORK_DIR ?= $(ROOT_DIR)/work/dc/tsmc28/vpu_core_gate
+DC_GATE_REPORT_DIR ?= $(ROOT_DIR)/reports/dc/tsmc28/vpu_core_gate
+DC_GATE_NETLIST_DIR ?= $(ROOT_DIR)/netlist/dc/tsmc28/vpu_core_gate
+DC_GATE_SIM_DIR ?= $(ROOT_DIR)/work/dc/tsmc28/vpu_core_gate_sim
+DC_GATE_VCD ?= $(DC_GATE_SIM_DIR)/sap_vpu_core_gate_tb.vcd
+DC_GATE_SAIF ?= $(DC_GATE_SIM_DIR)/sap_vpu_core_gate_tb.saif
+DC_GATE_POWER_WORK_DIR ?= $(DC_GATE_SIM_DIR)/dc_power
+DC_GATE_POWER_REPORT_DIR ?= $(DC_GATE_SIM_DIR)/reports_power
 
 .DEFAULT_GOAL := help
 
-.PHONY: help plan-check corev-fetch corev-rtl-flist lint-adapter lint-core lint lint-corev-soc sim-adapter sim-core sim-core-vcd sim-hello sim-vpu sim-tinyvit sim-tinyvit-vcd sim encoding-check legacy-summary hello-build hello-smoke vpu-build vpu-smoke tinyvit-build tinyvit-smoke tinyvit-summary tinyvit-paper-table fpga-vpu-synth fpga-vpu-funcsim-netlist fpga-vpu-funcsim-vcd fpga-vpu-funcsim-saif fpga-vpu-funcsim-saif-power fpga-vpu-policy-power-matrix fpga-vpu-saif-power fpga-vpu-summary dc-vpu-gate-netlist-check dc-vpu-precheck dc-vpu-synth dc-vpu-power dc-vpu-saif-power dc-vpu-tinyvit-saif-power dc-vpu-policy-power-matrix dc-vpu-summary
+.PHONY: help plan-check corev-fetch corev-rtl-flist lint-adapter lint-core lint lint-corev-soc sim-adapter sim-core sim-core-vcd sim-hello sim-vpu sim-tinyvit sim-tinyvit-vcd sim encoding-check legacy-summary hello-build hello-smoke vpu-build vpu-smoke tinyvit-build tinyvit-smoke tinyvit-summary tinyvit-paper-table fpga-vpu-synth fpga-vpu-funcsim-netlist fpga-vpu-funcsim-vcd fpga-vpu-funcsim-saif fpga-vpu-funcsim-saif-power fpga-vpu-policy-power-matrix fpga-vpu-saif-power fpga-vpu-summary dc-vpu-gate-netlist-check dc-vpu-gate-synth dc-vpu-gate-sim dc-vpu-gate-saif-power dc-vpu-precheck dc-vpu-synth dc-vpu-power dc-vpu-saif-power dc-vpu-tinyvit-saif-power dc-vpu-policy-power-matrix dc-vpu-summary
 
 help:
 	@printf '%s\n' \
@@ -102,6 +114,9 @@ help:
 	  'make fpga-vpu-saif-power [FPGA_SAIF_DCP=work/fpga/vpu_core_sliced_140/checkpoints/post_route.dcp]' \
 	  'make fpga-vpu-summary' \
 	  'make dc-vpu-gate-netlist-check [DC_NETLIST_DIR=netlist/dc/tsmc28/vpu_core]' \
+	  'make dc-vpu-gate-synth' \
+	  'make dc-vpu-gate-sim' \
+	  'make dc-vpu-gate-saif-power' \
 	  'make dc-vpu-precheck [DC_CLOCK_PERIOD=10.0]' \
 	  'make dc-vpu-synth [DC_CLOCK_PERIOD=10.0]' \
 	  'make dc-vpu-power [DC_NETLIST_DIR=netlist/dc/tsmc28/vpu_core]' \
@@ -399,6 +414,38 @@ dc-vpu-gate-netlist-check:
 	  echo "Gate netlist has unconnected outputs; do not generate gate-level SAIF." >&2; \
 	  exit 1; \
 	fi
+
+dc-vpu-gate-synth:
+	COMPILE_ULTRA=0 CLOCK_PERIOD="$(DC_CLOCK_PERIOD)" \
+	  WORK_DIR="$(DC_GATE_WORK_DIR)" REPORT_DIR="$(DC_GATE_REPORT_DIR)" NETLIST_DIR="$(DC_GATE_NETLIST_DIR)" \
+	  scripts/run_dc_vpu_synth.sh
+	$(MAKE) dc-vpu-gate-netlist-check DC_NETLIST_DIR="$(DC_GATE_NETLIST_DIR)"
+
+dc-vpu-gate-sim:
+	test -s "$(abspath $(DC_GATE_NETLIST_DIR))/sap_vpu_core.ddc"
+	$(MAKE) dc-vpu-gate-netlist-check DC_NETLIST_DIR="$(abspath $(DC_GATE_NETLIST_DIR))"
+	test -f "$(SYNOPSYS_ENV_FILE)"
+	test -x "$(VCS_MX)"
+	test -s "$(TSMC28_VERILOG)"
+	mkdir -p "$(abspath $(DC_GATE_SIM_DIR))"
+	source "$(SYNOPSYS_ENV_FILE)"; lmstart || true; \
+	cd "$(abspath $(DC_GATE_SIM_DIR))" && \
+	  VCS_HOME="$(VCS_MX_HOME)" VCS_ARCH_OVERRIDE=linux "$(VCS_MX)" -full64 -sverilog \
+	  -LDFLAGS "-Wl,--no-as-needed" -o simv \
+	  "$(ROOT_DIR)/rtl/sap_vpu_pkg.sv" "$(ROOT_DIR)/tb/sap_vpu_core_gate_tb.sv" \
+	  "$(TSMC28_VERILOG)" "$(abspath $(DC_GATE_NETLIST_DIR))/sap_vpu_core.v" && \
+	  ./simv | tee gate.log
+	grep -q "GATE_SMOKE_PASS" "$(abspath $(DC_GATE_SIM_DIR))/gate.log"
+	test -s "$(abspath $(DC_GATE_VCD))"
+
+dc-vpu-gate-saif-power: dc-vpu-gate-sim
+	"$(VCD2SAIF)" -input "$(abspath $(DC_GATE_VCD))" -output "$(abspath $(DC_GATE_SAIF))" -instance sap_vpu_core_gate_tb/dut
+	test -s "$(abspath $(DC_GATE_SAIF))"
+	POWER_ONLY=1 CLOCK_PERIOD="$(DC_CLOCK_PERIOD)" \
+	  WORK_DIR="$(DC_GATE_POWER_WORK_DIR)" REPORT_DIR="$(DC_GATE_POWER_REPORT_DIR)" NETLIST_DIR="$(DC_GATE_NETLIST_DIR)" \
+	  DDC_FILE="$(abspath $(DC_GATE_NETLIST_DIR))/sap_vpu_core.ddc" SAIF_FILE="$(abspath $(DC_GATE_SAIF))" \
+	  SAIF_INSTANCE="sap_vpu_core_gate_tb/dut" scripts/run_dc_vpu_synth.sh
+	! grep -q "PWR-452" "$(DC_GATE_POWER_WORK_DIR)/dc.log"
 
 dc-vpu-precheck:
 	PRECHECK_ONLY=1 CLOCK_PERIOD="$(DC_CLOCK_PERIOD)" \
