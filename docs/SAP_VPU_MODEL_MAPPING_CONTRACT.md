@@ -46,17 +46,20 @@ data movement:
 4. Return results through the existing command response path; no coherent
    cache, autonomous DRAM, or new general-purpose RVV interface is implied.
 
-Before RTL integration, a reference test must cover tile addresses, M/N/K
-tails, 32-bit accumulation, and quantized output against a scalar golden.
+`scripts/check_tiled_gemm_reference.py` is the pre-RTL executable contract. It
+covers row-major byte addresses, an M=3/N=3/K=5 tail case, signed 32-bit
+accumulation, saturating INT8 requantization with ties away from zero, and the
+tracked TinyViT fixture output against its scalar golden.
 
 ## Reproduction
 
 ```sh
 make tinyvit-fixture-check
+make tiled-gemm-check
 make tinyvit-fixture
 make tinyvit-smoke
 ```
 
-The first command validates the generator and mapping counts. The final command
-checks the generated model data through the CV32E40X plus CV-X-IF plus SAP-VPU
-SoC path.
+The first two commands validate the mapping and pre-RTL tiled behavior. The
+final command checks the generated model data through the CV32E40X plus CV-X-IF
+plus SAP-VPU SoC path.

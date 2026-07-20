@@ -90,7 +90,7 @@ DC_GATE_POWER_REPORT_DIR ?= $(DC_GATE_SIM_DIR)/reports_power
 
 .DEFAULT_GOAL := help
 
-.PHONY: help plan-check corev-fetch corev-rtl-flist lint-adapter lint-core lint lint-corev-soc sim-adapter sim-core sim-core-vcd sim-hello sim-vpu sim-tinyvit sim-tinyvit-vcd sim encoding-check legacy-summary hello-build hello-smoke vpu-build vpu-smoke tinyvit-fixture tinyvit-fixture-check tinyvit-build tinyvit-smoke tinyvit-summary tinyvit-paper-table fpga-vpu-synth fpga-vpu-funcsim-netlist fpga-vpu-funcsim-vcd fpga-vpu-funcsim-saif fpga-vpu-funcsim-saif-power fpga-vpu-policy-power-matrix fpga-vpu-saif-power fpga-vpu-summary dc-vpu-gate-netlist-check dc-vpu-gate-synth dc-vpu-gate-sim dc-vpu-gate-saif-power dc-vpu-precheck dc-vpu-synth dc-vpu-power dc-vpu-saif-power dc-vpu-tinyvit-saif-power dc-vpu-policy-power-matrix dc-vpu-summary
+.PHONY: help plan-check corev-fetch corev-rtl-flist lint-adapter lint-core lint lint-corev-soc sim-adapter sim-core sim-core-vcd sim-hello sim-vpu sim-tinyvit sim-tinyvit-vcd sim encoding-check legacy-summary hello-build hello-smoke vpu-build vpu-smoke tinyvit-fixture tinyvit-fixture-check tiled-gemm-check tinyvit-build tinyvit-smoke tinyvit-summary tinyvit-paper-table fpga-vpu-synth fpga-vpu-funcsim-netlist fpga-vpu-funcsim-vcd fpga-vpu-funcsim-saif fpga-vpu-funcsim-saif-power fpga-vpu-policy-power-matrix fpga-vpu-saif-power fpga-vpu-summary dc-vpu-gate-netlist-check dc-vpu-gate-synth dc-vpu-gate-sim dc-vpu-gate-saif-power dc-vpu-precheck dc-vpu-synth dc-vpu-power dc-vpu-saif-power dc-vpu-tinyvit-saif-power dc-vpu-policy-power-matrix dc-vpu-summary
 
 help:
 	@printf '%s\n' \
@@ -112,6 +112,7 @@ help:
 	  'make tinyvit-smoke' \
 	  'make tinyvit-fixture [TINYVIT_FIXTURE_JSON=/path/to/fixture.json]' \
 	  'make tinyvit-fixture-check' \
+	  'make tiled-gemm-check' \
 	  'make tinyvit-summary' \
 	  'make tinyvit-paper-table' \
 	  'make fpga-vpu-synth [FPGA_PART=xc7a35tcsg324-1] [FPGA_CLOCK_MHZ=100]' \
@@ -153,6 +154,7 @@ plan-check:
 	test -x scripts/bin_to_verilog_hex.py
 	test -x scripts/summarize_tinyvit_counters.py
 	test -x scripts/prepare_tinyvit_mlp2_fixture.py
+	test -x scripts/check_tiled_gemm_reference.py
 	test -f docs/SAP_VPU_MODEL_MAPPING_CONTRACT.md
 	test -f scripts/vivado_vpu_synth.tcl
 	test -f scripts/vivado_vpu_write_funcsim.tcl
@@ -363,6 +365,9 @@ tinyvit-fixture:
 
 tinyvit-fixture-check:
 	$(PYTHON) scripts/prepare_tinyvit_mlp2_fixture.py --self-test
+
+tiled-gemm-check:
+	$(PYTHON) scripts/check_tiled_gemm_reference.py
 
 tinyvit-build: tinyvit-fixture
 	mkdir -p "$(TINYVIT_BUILD_DIR)"
