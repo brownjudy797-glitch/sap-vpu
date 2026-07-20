@@ -90,7 +90,7 @@ DC_GATE_POWER_REPORT_DIR ?= $(DC_GATE_SIM_DIR)/reports_power
 
 .DEFAULT_GOAL := help
 
-.PHONY: help plan-check corev-fetch corev-rtl-flist lint-adapter lint-core lint lint-corev-soc sim-adapter sim-core sim-core-vcd sim-hello sim-vpu sim-tinyvit sim-tinyvit-vcd sim encoding-check legacy-summary hello-build hello-smoke vpu-build vpu-smoke tinyvit-fixture tinyvit-fixture-check tiled-gemm-check tinyvit-build tinyvit-smoke tinyvit-summary tinyvit-paper-table fpga-vpu-synth fpga-vpu-funcsim-netlist fpga-vpu-funcsim-vcd fpga-vpu-funcsim-saif fpga-vpu-funcsim-saif-power fpga-vpu-policy-power-matrix fpga-vpu-saif-power fpga-vpu-summary dc-vpu-gate-netlist-check dc-vpu-gate-synth dc-vpu-gate-sim dc-vpu-gate-saif-power dc-vpu-precheck dc-vpu-synth dc-vpu-power dc-vpu-saif-power dc-vpu-tinyvit-saif-power dc-vpu-policy-power-matrix dc-vpu-summary
+.PHONY: help plan-check corev-fetch corev-rtl-flist lint-adapter lint-core lint-tiled-gemm lint lint-corev-soc sim-adapter sim-core sim-tiled-gemm sim-core-vcd sim-hello sim-vpu sim-tinyvit sim-tinyvit-vcd sim encoding-check legacy-summary hello-build hello-smoke vpu-build vpu-smoke tinyvit-fixture tinyvit-fixture-check tiled-gemm-check tiled-gemm-rtl-check tinyvit-build tinyvit-smoke tinyvit-summary tinyvit-paper-table fpga-vpu-synth fpga-vpu-funcsim-netlist fpga-vpu-funcsim-vcd fpga-vpu-funcsim-saif fpga-vpu-funcsim-saif-power fpga-vpu-policy-power-matrix fpga-vpu-saif-power fpga-vpu-summary dc-vpu-gate-netlist-check dc-vpu-gate-synth dc-vpu-gate-sim dc-vpu-gate-saif-power dc-vpu-precheck dc-vpu-synth dc-vpu-power dc-vpu-saif-power dc-vpu-tinyvit-saif-power dc-vpu-policy-power-matrix dc-vpu-summary
 
 help:
 	@printf '%s\n' \
@@ -98,6 +98,7 @@ help:
 	  'make corev-fetch [COREV_DIR=third_party/cv32e40x] [COREV_REF=master]' \
 	  'make lint-adapter' \
 	  'make lint-core' \
+	  'make tiled-gemm-rtl-check' \
 	  'make lint-corev-soc' \
 	  'make sim-adapter' \
 	  'make sim-core' \
@@ -138,12 +139,14 @@ plan-check:
 	test -x scripts/fetch_corev_cv32e40x.sh
 	test -f rtl/sap_vpu_pkg.sv
 	test -f rtl/sap_vpu_core.sv
+	test -f rtl/sap_vpu_tiled_gemm.sv
 	test -f platforms/corev/rtl/cvxif_sap_vpu_adapter.sv
 	test -f platforms/corev/rtl/corev_min_soc.sv
 	test -f tb/corev_min_soc_hello_tb.sv
 	test -f tb/corev_min_soc_vpu_tb.sv
 	test -f tb/corev_min_soc_tinyvit_tb.sv
 	test -f tb/sap_vpu_core_gate_tb.sv
+	test -f tb/sap_vpu_tiled_gemm_tb.sv
 	test -f scripts/run_fpga_vpu_policy_matrix.ps1
 	test -f sw/baremetal/sap_vpu_custom.h
 	test -f sw/baremetal/hello.S
@@ -186,7 +189,11 @@ lint-adapter:
 lint-core:
 	$(VERILATOR) --lint-only -sv rtl/sap_vpu_pkg.sv rtl/sap_vpu_core.sv
 
-lint: lint-adapter lint-core
+lint-tiled-gemm:
+	$(VERILATOR) --lint-only -sv --top-module sap_vpu_tiled_gemm -Wno-fatal \
+	  rtl/sap_vpu_pkg.sv rtl/sap_vpu_tiled_gemm.sv
+
+lint: lint-adapter lint-core lint-tiled-gemm
 
 lint-corev-soc: corev-rtl-flist
 	DESIGN_RTL_DIR="$(COREV_DIR)/rtl" $(VERILATOR) --lint-only -sv \
@@ -219,6 +226,22 @@ sim-core:
 	  --Mdir "$(SIM_DIR)/core_obj" \
 	  -o sap_vpu_core_tb
 	"$(SIM_DIR)/core_obj/sap_vpu_core_tb"
+
+sim-tiled-gemm:
+	mkdir -p "$(SIM_DIR)"
+	$(VERILATOR) --binary --timing -sv --top-module sap_vpu_tiled_gemm_tb -Wno-fatal \
+	  rtl/sap_vpu_pkg.sv \
+	  rtl/sap_vpu_core.sv \
+	  rtl/sap_vpu_tiled_gemm.sv \
+	  tb/sap_vpu_tiled_gemm_tb.sv \
+	  --Mdir "$(SIM_DIR)/tiled_gemm_obj" \
+	  -MAKEFLAGS "CXX=$(VERILATOR_CXX)" \
+	  -CFLAGS "$(VERILATOR_TIMING_CFLAGS)" \
+	  -LDFLAGS "$(VERILATOR_TIMING_LDFLAGS)" \
+	  -o sap_vpu_tiled_gemm_tb
+	"$(SIM_DIR)/tiled_gemm_obj/sap_vpu_tiled_gemm_tb"
+
+tiled-gemm-rtl-check: lint-tiled-gemm sim-tiled-gemm
 
 sim-core-vcd:
 	mkdir -p "$(SIM_DIR)" "$(VPU_CORE_ACTIVITY_DIR)"

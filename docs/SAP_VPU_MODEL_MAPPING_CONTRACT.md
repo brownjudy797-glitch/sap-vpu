@@ -51,11 +51,23 @@ covers row-major byte addresses, an M=3/N=3/K=5 tail case, signed 32-bit
 accumulation, saturating INT8 requantization with ties away from zero, and the
 tracked TinyViT fixture output against its scalar golden.
 
+## First RTL Slice
+
+`rtl/sap_vpu_tiled_gemm.sv` implements a bounded M<=2, N<=2, K<=4 scheduler
+with two packed operand words and two packed weight words. It configures and
+reuses the existing `sap_vpu_core` command/response interface, then emits one
+result per output coordinate. `make tiled-gemm-rtl-check` covers a full 2x2x4
+tile and a 1x1x3 K-tail whose unused packed lane contains nonzero data.
+
+Operands still enter through an explicit load port. This is a private
+scratchpad/control proof, not autonomous RAM, OBI, DMA, or SoC integration.
+
 ## Reproduction
 
 ```sh
 make tinyvit-fixture-check
 make tiled-gemm-check
+make tiled-gemm-rtl-check
 make tinyvit-fixture
 make tinyvit-smoke
 ```
