@@ -104,6 +104,19 @@ module cvxif_sap_vpu_adapter #(
         decoded_op   = SAP_OP_VCLEARCNT;
         is_supported = 1'b1;
       end
+      {SAP_FUNCT7_VTLOAD, 3'b000}: begin
+        decoded_op   = SAP_OP_VTLOAD;
+        is_supported = 1'b1;
+      end
+      {SAP_FUNCT7_VTSTART, 3'b000}: begin
+        decoded_op   = SAP_OP_VTSTART;
+        is_supported = 1'b1;
+      end
+      {SAP_FUNCT7_VTREAD, 3'b000}: begin
+        decoded_op   = SAP_OP_VTREAD;
+        is_supported = 1'b1;
+        scalar_write = 1'b1;
+      end
       default: begin
       end
     endcase

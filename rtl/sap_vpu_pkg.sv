@@ -11,6 +11,9 @@ package sap_vpu_pkg;
   localparam logic [6:0] SAP_FUNCT7_VSETLANE      = 7'h1b;
   localparam logic [6:0] SAP_FUNCT7_VSETSPARSE_BMP = 7'h1c;
   localparam logic [6:0] SAP_FUNCT7_VCLEARCNT     = 7'h1d;
+  localparam logic [6:0] SAP_FUNCT7_VTLOAD        = 7'h20;
+  localparam logic [6:0] SAP_FUNCT7_VTSTART       = 7'h21;
+  localparam logic [6:0] SAP_FUNCT7_VTREAD        = 7'h22;
 
   localparam logic [2:0] SAP_FUNCT3_VSET = 3'b000;
   localparam logic [2:0] SAP_FUNCT3_VMOV = 3'b001;
@@ -23,6 +26,9 @@ package sap_vpu_pkg;
   localparam logic [6:0] SAP_OP_VSETLANE      = 7'h1b;
   localparam logic [6:0] SAP_OP_VSETSPARSE_BMP = 7'h1c;
   localparam logic [6:0] SAP_OP_VCLEARCNT     = 7'h1d;
+  localparam logic [6:0] SAP_OP_VTLOAD        = 7'h20;
+  localparam logic [6:0] SAP_OP_VTSTART       = 7'h21;
+  localparam logic [6:0] SAP_OP_VTREAD        = 7'h22;
 
   localparam logic [1:0] SAP_PREC_INT8 = 2'd0;
   localparam logic [1:0] SAP_PREC_INT4 = 2'd1;

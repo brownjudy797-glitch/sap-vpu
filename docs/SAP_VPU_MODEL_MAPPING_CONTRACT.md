@@ -59,8 +59,21 @@ reuses the existing `sap_vpu_core` command/response interface, then emits one
 result per output coordinate. `make tiled-gemm-rtl-check` covers a full 2x2x4
 tile and a 1x1x3 K-tail whose unused packed lane contains nonzero data.
 
-Operands still enter through an explicit load port. This is a private
-scratchpad/control proof, not autonomous RAM, OBI, DMA, or SoC integration.
+## SoC Command Integration
+
+`rtl/sap_vpu_subsystem.sv` now arbitrates the scheduler and the original VPU
+core behind the existing CV-X-IF adapter. Three custom-0 operations expose the
+bounded engine without changing CV32E40X:
+
+- `VTLOAD`: `rs1` carries one packed word; `rs2[0]` selects input or weight and
+  `rs2[2:1]` selects scratchpad index 0 or 1.
+- `VTSTART`: `rs1[2:0]`, `rs1[5:3]`, and `rs1[8:6]` carry M, N, and K.
+- `VTREAD`: waits for and writes back the next row-major output value.
+
+`make tiled-gemm-soc-smoke` proves these operations through CV32E40X and
+CV-X-IF for a full 2x2x4 tile and a 1x1x3 tail. The CPU still executes one
+`VTLOAD` per packed word; autonomous RAM, OBI, DMA, larger SRAM banks, and
+double buffering remain the next data-movement stage.
 
 ## Reproduction
 
@@ -68,6 +81,7 @@ scratchpad/control proof, not autonomous RAM, OBI, DMA, or SoC integration.
 make tinyvit-fixture-check
 make tiled-gemm-check
 make tiled-gemm-rtl-check
+make tiled-gemm-soc-smoke
 make tinyvit-fixture
 make tinyvit-smoke
 ```

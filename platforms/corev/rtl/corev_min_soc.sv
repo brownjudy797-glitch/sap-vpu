@@ -161,7 +161,7 @@ module corev_min_soc #(
     .vpu_rsp_exc_i(vpu_rsp_exc)
   );
 
-  sap_vpu_core #(
+  sap_vpu_subsystem #(
     .XLEN(32),
     .X_ID_WIDTH(X_ID_WIDTH)
   ) vpu_i (
