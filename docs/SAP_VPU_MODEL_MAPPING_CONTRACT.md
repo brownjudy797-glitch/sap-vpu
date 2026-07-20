@@ -3,8 +3,8 @@
 ## Scope
 
 This Phase 1 contract describes the first model layer that SAP-VPU can execute
-through its existing CPU-issued VDOT path. It freezes data layout and command
-accounting before a scratchpad-fed tiled engine changes the hardware.
+through its CPU-issued VDOT path and the bounded scratchpad-fed tiled engine.
+It freezes data layout, command accounting, and current hardware limits.
 
 ## Current Artifact
 
@@ -36,11 +36,12 @@ as a VDOT count in future reports; scalar-product totals come from the mapping.
 
 ## Bounded Tiled-Engine Contract
 
-The next RTL block must preserve the above numerical result while changing only
-data movement:
+The tiled RTL must preserve the above numerical result while changing only data
+movement:
 
 1. Accept row-major signed INT8 M, N, K tensor descriptors and byte strides.
-2. Stage one bounded M=2, N=2, K=4 tile in a private scratchpad.
+2. Stage one bounded M=2, N=2, K<=8 tile in a private scratchpad, using up to
+   two packed INT8 K-blocks per output.
 3. Accumulate signed products in 32 bits, apply ReLU only between FC1 and FC2,
    and expose a valid-element count for M/N/K tails.
 4. Return results through the existing command response path; no coherent
@@ -53,11 +54,12 @@ tracked TinyViT fixture output against its scalar golden.
 
 ## First RTL Slice
 
-`rtl/sap_vpu_tiled_gemm.sv` implements a bounded M<=2, N<=2, K<=4 scheduler
-with two packed operand words and two packed weight words. It configures and
-reuses the existing `sap_vpu_core` command/response interface, then emits one
-result per output coordinate. `make tiled-gemm-rtl-check` covers a full 2x2x4
-tile and a 1x1x3 K-tail whose unused packed lane contains nonzero data.
+`rtl/sap_vpu_tiled_gemm.sv` implements a bounded M<=2, N<=2, K<=8 scheduler
+with four packed operand words and four packed weight words. It configures and
+reuses the existing `sap_vpu_core` command/response interface, accumulates up
+to two VDOT results per output, then emits one result per output coordinate.
+`make tiled-gemm-rtl-check` covers full 2x2x4 and 2x2x8 tiles plus K=3 and K=5
+tails whose unused packed lanes contain nonzero data.
 
 ## SoC Command Integration
 
@@ -66,20 +68,20 @@ core behind the existing CV-X-IF adapter. Four custom-0 operations expose the
 bounded engine without changing CV32E40X:
 
 - `VTLOAD`: `rs1` carries one packed word; `rs2[0]` selects input or weight and
-  `rs2[2:1]` selects scratchpad index 0 or 1.
+  `rs2[2:1]` selects scratchpad index 0 through 3.
 - `VTDMA`: `rs1` carries an aligned SoC RAM base address; `rs2[0]` selects input
-  or weight and `rs2[2:1]` requests one or two consecutive packed words. The
+  or weight and `rs2[3:1]` requests one through four consecutive packed words. The
   instruction responds only after the read-only OBI transfer completes.
-- `VTSTART`: `rs1[2:0]`, `rs1[5:3]`, and `rs1[8:6]` carry M, N, and K.
+- `VTSTART`: `rs1[2:0]`, `rs1[5:3]`, and `rs1[9:6]` carry M, N, and K.
 - `VTREAD`: waits for and writes back the next row-major output value.
 
 `make tiled-gemm-soc-smoke` proves these operations through CV32E40X and
 CV-X-IF for a full 2x2x4 tile and a 1x1x3 tail using explicit `VTLOAD`
 instructions. `make tiled-gemm-dma-soc-smoke` proves the alternate
-`RAM -> OBI -> scratchpad -> GEMM` path for the same full and tail cases. The
-current DMA has one outstanding read and fills the bounded two-word operand and
-weight scratchpads. Multi-word K accumulation, result writeback, larger SRAM
-banks, and double buffering remain outside this slice.
+`RAM -> OBI -> scratchpad -> GEMM` path for K=3/4/5/8 cases. The current DMA
+has one outstanding read and fills the bounded four-word operand and weight
+scratchpads. Result writeback, larger SRAM banks, and double buffering remain
+outside this slice.
 
 ## Reproduction
 

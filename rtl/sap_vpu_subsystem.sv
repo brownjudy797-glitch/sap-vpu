@@ -35,7 +35,6 @@ module sap_vpu_subsystem #(
   logic is_tile_read;
   logic is_tile_dma;
   logic is_tile_op;
-  logic load_args_valid;
   logic start_args_valid;
   logic dma_args_valid;
 
@@ -43,7 +42,7 @@ module sap_vpu_subsystem #(
   logic                  dma_wait_q;
   logic [X_ID_WIDTH-1:0] dma_cmd_id_q;
   logic [31:0]           dma_addr_q;
-  logic [1:0]            dma_count_q;
+  logic [2:0]            dma_count_q;
   logic [1:0]            dma_index_q;
   logic                  dma_weight_q;
 
@@ -94,12 +93,11 @@ module sap_vpu_subsystem #(
   assign is_tile_dma   = cmd_op_i == SAP_OP_VTDMA;
   assign is_tile_op    = is_tile_load || is_tile_start || is_tile_read || is_tile_dma;
 
-  assign load_args_valid = cmd_rs2_i[2:1] < 2;
   assign start_args_valid = (cmd_rs1_i[2:0] >= 1) && (cmd_rs1_i[2:0] <= 2) &&
                             (cmd_rs1_i[5:3] >= 1) && (cmd_rs1_i[5:3] <= 2) &&
-                            (cmd_rs1_i[8:6] >= 1) && (cmd_rs1_i[8:6] <= 4);
+                            (cmd_rs1_i[9:6] >= 1) && (cmd_rs1_i[9:6] <= 8);
   assign dma_args_valid = (cmd_rs1_i[1:0] == 2'b00) &&
-                          (cmd_rs2_i[2:1] >= 1) && (cmd_rs2_i[2:1] <= 2);
+                          (cmd_rs2_i[3:1] >= 1) && (cmd_rs2_i[3:1] <= 4);
 
   always_comb begin
     cmd_ready_o = 1'b0;
@@ -118,7 +116,7 @@ module sap_vpu_subsystem #(
     end
   end
 
-  assign tile_load_valid  = (cmd_valid_i && cmd_ready_o && is_tile_load && load_args_valid) ||
+  assign tile_load_valid  = (cmd_valid_i && cmd_ready_o && is_tile_load) ||
                             (dma_active_q && dma_wait_q && dma_rvalid_i && !dma_err_i);
   assign tile_load_weight = dma_active_q ? dma_weight_q : cmd_rs2_i[0];
   assign tile_load_index  = dma_active_q ? dma_index_q  : cmd_rs2_i[2:1];
@@ -171,15 +169,14 @@ module sap_vpu_subsystem #(
           dma_wait_q   <= 1'b0;
           dma_cmd_id_q <= cmd_id_i;
           dma_addr_q   <= cmd_rs1_i[31:0];
-          dma_count_q  <= cmd_rs2_i[2:1];
+          dma_count_q  <= cmd_rs2_i[3:1];
           dma_index_q  <= '0;
           dma_weight_q <= cmd_rs2_i[0];
         end else begin
           local_rsp_valid_q <= 1'b1;
           local_rsp_id_q    <= cmd_id_i;
           local_rsp_data_q  <= is_tile_read ? XLEN'(tile_result_data) : '0;
-          local_rsp_exc_q   <= (is_tile_load && !load_args_valid) ||
-                               (is_tile_start && !start_args_valid) ||
+          local_rsp_exc_q   <= (is_tile_start && !start_args_valid) ||
                                (is_tile_read && tile_error && !tile_result_valid) ||
                                (is_tile_dma && !dma_args_valid);
         end
@@ -197,7 +194,7 @@ module sap_vpu_subsystem #(
           local_rsp_id_q    <= dma_cmd_id_q;
           local_rsp_data_q  <= '0;
           local_rsp_exc_q   <= 1'b1;
-        end else if ((dma_index_q + 1'b1) >= dma_count_q) begin
+        end else if (({1'b0, dma_index_q} + 3'd1) >= dma_count_q) begin
           dma_active_q      <= 1'b0;
           local_rsp_valid_q <= 1'b1;
           local_rsp_id_q    <= dma_cmd_id_q;
@@ -226,7 +223,7 @@ module sap_vpu_subsystem #(
     .start_ready_o(),
     .start_m_i(cmd_rs1_i[2:0]),
     .start_n_i(cmd_rs1_i[5:3]),
-    .start_k_i(cmd_rs1_i[8:6]),
+    .start_k_i(cmd_rs1_i[9:6]),
     .busy_o(tile_busy),
     .done_o(),
     .error_o(tile_error),

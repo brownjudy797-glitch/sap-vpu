@@ -12,7 +12,7 @@ module sap_vpu_tiled_gemm_tb;
   logic start_ready;
   logic [2:0] start_m;
   logic [2:0] start_n;
-  logic [2:0] start_k;
+  logic [3:0] start_k;
   logic busy;
   logic done;
   logic error;
@@ -98,7 +98,7 @@ module sap_vpu_tiled_gemm_tb;
     load_valid = 1'b0;
   endtask
 
-  task automatic start_tile(input logic [2:0] m_size, input logic [2:0] n_size, input logic [2:0] k_size);
+  task automatic start_tile(input logic [2:0] m_size, input logic [2:0] n_size, input logic [3:0] k_size);
     @(negedge clk);
     if (!start_ready) $fatal(1, "tiled GEMM start interface not ready");
     start_valid = 1'b1;
@@ -166,7 +166,32 @@ module sap_vpu_tiled_gemm_tb;
     expect_result(0, 0, 32);
     expect_done();
 
+    load_word(1'b0, 0, 32'h0403_0201);
+    load_word(1'b0, 1, 32'h0807_0605);
+    load_word(1'b0, 2, 32'h0506_0708);
+    load_word(1'b0, 3, 32'h0102_0304);
+    load_word(1'b1, 0, 32'h0101_0101);
+    load_word(1'b1, 1, 32'h0101_0101);
+    load_word(1'b1, 2, 32'h0001_0001);
+    load_word(1'b1, 3, 32'h0001_0001);
+    start_tile(2, 2, 8);
+    expect_result(0, 0, 36);
+    expect_result(0, 1, 16);
+    expect_result(1, 0, 36);
+    expect_result(1, 1, 20);
+    expect_done();
+
+    load_word(1'b0, 0, 32'h0403_0201);
+    load_word(1'b0, 1, 32'h7f7f_7f05);
+    load_word(1'b1, 0, 32'h0203_0405);
+    load_word(1'b1, 1, 32'h7f7f_7f01);
+    start_tile(1, 1, 5);
+    expect_result(0, 0, 35);
+    expect_done();
+
     start_tile(1, 1, 0);
+    expect_error();
+    start_tile(1, 1, 9);
     expect_error();
 
     $display("tiled GEMM RTL smoke: PASS");
@@ -174,7 +199,7 @@ module sap_vpu_tiled_gemm_tb;
   end
 
   initial begin
-    repeat (500) @(posedge clk);
+    repeat (1200) @(posedge clk);
     $fatal(1, "tiled GEMM RTL smoke timed out");
   end
 endmodule

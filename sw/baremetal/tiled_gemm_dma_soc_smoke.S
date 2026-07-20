@@ -64,6 +64,43 @@ _start:
   sap_r 0x21, 0x0, 0, 5, 0
   tile_read 32, fail_tail
 
+  li t0, 0x04030201
+  sw t0, 0(s0)
+  li t0, 0x08070605
+  sw t0, 4(s0)
+  li t0, 0x05060708
+  sw t0, 8(s0)
+  li t0, 0x01020304
+  sw t0, 12(s0)
+  li t0, 0x01010101
+  sw t0, 0(s1)
+  sw t0, 4(s1)
+  li t0, 0x00010001
+  sw t0, 8(s1)
+  sw t0, 12(s1)
+  tile_dma RAM_BASE, 8             /* input, four words */
+  tile_dma RHS_BASE, 9             /* weight, four words */
+  li t0, 0x212                     /* M=2, N=2, K=8 */
+  sap_r 0x21, 0x0, 0, 5, 0
+  tile_read 36, fail_k8_00
+  tile_read 16, fail_k8_01
+  tile_read 36, fail_k8_10
+  tile_read 20, fail_k8_11
+
+  li t0, 0x04030201
+  sw t0, 0(s0)
+  li t0, 0x7f7f7f05
+  sw t0, 4(s0)
+  li t0, 0x02030405
+  sw t0, 0(s1)
+  li t0, 0x7f7f7f01
+  sw t0, 4(s1)
+  tile_dma RAM_BASE, 4             /* input, two words */
+  tile_dma RHS_BASE, 5             /* weight, two words */
+  li t0, 0x149                     /* M=1, N=1, K=5 */
+  sap_r 0x21, 0x0, 0, 5, 0
+  tile_read 35, fail_k5
+
   exit_with 1
 
 fail_full_00:
@@ -76,3 +113,13 @@ fail_full_11:
   exit_with 34
 fail_tail:
   exit_with 35
+fail_k8_00:
+  exit_with 36
+fail_k8_01:
+  exit_with 37
+fail_k8_10:
+  exit_with 38
+fail_k8_11:
+  exit_with 39
+fail_k5:
+  exit_with 40
