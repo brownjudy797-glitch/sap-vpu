@@ -36,6 +36,11 @@ TINYVIT_BIN := $(TINYVIT_BUILD_DIR)/sap_vpu_tinyvit.bin
 TINYVIT_HEX := $(TINYVIT_BUILD_DIR)/sap_vpu_tinyvit.hex
 TINYVIT_COUNTER_CSV ?= $(TINYVIT_BUILD_DIR)/tinyvit_smoke_counters.csv
 TINYVIT_PAPER_TABLE ?= $(TINYVIT_BUILD_DIR)/tinyvit_paper_table.md
+TINYVIT_FIXTURE_JSON ?= $(ROOT_DIR)/sw/baremetal/fixtures/tinyvit_mlp2_smoke.json
+TINYVIT_FIXTURE_DIR ?= $(TINYVIT_BUILD_DIR)/fixture
+TINYVIT_FIXTURE_ASM := $(TINYVIT_FIXTURE_DIR)/tinyvit_mlp2_fixture.inc
+TINYVIT_FIXTURE_SVH := $(TINYVIT_FIXTURE_DIR)/tinyvit_mlp2_fixture_tb.svh
+TINYVIT_FIXTURE_METADATA := $(TINYVIT_FIXTURE_DIR)/tinyvit_mlp2_fixture_metadata.json
 VPU_CORE_ACTIVITY_DIR ?= $(ROOT_DIR)/work/activity/vpu_core
 VPU_CORE_VCD ?= $(VPU_CORE_ACTIVITY_DIR)/sap_vpu_core_tb.vcd
 VPU_CORE_SAIF ?= $(VPU_CORE_ACTIVITY_DIR)/sap_vpu_core.saif
@@ -84,7 +89,7 @@ DC_GATE_POWER_REPORT_DIR ?= $(DC_GATE_SIM_DIR)/reports_power
 
 .DEFAULT_GOAL := help
 
-.PHONY: help plan-check corev-fetch corev-rtl-flist lint-adapter lint-core lint lint-corev-soc sim-adapter sim-core sim-core-vcd sim-hello sim-vpu sim-tinyvit sim-tinyvit-vcd sim encoding-check legacy-summary hello-build hello-smoke vpu-build vpu-smoke tinyvit-build tinyvit-smoke tinyvit-summary tinyvit-paper-table fpga-vpu-synth fpga-vpu-funcsim-netlist fpga-vpu-funcsim-vcd fpga-vpu-funcsim-saif fpga-vpu-funcsim-saif-power fpga-vpu-policy-power-matrix fpga-vpu-saif-power fpga-vpu-summary dc-vpu-gate-netlist-check dc-vpu-gate-synth dc-vpu-gate-sim dc-vpu-gate-saif-power dc-vpu-precheck dc-vpu-synth dc-vpu-power dc-vpu-saif-power dc-vpu-tinyvit-saif-power dc-vpu-policy-power-matrix dc-vpu-summary
+.PHONY: help plan-check corev-fetch corev-rtl-flist lint-adapter lint-core lint lint-corev-soc sim-adapter sim-core sim-core-vcd sim-hello sim-vpu sim-tinyvit sim-tinyvit-vcd sim encoding-check legacy-summary hello-build hello-smoke vpu-build vpu-smoke tinyvit-fixture tinyvit-fixture-check tinyvit-build tinyvit-smoke tinyvit-summary tinyvit-paper-table fpga-vpu-synth fpga-vpu-funcsim-netlist fpga-vpu-funcsim-vcd fpga-vpu-funcsim-saif fpga-vpu-funcsim-saif-power fpga-vpu-policy-power-matrix fpga-vpu-saif-power fpga-vpu-summary dc-vpu-gate-netlist-check dc-vpu-gate-synth dc-vpu-gate-sim dc-vpu-gate-saif-power dc-vpu-precheck dc-vpu-synth dc-vpu-power dc-vpu-saif-power dc-vpu-tinyvit-saif-power dc-vpu-policy-power-matrix dc-vpu-summary
 
 help:
 	@printf '%s\n' \
@@ -104,6 +109,8 @@ help:
 	  'make hello-smoke' \
 	  'make vpu-smoke' \
 	  'make tinyvit-smoke' \
+	  'make tinyvit-fixture [TINYVIT_FIXTURE_JSON=/path/to/fixture.json]' \
+	  'make tinyvit-fixture-check' \
 	  'make tinyvit-summary' \
 	  'make tinyvit-paper-table' \
 	  'make fpga-vpu-synth [FPGA_PART=xc7a35tcsg324-1] [FPGA_CLOCK_MHZ=100]' \
@@ -140,9 +147,11 @@ plan-check:
 	test -f sw/baremetal/hello.S
 	test -f sw/baremetal/vpu_smoke.S
 	test -f sw/baremetal/tinyvit_mlp_smoke.S
+	test -f sw/baremetal/fixtures/tinyvit_mlp2_smoke.json
 	test -f sw/baremetal/link.ld
 	test -x scripts/bin_to_verilog_hex.py
 	test -x scripts/summarize_tinyvit_counters.py
+	test -x scripts/prepare_tinyvit_mlp2_fixture.py
 	test -f scripts/vivado_vpu_synth.tcl
 	test -f scripts/vivado_vpu_write_funcsim.tcl
 	test -f scripts/vivado_vpu_saif_power.tcl
@@ -267,6 +276,8 @@ sim-tinyvit: tinyvit-build corev-rtl-flist
 	mkdir -p "$(SIM_DIR)"
 	DESIGN_RTL_DIR="$(COREV_DIR)/rtl" $(VERILATOR) --binary --timing -sv \
 	  -DCOREV_ASSERT_OFF --top-module corev_min_soc_tinyvit_tb -Wno-fatal \
+	  -GROM_INIT_FILE=\"$(TINYVIT_HEX)\" \
+	  -I"$(TINYVIT_FIXTURE_DIR)" \
 	  -Wno-BLKANDNBLK -Wno-TIMESCALEMOD -Wno-UNOPTFLAT \
 	  -Wno-WIDTHEXPAND -Wno-WIDTHTRUNC -Wno-WIDTHCONCAT \
 	  -Wno-ASCRANGE -Wno-IMPLICIT -Wno-UNSIGNED -Wno-COMBDLY \
@@ -288,6 +299,8 @@ sim-tinyvit-vcd: tinyvit-build corev-rtl-flist
 	mkdir -p "$(SIM_DIR)" "$(TINYVIT_ACTIVITY_DIR)"
 	DESIGN_RTL_DIR="$(COREV_DIR)/rtl" $(VERILATOR) --binary --timing --trace -sv \
 	  -DCOREV_ASSERT_OFF --top-module corev_min_soc_tinyvit_tb -Wno-fatal \
+	  -GROM_INIT_FILE=\"$(TINYVIT_HEX)\" \
+	  -I"$(TINYVIT_FIXTURE_DIR)" \
 	  -Wno-BLKANDNBLK -Wno-TIMESCALEMOD -Wno-UNOPTFLAT \
 	  -Wno-WIDTHEXPAND -Wno-WIDTHTRUNC -Wno-WIDTHCONCAT \
 	  -Wno-ASCRANGE -Wno-IMPLICIT -Wno-UNSIGNED -Wno-COMBDLY \
@@ -338,9 +351,19 @@ vpu-build:
 vpu-smoke: sim-vpu lint-corev-soc
 	test -s "$(VPU_HEX)"
 
-tinyvit-build:
+tinyvit-fixture:
+	mkdir -p "$(TINYVIT_FIXTURE_DIR)"
+	$(PYTHON) scripts/prepare_tinyvit_mlp2_fixture.py "$(TINYVIT_FIXTURE_JSON)" \
+	  --asm "$(TINYVIT_FIXTURE_ASM)" \
+	  --svh "$(TINYVIT_FIXTURE_SVH)" \
+	  --metadata "$(TINYVIT_FIXTURE_METADATA)"
+
+tinyvit-fixture-check:
+	$(PYTHON) scripts/prepare_tinyvit_mlp2_fixture.py --self-test
+
+tinyvit-build: tinyvit-fixture
 	mkdir -p "$(TINYVIT_BUILD_DIR)"
-	$(RISCV_AS) -march=rv32imc -mabi=ilp32 \
+	$(RISCV_AS) -I "$(TINYVIT_FIXTURE_DIR)" -march=rv32imc -mabi=ilp32 \
 	  -o "$(TINYVIT_BUILD_DIR)/tinyvit_mlp_smoke.o" sw/baremetal/tinyvit_mlp_smoke.S
 	$(RISCV_LD) -m elf32lriscv -T sw/baremetal/link.ld \
 	  -o "$(TINYVIT_ELF)" "$(TINYVIT_BUILD_DIR)/tinyvit_mlp_smoke.o"
@@ -359,13 +382,13 @@ tinyvit-paper-table: tinyvit-smoke
 
 fpga-vpu-synth:
 	mkdir -p "$(FPGA_BUILD_DIR)"
-	$(VIVADO) -mode batch -source scripts/vivado_vpu_synth.tcl \
+	cd "$(FPGA_BUILD_DIR)" && $(VIVADO) -mode batch -source "$(ROOT_DIR)/scripts/vivado_vpu_synth.tcl" \
 	  -tclargs "$(FPGA_PART)" "$(FPGA_CLOCK_MHZ)" "$(FPGA_BUILD_DIR)"
 
 fpga-vpu-funcsim-netlist:
 	test -s "$(FPGA_FUNCSIM_DCP)"
 	mkdir -p "$(FPGA_FUNCSIM_DIR)"
-	$(VIVADO) -mode batch -source scripts/vivado_vpu_write_funcsim.tcl \
+	cd "$(FPGA_FUNCSIM_DIR)" && $(VIVADO) -mode batch -source "$(ROOT_DIR)/scripts/vivado_vpu_write_funcsim.tcl" \
 	  -tclargs "$(FPGA_FUNCSIM_DCP)" "$(FPGA_FUNCSIM_DIR)"
 
 fpga-vpu-funcsim-vcd: fpga-vpu-funcsim-netlist
@@ -385,7 +408,7 @@ fpga-vpu-funcsim-saif: fpga-vpu-funcsim-vcd
 fpga-vpu-funcsim-saif-power: fpga-vpu-funcsim-saif
 	test -s "$(FPGA_SAIF_DCP)"
 	mkdir -p "$(FPGA_FUNCSIM_SAIF_POWER_DIR)"
-	$(VIVADO) -mode batch -source scripts/vivado_vpu_saif_power.tcl \
+	cd "$(FPGA_FUNCSIM_SAIF_POWER_DIR)" && $(VIVADO) -mode batch -source "$(ROOT_DIR)/scripts/vivado_vpu_saif_power.tcl" \
 	  -tclargs "$(FPGA_SAIF_DCP)" "$(FPGA_FUNCSIM_SAIF)" "$(FPGA_FUNCSIM_SAIF_POWER_DIR)" "$(FPGA_SAIF_STRIP_PATH)"
 
 fpga-vpu-policy-power-matrix:
@@ -402,7 +425,7 @@ fpga-vpu-saif-power: sim-core-vcd
 	test -s "$(VPU_CORE_SAIF)"
 	test -s "$(FPGA_SAIF_DCP)"
 	mkdir -p "$(FPGA_SAIF_POWER_DIR)"
-	$(VIVADO) -mode batch -source scripts/vivado_vpu_saif_power.tcl \
+	cd "$(FPGA_SAIF_POWER_DIR)" && $(VIVADO) -mode batch -source "$(ROOT_DIR)/scripts/vivado_vpu_saif_power.tcl" \
 	  -tclargs "$(FPGA_SAIF_DCP)" "$(VPU_CORE_SAIF)" "$(FPGA_SAIF_POWER_DIR)" "$(FPGA_SAIF_STRIP_PATH)"
 
 fpga-vpu-summary:

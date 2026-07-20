@@ -47,7 +47,7 @@ test -s "$TSMC28_DB" || {
 mkdir -p "$WORK_DIR" "$REPORT_DIR" "$NETLIST_DIR"
 
 (
-  cd "$ROOT_DIR"
+  cd "$WORK_DIR"
   if [[ -n "$SYNOPSYS_ENV_FILE" && -f "$SYNOPSYS_ENV_FILE" ]]; then
     # shellcheck disable=SC1090
     source "$SYNOPSYS_ENV_FILE" >/dev/null 2>&1
@@ -80,7 +80,7 @@ mkdir -p "$WORK_DIR" "$REPORT_DIR" "$NETLIST_DIR"
     DDC_FILE="$DDC_FILE" \
     SAIF_FILE="$SAIF_FILE" \
     SAIF_INSTANCE="$SAIF_INSTANCE" \
-    "$DC_SHELL" -64bit -f scripts/dc_vpu_synth.tcl | tee "$WORK_DIR/dc.log"
+    "$DC_SHELL" -64bit -f "$ROOT_DIR/scripts/dc_vpu_synth.tcl" | tee "$WORK_DIR/dc.log"
 
   if [[ -n "$SAIF_FILE" ]] && grep -q "PWR-362" "$WORK_DIR/dc.log"; then
     echo "SAIF activity was not annotated; check SAIF_INSTANCE=$SAIF_INSTANCE" >&2

@@ -311,22 +311,7 @@ _start:
   sw t0, TILE_INT8_BASE + 124(a1)
 
   /* Two-token INT8 MLP projection: 4 input -> 4 hidden -> 2 output. */
-  li t0, 0x04030201             /* token0: [1, 2, 3, 4] */
-  sw t0, TILE_MLP2_BASE + 0(a1)
-  li t0, 0x01020304             /* token1: [4, 3, 2, 1] */
-  sw t0, TILE_MLP2_BASE + 4(a1)
-  li t0, 0x01010101             /* hidden weight0: [1, 1, 1, 1] */
-  sw t0, TILE_MLP2_BASE + 8(a1)
-  li t0, 0x00010001             /* hidden weight1: [1, 0, 1, 0] */
-  sw t0, TILE_MLP2_BASE + 12(a1)
-  li t0, 0x01000100             /* hidden weight2: [0, 1, 0, 1] */
-  sw t0, TILE_MLP2_BASE + 16(a1)
-  li t0, 0x0000ffff             /* hidden weight3: [-1, -1, 0, 0] */
-  sw t0, TILE_MLP2_BASE + 20(a1)
-  li t0, 0x01010101             /* output weight0: [1, 1, 1, 1] */
-  sw t0, TILE_MLP2_BASE + 24(a1)
-  li t0, 0x00010001             /* output weight1: [1, 0, 1, 0] */
-  sw t0, TILE_MLP2_BASE + 28(a1)
+  .include "tinyvit_mlp2_fixture.inc"
 
   /* TinyViT MLP/GEMM-like INT8 dense 4-block tile, repeated to expose kernel cost. */
   read_csr 8, 0xb00              /* s0 = mcycle */
@@ -1438,7 +1423,7 @@ _start:
   addi a0, a0, -1
   bnez a0, 1b
 
-  li t4, 1120
+  li t4, TINYVIT_MLP2_EXPECTED_OUTPUT
   bne t5, t4, fail_mlp2_output
 
   li t0, 2

@@ -27,7 +27,7 @@ Current boundary:
 Run from the repository root after fetching `third_party/cv32e40x`:
 
 ```sh
-make tinyvit-summary SIM_DIR=/home/rime/Program/sap-vpu/work/sim_tinyvit_ablation
+make tinyvit-summary
 ```
 
 The command rebuilds the RV32 bare-metal TinyViT smoke, runs the CV32E40X
@@ -49,6 +49,38 @@ Focused summary-only command:
 ```sh
 python3 scripts/summarize_tinyvit_counters.py work/tinyvit/tinyvit_smoke_counters.csv
 ```
+
+## Data Fixture Interface
+
+The `tinyvit_mlp2` portion of the smoke no longer owns its packed words or its
+integer golden result in hand-written assembly. `make tinyvit-fixture` validates
+a JSON fixture and generates the assembler include, testbench golden include,
+and a metadata record under `TINYVIT_BUILD_DIR/fixture/`. The tracked
+`sw/baremetal/fixtures/tinyvit_mlp2_smoke.json` preserves the current smoke
+case.
+
+To run a separately exported fixture without overwriting the default work
+directory:
+
+```sh
+make tinyvit-smoke \
+  TINYVIT_FIXTURE_JSON=/absolute/path/to/tinyvit_mlp2.json \
+  TINYVIT_BUILD_DIR=/absolute/path/to/work/tinyvit_checkpoint
+```
+
+The accepted `sap-vpu-tinyvit-mlp2-int8-v1` schema deliberately has a small
+fixed contract: two tokens, four INT8 input channels, four INT8 first-projection
+rows, and two INT8 second-projection rows. It requires symmetric INT8 metadata,
+zero zero-points, positive scales, and provenance. A fixture marked
+`checkpoint` must carry a 64-character checkpoint SHA-256; the tracked
+`smoke` fixture is explicitly marked as synthetic.
+
+This interface proves integer data-path correctness for an exported projection
+slice. It does not yet support bias, non-zero zero-points, GELU, arbitrary
+dimensions, or float-reference error measurement. Consequently, loading a
+checkpoint-derived fixture is not by itself a full TinyViT inference claim.
+Those features remain required before reporting model-accuracy or end-to-end
+energy results.
 
 ## Evidence Covered
 
@@ -111,6 +143,6 @@ smoke evidence only: it has no residual path, quantization-scale error, or full
 TinyViT dimensions.
 
 Use this record to justify that SAP-VPU now has a repeatable TinyViT-oriented
-kernel path. The next evidence step needs an exported TinyViT checkpoint or
-quantized tensor fixture, so dimensions, scales, and error can be measured
-instead of synthesized by the smoke kernel.
+kernel path and a controlled input-fixture boundary. The next evidence step is
+a checkpoint-derived fixture within this contract, followed by larger dimensions,
+bias/GELU handling, and float-error accounting before any full-model claim.

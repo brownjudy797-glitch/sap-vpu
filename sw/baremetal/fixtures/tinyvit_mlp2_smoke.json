@@ -1,0 +1,21 @@
+{
+  "schema": "sap-vpu-tinyvit-mlp2-int8-v1",
+  "provenance": {
+    "kind": "smoke",
+    "model_id": "sap-vpu-deterministic-smoke",
+    "layer_id": "two-token-4x4x2-projection",
+    "checkpoint_sha256": "not-applicable"
+  },
+  "quantization": {
+    "scheme": "symmetric-int8",
+    "input_scale": 1.0,
+    "fc1_weight_scale": 1.0,
+    "fc2_weight_scale": 1.0,
+    "input_zero_point": 0,
+    "fc1_weight_zero_point": 0,
+    "fc2_weight_zero_point": 0
+  },
+  "input_tokens": [[1, 2, 3, 4], [4, 3, 2, 1]],
+  "fc1_weights": [[1, 1, 1, 1], [1, 0, 1, 0], [0, 1, 0, 1], [-1, -1, 0, 0]],
+  "fc2_weights": [[1, 1, 1, 1], [1, 0, 1, 0]]
+}

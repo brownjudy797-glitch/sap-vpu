@@ -60,7 +60,10 @@ for policy in "${POLICIES[@]}"; do
   power_report="$report_dir/power.rpt"
   mkdir -p "$policy_dir" "$report_dir"
 
-  VCS_HOME="$VCS_MX_HOME" "$SIM_BIN" "+policy=$policy" "+vcd=$vcd_file" | tee "$sim_log"
+  (
+    cd "$OBJ_DIR"
+    VCS_HOME="$VCS_MX_HOME" "$SIM_BIN" "+policy=$policy" "+vcd=$vcd_file" | tee "$sim_log"
+  )
   grep -q "GATE_POLICY_PASS: $policy" "$sim_log"
   ! grep -q 'GATE_.*_FAIL' "$sim_log"
   test -s "$vcd_file"

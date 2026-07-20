@@ -112,7 +112,7 @@ foreach ($policy in $Policies) {
   $durationPs = [long]$durationMatch.Groups[1].Value
 
   Invoke-VivadoCmd (
-    'vivado -mode batch -source scripts\vivado_vpu_saif_power.tcl -tclargs "{0}" "{1}\{2}.saif" "{1}\power"' -f $Dcp, $policyDir, $policy
+    'pushd "{0}" && vivado -mode batch -source "!root!\scripts\vivado_vpu_saif_power.tcl" -tclargs "{1}" "{0}\{2}.saif" "{0}\power" && popd' -f $policyPath, (Join-Path $repo $Dcp), $policy
   ) $vivadoLogRel
   $reportPath = Join-Path $policyPath 'power\reports\post_route_saif_power.rpt'
   foreach ($path in @((Join-Path $repo $vivadoLogRel), $reportPath)) {

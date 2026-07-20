@@ -1,6 +1,8 @@
 `timescale 1ns/1ps
 
-module corev_min_soc_tinyvit_tb;
+module corev_min_soc_tinyvit_tb #(
+  parameter string ROM_INIT_FILE = "work/tinyvit/sap_vpu_tinyvit.hex"
+);
   localparam int unsigned TIMEOUT_CYCLES = 90000;
   localparam logic [31:0] RESULT_MAGIC = 32'h5456_4954; // "TVIT"
   localparam int unsigned TINYVIT_ITERS = 16;
@@ -25,6 +27,8 @@ module corev_min_soc_tinyvit_tb;
   localparam int unsigned K_MLP2 = 13;
   localparam int unsigned K_DONE = 14;
 
+`include "tinyvit_mlp2_fixture_tb.svh"
+
   logic clk;
   logic rst_n;
   logic fetch_enable;
@@ -43,7 +47,7 @@ module corev_min_soc_tinyvit_tb;
 
   corev_min_soc #(
     .ROM_WORDS(2048),
-    .ROM_INIT_FILE("work/tinyvit/sap_vpu_tinyvit.hex")
+    .ROM_INIT_FILE(ROM_INIT_FILE)
   ) dut (
     .clk_i(clk),
     .rst_ni(rst_n),
@@ -232,7 +236,7 @@ module corev_min_soc_tinyvit_tb;
         expect_result(82, 32'd0);
         expect_result(83, 32'd255);
         expect_result(84, 32'd8);
-        expect_result(87, 32'd1120);
+        expect_result(87, TINYVIT_MLP2_EXPECTED_OUTPUT);
         expect_result(88, 32'd192);
         expect_result(89, 32'd0);
         if ((dut.ram[4] == 32'd0) || (dut.ram[5] == 32'd0) ||
