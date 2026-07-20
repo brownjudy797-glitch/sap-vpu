@@ -3,6 +3,7 @@
 
   .equ RAM_BASE,  0x00010000
   .equ RHS_BASE,  0x00010020
+  .equ OUT_BASE,  0x00010040
   .equ EXIT_ADDR, 0x10000004
 
   .macro sap_r funct7, funct3, rd, rs1, rs2
@@ -19,6 +20,11 @@
     sap_r 0x22, 0x0, 28, 0, 0
     li t4, \expected
     bne t3, t4, \fail_label
+  .endm
+
+  .macro tile_store base
+    li t0, \base
+    sap_r 0x24, 0x0, 0, 5, 0
   .endm
 
   .macro exit_with code
@@ -82,10 +88,20 @@ _start:
   tile_dma RHS_BASE, 9             /* weight, four words */
   li t0, 0x212                     /* M=2, N=2, K=8 */
   sap_r 0x21, 0x0, 0, 5, 0
-  tile_read 36, fail_k8_00
-  tile_read 16, fail_k8_01
-  tile_read 36, fail_k8_10
-  tile_read 20, fail_k8_11
+  tile_store OUT_BASE
+  li t0, OUT_BASE
+  lw t3, 0(t0)
+  li t4, 36
+  bne t3, t4, fail_k8_00
+  lw t3, 4(t0)
+  li t4, 16
+  bne t3, t4, fail_k8_01
+  lw t3, 8(t0)
+  li t4, 36
+  bne t3, t4, fail_k8_10
+  lw t3, 12(t0)
+  li t4, 20
+  bne t3, t4, fail_k8_11
 
   li t0, 0x04030201
   sw t0, 0(s0)
@@ -99,7 +115,11 @@ _start:
   tile_dma RHS_BASE, 5             /* weight, two words */
   li t0, 0x149                     /* M=1, N=1, K=5 */
   sap_r 0x21, 0x0, 0, 5, 0
-  tile_read 35, fail_k5
+  tile_store OUT_BASE
+  li t0, OUT_BASE
+  lw t3, 0(t0)
+  li t4, 35
+  bne t3, t4, fail_k5
 
   exit_with 1
 

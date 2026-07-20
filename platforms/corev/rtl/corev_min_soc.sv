@@ -80,6 +80,9 @@ module corev_min_soc #(
   logic                  vpu_dma_req;
   logic                  vpu_dma_gnt;
   logic [31:0]           vpu_dma_addr;
+  logic                  vpu_dma_we;
+  logic [3:0]            vpu_dma_be;
+  logic [31:0]           vpu_dma_wdata;
   logic                  vpu_dma_rvalid;
   logic [31:0]           vpu_dma_rdata;
   logic                  vpu_dma_err;
@@ -188,6 +191,9 @@ module corev_min_soc #(
     .dma_req_o(vpu_dma_req),
     .dma_gnt_i(vpu_dma_gnt),
     .dma_addr_o(vpu_dma_addr),
+    .dma_we_o(vpu_dma_we),
+    .dma_be_o(vpu_dma_be),
+    .dma_wdata_o(vpu_dma_wdata),
     .dma_rvalid_i(vpu_dma_rvalid),
     .dma_rdata_i(vpu_dma_rdata),
     .dma_err_i(vpu_dma_err)
@@ -241,6 +247,15 @@ module corev_min_soc #(
         end else if (data_addr == EXIT_ADDR) begin
           exit_valid_o <= 1'b1;
           exit_code_o  <= data_wdata;
+        end
+      end
+      if (vpu_dma_req && vpu_dma_gnt && vpu_dma_we &&
+          (vpu_dma_addr >= RAM_BASE) &&
+          (((vpu_dma_addr - RAM_BASE) >> 2) < RAM_WORDS)) begin
+        for (int unsigned i = 0; i < 4; i++) begin
+          if (vpu_dma_be[i]) begin
+            ram[(vpu_dma_addr - RAM_BASE) >> 2][8*i +: 8] <= vpu_dma_wdata[8*i +: 8];
+          end
         end
       end
     end

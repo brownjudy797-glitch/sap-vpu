@@ -24,15 +24,16 @@ The paper must keep these boundaries explicit:
 | Minimal CORE-V SoC | CV32E40X wrapper with ROM, RAM, UART, exit MMIO, and OBI timing smoke. | `make hello-smoke` |
 | CV-X-IF attachment | `corev_min_soc` enables `X_EXT` and connects SAP-VPU through the flattened adapter. | `make lint-corev-soc`, `make hello-smoke` |
 | VPU instruction path | Bare-metal custom-0 smoke covers base, precision, sparse, lane, and counter ops. | `make vpu-smoke` |
-| Tiled GEMM path | A bounded M<=2, N<=2, K<=8 scheduler accumulates up to two packed VDOT blocks per output. `VTLOAD` supports explicit CPU-fed words, while `VTDMA` autonomously fetches up to four packed words from SoC RAM over a read-only, single-outstanding OBI path. K=3/4/5/8 cases pass. | `make tiled-gemm-rtl-check`, `make tiled-gemm-soc-smoke`, `make tiled-gemm-dma-soc-smoke` |
+| Tiled GEMM path | A bounded M<=2, N<=2, K<=8 scheduler accumulates up to two packed VDOT blocks per output. `VTDMA` fetches up to four packed words from SoC RAM and `VTSTORE` writes row-major results back over a single-outstanding OBI path. K=3/4/5/8 cases pass. | `make tiled-gemm-rtl-check`, `make tiled-gemm-soc-smoke`, `make tiled-gemm-dma-soc-smoke` |
 | Paper workload | TinyViT MLP smoke now repeats an eight-block, 2-token x 2-output-channel policy tile 16 times, includes a 64-round `dense_x4` larger-shape row and a data-dependent 2-token 4-input -> 4-hidden -> ReLU -> 2-output INT8 projection, and exports INT8/INT4/INT2 policy, bitmap sparse counters, a software-scheduled 75% whole-vector sparse row, unstructured sparse counters, ablations, dense/adaptive reuse rows, and observed RAM tile traffic. The MLP2 slice is fixture-driven with checked provenance and quantization metadata; current numbers remain smoke-only evidence. | `make tinyvit-paper-table`, `make tinyvit-fixture-check`, `docs/SAP_VPU_TINYVIT_SMOKE_RECORD.md` |
 | FPGA evidence | Standalone `sap_vpu_core` is mapped for Artix-7 `xc7a35tcsg324-1`; the 140 MHz gate-level SAIF flow meets timing with +0.044 ns WNS. This is core-only timing/power evidence, not a board or full-SoC result. | `make fpga-vpu-policy-power-matrix`, `docs/SAP_VPU_FPGA_FLOW.md` |
 | ASIC evidence | A `COMPILE_ULTRA=0` TSMC28 `tt0p9v85c`, 10 ns checkpoint passes the gate-netlist preflight, VCS-MX gate smoke, and DUT-only SAIF annotation with no `PWR-452`. The nine-policy matrix is regenerated from this clean gate checkpoint; it remains a standalone fixed-window result, not full-SoC energy evidence. | `make dc-vpu-gate-synth`, `make dc-vpu-gate-saif-power`, `make dc-vpu-policy-power-matrix`, `docs/SAP_VPU_ASIC_FLOW.md` |
 
-The next hardware milestone is result writeback so completed row-major outputs
-can move to SoC RAM without one `VTREAD` per value. The current read-only DMA
-and four-word scratchpads prove autonomous operand fetch and two-block K
-accumulation, but larger SRAM banks and double buffering remain later work.
+The next hardware milestone is FPGA and ASIC synthesis of the complete
+`sap_vpu_subsystem`, including the tiled scheduler, bounded scratchpads, and
+OBI read/write data mover. The current four-word scratchpads prove autonomous
+operand fetch, two-block K accumulation, and result writeback, but larger SRAM
+banks and double buffering remain later work.
 Data-accurate dimensions, bias/GELU, float-error accounting, and a defensible
 power-reduction claim also remain subsequent paper-evidence steps.
 
@@ -65,44 +66,15 @@ custom instruction, TinyML, and edge-AI accelerator work.
 
 ## Next Engineering Sequence
 
-1. **TinyViT MLP/GEMM kernel smoke**
-   - Add a bare-metal kernel that executes a small deterministic MLP/GEMM-like
-     workload through SAP-VPU custom instructions.
-   - Keep the first kernel small enough for ROM/RAM simulation and exact golden
-     checking.
-   - Verify output values and exit code in the existing CORE-V SoC test style.
-
-2. **Kernel counters**
-   - Read counters after each kernel variant: cycle, instruction count, active
-     MAC count, skipped elements, sparse bitmap state, and active lane state.
-   - Save results in generated output under `work/` or `results/`, not as source
-     claims until reproduced.
-
-3. **Policy variants**
-   - Static INT8 dense baseline.
-   - Static low-bit baseline: INT4 and, where numerically meaningful, INT2.
-   - Adaptive policy: precision plus sparse bitmap plus lane setting chosen from
-     a simple importance rule.
-
-4. **Ablation variants**
-   - Full SAP-VPU policy.
-   - No sparse skip: dense bitmap with the same precision.
-   - No lane gating: all lanes active with the same sparse bitmap.
-   - No precision gating: fixed INT8 with the same sparse/lane policy.
-
-5. **Result tables**
-   - Main TinyViT kernel table: cycles, speedup, active MACs, skipped elements,
-     effective skip ratio, and output correctness.
-   - Policy table: dense INT8 vs low-bit vs adaptive policy.
-   - Ablation table: full vs disabled sparse/lane/precision features.
-   - Memory-awareness table: observed RAM tile operand reads, weight reads, and
-     partial sum traffic for each kernel variant.
-
-6. **Hardware evidence**
-   - Run FPGA smoke/timing only after the kernel path is stable.
-   - Run TSMC28 ASIC area/timing/power after RTL behavior and ablation points
-     are locked.
-   - State SRAM blackbox or macro assumptions before using PPA numbers.
+1. Synthesize `sap_vpu_subsystem` for Artix-7 at the existing 100/140 MHz
+   checkpoints and compare area/timing with the standalone core.
+2. Synthesize the same subsystem with the existing TSMC28 flow and report the
+   scheduler, data-mover, and register-based scratchpad cost separately from any
+   future SRAM-macro assumption.
+3. Add subsystem-level activity capture only after both synthesis flows pass,
+   then regenerate power evidence from the verified read-compute-write path.
+4. Resume larger TinyViT layer mapping after the full subsystem PPA delta is
+   known; do not expand scratchpad capacity before that cost is measured.
 
 ## TinyViT Kernel Plan
 

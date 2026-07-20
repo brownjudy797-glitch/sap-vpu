@@ -44,8 +44,9 @@ movement:
    two packed INT8 K-blocks per output.
 3. Accumulate signed products in 32 bits, apply ReLU only between FC1 and FC2,
    and expose a valid-element count for M/N/K tails.
-4. Return results through the existing command response path; no coherent
-   cache, autonomous DRAM, or new general-purpose RVV interface is implied.
+4. Return results through the command response path or sequentially write them
+   to SoC RAM; no coherent cache, autonomous DRAM, or new general-purpose RVV
+   interface is implied.
 
 `scripts/check_tiled_gemm_reference.py` is the pre-RTL executable contract. It
 covers row-major byte addresses, an M=3/N=3/K=5 tail case, signed 32-bit
@@ -64,7 +65,7 @@ tails whose unused packed lanes contain nonzero data.
 ## SoC Command Integration
 
 `rtl/sap_vpu_subsystem.sv` now arbitrates the scheduler and the original VPU
-core behind the existing CV-X-IF adapter. Four custom-0 operations expose the
+core behind the existing CV-X-IF adapter. Five custom-0 operations expose the
 bounded engine without changing CV32E40X:
 
 - `VTLOAD`: `rs1` carries one packed word; `rs2[0]` selects input or weight and
@@ -74,14 +75,17 @@ bounded engine without changing CV32E40X:
   instruction responds only after the read-only OBI transfer completes.
 - `VTSTART`: `rs1[2:0]`, `rs1[5:3]`, and `rs1[9:6]` carry M, N, and K.
 - `VTREAD`: waits for and writes back the next row-major output value.
+- `VTSTORE`: `rs1` carries an aligned SoC RAM base address. It writes every
+  row-major result through the single-outstanding OBI path and responds after
+  the final write completes.
 
 `make tiled-gemm-soc-smoke` proves these operations through CV32E40X and
 CV-X-IF for a full 2x2x4 tile and a 1x1x3 tail using explicit `VTLOAD`
 instructions. `make tiled-gemm-dma-soc-smoke` proves the alternate
-`RAM -> OBI -> scratchpad -> GEMM` path for K=3/4/5/8 cases. The current DMA
-has one outstanding read and fills the bounded four-word operand and weight
-scratchpads. Result writeback, larger SRAM banks, and double buffering remain
-outside this slice.
+`RAM -> OBI -> scratchpad -> GEMM -> OBI -> RAM` path for K=3/4/5/8 cases.
+The current data mover has one outstanding transaction, fills the bounded
+four-word operand and weight scratchpads, and writes row-major results. Larger
+SRAM banks and double buffering remain outside this slice.
 
 ## Reproduction
 

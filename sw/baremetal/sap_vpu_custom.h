@@ -17,6 +17,7 @@
 #define SAP_FUNCT7_VTSTART 0x21
 #define SAP_FUNCT7_VTREAD 0x22
 #define SAP_FUNCT7_VTDMA 0x23
+#define SAP_FUNCT7_VTSTORE 0x24
 
 #define SAP_FUNCT3_VSET 0x0
 #define SAP_FUNCT3_VMOV 0x1
@@ -52,5 +53,6 @@
 #define SAP_ENC_VTSTART(rd, rs1, rs2) SAP_R_TYPE(SAP_FUNCT7_VTSTART, 0, rd, rs1, rs2)
 #define SAP_ENC_VTREAD(rd, rs1, rs2) SAP_R_TYPE(SAP_FUNCT7_VTREAD, 0, rd, rs1, rs2)
 #define SAP_ENC_VTDMA(rd, rs1, rs2) SAP_R_TYPE(SAP_FUNCT7_VTDMA, 0, rd, rs1, rs2)
+#define SAP_ENC_VTSTORE(rd, rs1, rs2) SAP_R_TYPE(SAP_FUNCT7_VTSTORE, 0, rd, rs1, rs2)
 
 #endif
