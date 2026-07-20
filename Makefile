@@ -41,6 +41,7 @@ TINYVIT_FIXTURE_DIR ?= $(TINYVIT_BUILD_DIR)/fixture
 TINYVIT_FIXTURE_ASM := $(TINYVIT_FIXTURE_DIR)/tinyvit_mlp2_fixture.inc
 TINYVIT_FIXTURE_SVH := $(TINYVIT_FIXTURE_DIR)/tinyvit_mlp2_fixture_tb.svh
 TINYVIT_FIXTURE_METADATA := $(TINYVIT_FIXTURE_DIR)/tinyvit_mlp2_fixture_metadata.json
+TINYVIT_FIXTURE_MAPPING := $(TINYVIT_FIXTURE_DIR)/tinyvit_mlp2_vdot_mapping.json
 VPU_CORE_ACTIVITY_DIR ?= $(ROOT_DIR)/work/activity/vpu_core
 VPU_CORE_VCD ?= $(VPU_CORE_ACTIVITY_DIR)/sap_vpu_core_tb.vcd
 VPU_CORE_SAIF ?= $(VPU_CORE_ACTIVITY_DIR)/sap_vpu_core.saif
@@ -152,6 +153,7 @@ plan-check:
 	test -x scripts/bin_to_verilog_hex.py
 	test -x scripts/summarize_tinyvit_counters.py
 	test -x scripts/prepare_tinyvit_mlp2_fixture.py
+	test -f docs/SAP_VPU_MODEL_MAPPING_CONTRACT.md
 	test -f scripts/vivado_vpu_synth.tcl
 	test -f scripts/vivado_vpu_write_funcsim.tcl
 	test -f scripts/vivado_vpu_saif_power.tcl
@@ -356,7 +358,8 @@ tinyvit-fixture:
 	$(PYTHON) scripts/prepare_tinyvit_mlp2_fixture.py "$(TINYVIT_FIXTURE_JSON)" \
 	  --asm "$(TINYVIT_FIXTURE_ASM)" \
 	  --svh "$(TINYVIT_FIXTURE_SVH)" \
-	  --metadata "$(TINYVIT_FIXTURE_METADATA)"
+	  --metadata "$(TINYVIT_FIXTURE_METADATA)" \
+	  --mapping "$(TINYVIT_FIXTURE_MAPPING)"
 
 tinyvit-fixture-check:
 	$(PYTHON) scripts/prepare_tinyvit_mlp2_fixture.py --self-test

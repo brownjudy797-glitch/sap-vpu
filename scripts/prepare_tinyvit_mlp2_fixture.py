@@ -14,6 +14,7 @@ from typing import Any
 
 
 SCHEMA = "sap-vpu-tinyvit-mlp2-int8-v1"
+MAPPING_SCHEMA = "sap-vpu-vdot-mapping-v1"
 TOKENS = 2
 INPUT_CHANNELS = 4
 HIDDEN_CHANNELS = 4
@@ -125,12 +126,68 @@ def evaluate(fixture: dict[str, Any]) -> tuple[list[int], int, list[list[int]]]:
     return words, expected, outputs
 
 
+def command_mapping(fixture: dict[str, Any]) -> dict[str, Any]:
+    """Describe the fixed MLP slice as the current CPU-issued VDOT stream."""
+    fc1_vdot_count = TOKENS * HIDDEN_CHANNELS
+    fc2_vdot_count = TOKENS * OUTPUT_CHANNELS
+    vdot_count = fc1_vdot_count + fc2_vdot_count
+    scalar_product_count = (fc1_vdot_count * INPUT_CHANNELS) + (fc2_vdot_count * HIDDEN_CHANNELS)
+    return {
+        "schema": MAPPING_SCHEMA,
+        "source": {
+            "fixture_schema": fixture["schema"],
+            "provenance": fixture["provenance"],
+        },
+        "layout": {
+            "element_order": "row-major",
+            "pack_order": "little-endian-int8-lanes",
+            "elements_per_word": 4,
+        },
+        "vpu_state": {
+            "precision": "int8",
+            "sparse_bitmap": "0x0000000f",
+            "active_lanes": 4,
+        },
+        "layers": [
+            {
+                "name": "fc1",
+                "input_shape": [TOKENS, INPUT_CHANNELS],
+                "weight_shape": [HIDDEN_CHANNELS, INPUT_CHANNELS],
+                "output_shape": [TOKENS, HIDDEN_CHANNELS],
+                "post_op": "relu",
+                "vdot_count": fc1_vdot_count,
+                "scalar_product_count": fc1_vdot_count * INPUT_CHANNELS,
+            },
+            {
+                "name": "fc2",
+                "input_shape": [TOKENS, HIDDEN_CHANNELS],
+                "weight_shape": [OUTPUT_CHANNELS, HIDDEN_CHANNELS],
+                "output_shape": [TOKENS, OUTPUT_CHANNELS],
+                "post_op": "none",
+                "vdot_count": fc2_vdot_count,
+                "scalar_product_count": fc2_vdot_count * HIDDEN_CHANNELS,
+            },
+        ],
+        "per_iteration": {
+            "vdot_count": vdot_count,
+            "scalar_product_count": scalar_product_count,
+        },
+        "smoke_total": {
+            "iterations": ITERATIONS,
+            "vdot_count": vdot_count * ITERATIONS,
+            "scalar_product_count": scalar_product_count * ITERATIONS,
+        },
+    }
+
+
 def write_text(path: Path, content: str) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(content, encoding="ascii")
 
 
-def write_artifacts(fixture: dict[str, Any], asm_path: Path, svh_path: Path, metadata_path: Path) -> None:
+def write_artifacts(
+    fixture: dict[str, Any], asm_path: Path, svh_path: Path, metadata_path: Path, mapping_path: Path
+) -> None:
     words, expected, outputs = evaluate(fixture)
     names = ("token0", "token1", "hidden_weight0", "hidden_weight1", "hidden_weight2", "hidden_weight3", "output_weight0", "output_weight1")
     asm_lines = [
@@ -156,6 +213,8 @@ def write_artifacts(fixture: dict[str, Any], asm_path: Path, svh_path: Path, met
     }
     metadata_path.parent.mkdir(parents=True, exist_ok=True)
     metadata_path.write_text(json.dumps(metadata, indent=2, sort_keys=True) + "\n", encoding="ascii")
+    mapping_path.parent.mkdir(parents=True, exist_ok=True)
+    mapping_path.write_text(json.dumps(command_mapping(fixture), indent=2, sort_keys=True) + "\n", encoding="ascii")
 
 
 def self_test() -> int:
@@ -165,11 +224,22 @@ def self_test() -> int:
     assert words == [0x04030201, 0x01020304, 0x01010101, 0x00010001, 0x01000100, 0x0000FFFF, 0x01010101, 0x00010001]
     assert expected == 1120
     assert outputs == [[20, 16], [20, 14]]
+    mapping = command_mapping(fixture)
+    assert mapping["source"] == {"fixture_schema": SCHEMA, "provenance": fixture["provenance"]}
+    assert mapping["per_iteration"] == {"vdot_count": 12, "scalar_product_count": 48}
+    assert mapping["smoke_total"] == {"iterations": 16, "vdot_count": 192, "scalar_product_count": 768}
     with tempfile.TemporaryDirectory() as temporary_directory:
         temporary = Path(temporary_directory)
-        write_artifacts(fixture, temporary / "fixture.inc", temporary / "fixture.svh", temporary / "fixture.json")
+        write_artifacts(
+            fixture,
+            temporary / "fixture.inc",
+            temporary / "fixture.svh",
+            temporary / "fixture.json",
+            temporary / "mapping.json",
+        )
         assert "TINYVIT_MLP2_EXPECTED_OUTPUT, 1120" in (temporary / "fixture.inc").read_text(encoding="ascii")
         assert "32'h00000460" in (temporary / "fixture.svh").read_text(encoding="ascii")
+        assert '"vdot_count": 192' in (temporary / "mapping.json").read_text(encoding="ascii")
     return 0
 
 
@@ -179,13 +249,14 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--asm", type=Path, help="generated assembler include path")
     parser.add_argument("--svh", type=Path, help="generated SystemVerilog include path")
     parser.add_argument("--metadata", type=Path, help="generated metadata JSON path")
+    parser.add_argument("--mapping", type=Path, help="generated layer-to-VDOT mapping JSON path")
     parser.add_argument("--self-test", action="store_true", help="validate the tracked smoke fixture and generator")
     args = parser.parse_args()
     if args.self_test:
-        if args.fixture or args.asm or args.svh or args.metadata:
+        if args.fixture or args.asm or args.svh or args.metadata or args.mapping:
             parser.error("--self-test does not accept fixture output arguments")
-    elif not (args.fixture and args.asm and args.svh and args.metadata):
-        parser.error("fixture, --asm, --svh, and --metadata are required")
+    elif not (args.fixture and args.asm and args.svh and args.metadata and args.mapping):
+        parser.error("fixture, --asm, --svh, --metadata, and --mapping are required")
     return args
 
 
@@ -195,7 +266,7 @@ def main() -> int:
         return self_test()
     try:
         fixture = validate_fixture(json.loads(args.fixture.read_text(encoding="utf-8")))
-        write_artifacts(fixture, args.asm, args.svh, args.metadata)
+        write_artifacts(fixture, args.asm, args.svh, args.metadata, args.mapping)
     except (OSError, json.JSONDecodeError, ValueError) as exc:
         print(exc, file=sys.stderr)
         return 1
