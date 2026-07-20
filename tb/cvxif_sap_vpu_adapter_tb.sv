@@ -141,6 +141,25 @@ module cvxif_sap_vpu_adapter_tb;
     clear_inputs();
 
     issue_valid = 1'b1;
+    issue_id = 4'h8;
+    issue_instr = instr(SAP_FUNCT7_VTDMA, 3'b000);
+    issue_rs1 = 32'h0001_0000;
+    issue_rs2 = 32'h0000_0004;
+    assert(issue_ready);
+    assert(issue_accept);
+    assert(!issue_writeback);
+    assert(vpu_cmd_valid);
+    assert(vpu_cmd_op == SAP_OP_VTDMA);
+    tick();
+    clear_inputs();
+    vpu_rsp_valid = 1'b1;
+    vpu_rsp_id = 4'h8;
+    assert(result_valid);
+    assert(!result_we);
+    tick();
+    clear_inputs();
+
+    issue_valid = 1'b1;
     issue_id = 4'h9;
     issue_instr = instr_rd(SAP_FUNCT7_VREADCNT, 3'b000, 5'd11);
     issue_rs1 = 32'h0000_0002;

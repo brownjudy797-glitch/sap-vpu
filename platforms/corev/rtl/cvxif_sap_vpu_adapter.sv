@@ -117,6 +117,10 @@ module cvxif_sap_vpu_adapter #(
         is_supported = 1'b1;
         scalar_write = 1'b1;
       end
+      {SAP_FUNCT7_VTDMA, 3'b000}: begin
+        decoded_op   = SAP_OP_VTDMA;
+        is_supported = 1'b1;
+      end
       default: begin
       end
     endcase

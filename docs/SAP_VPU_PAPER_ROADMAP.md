@@ -24,15 +24,17 @@ The paper must keep these boundaries explicit:
 | Minimal CORE-V SoC | CV32E40X wrapper with ROM, RAM, UART, exit MMIO, and OBI timing smoke. | `make hello-smoke` |
 | CV-X-IF attachment | `corev_min_soc` enables `X_EXT` and connects SAP-VPU through the flattened adapter. | `make lint-corev-soc`, `make hello-smoke` |
 | VPU instruction path | Bare-metal custom-0 smoke covers base, precision, sparse, lane, and counter ops. | `make vpu-smoke` |
-| Tiled GEMM path | A bounded M<=2, N<=2, K<=4 scheduler is connected through CV-X-IF with `VTLOAD`, `VTSTART`, and `VTREAD`; full and K-tail SoC cases pass. Data loading is still CPU-issued, not DMA. | `make tiled-gemm-rtl-check`, `make tiled-gemm-soc-smoke` |
+| Tiled GEMM path | A bounded M<=2, N<=2, K<=4 scheduler is connected through CV-X-IF. `VTLOAD` supports explicit CPU-fed words, while `VTDMA` autonomously fetches one or two packed words from SoC RAM over a read-only, single-outstanding OBI path. Full and K-tail SoC cases pass through both loading paths. | `make tiled-gemm-rtl-check`, `make tiled-gemm-soc-smoke`, `make tiled-gemm-dma-soc-smoke` |
 | Paper workload | TinyViT MLP smoke now repeats an eight-block, 2-token x 2-output-channel policy tile 16 times, includes a 64-round `dense_x4` larger-shape row and a data-dependent 2-token 4-input -> 4-hidden -> ReLU -> 2-output INT8 projection, and exports INT8/INT4/INT2 policy, bitmap sparse counters, a software-scheduled 75% whole-vector sparse row, unstructured sparse counters, ablations, dense/adaptive reuse rows, and observed RAM tile traffic. The MLP2 slice is fixture-driven with checked provenance and quantization metadata; current numbers remain smoke-only evidence. | `make tinyvit-paper-table`, `make tinyvit-fixture-check`, `docs/SAP_VPU_TINYVIT_SMOKE_RECORD.md` |
 | FPGA evidence | Standalone `sap_vpu_core` is mapped for Artix-7 `xc7a35tcsg324-1`; the 140 MHz gate-level SAIF flow meets timing with +0.044 ns WNS. This is core-only timing/power evidence, not a board or full-SoC result. | `make fpga-vpu-policy-power-matrix`, `docs/SAP_VPU_FPGA_FLOW.md` |
 | ASIC evidence | A `COMPILE_ULTRA=0` TSMC28 `tt0p9v85c`, 10 ns checkpoint passes the gate-netlist preflight, VCS-MX gate smoke, and DUT-only SAIF annotation with no `PWR-452`. The nine-policy matrix is regenerated from this clean gate checkpoint; it remains a standalone fixed-window result, not full-SoC energy evidence. | `make dc-vpu-gate-synth`, `make dc-vpu-gate-saif-power`, `make dc-vpu-policy-power-matrix`, `docs/SAP_VPU_ASIC_FLOW.md` |
 
-The next milestone is a checkpoint-derived TinyViT fixture using the new
-fixed-shape input contract. It establishes data provenance and integer golden
-checking first; data-accurate dimensions, bias/GELU, float-error accounting,
-and a defensible power-reduction claim remain subsequent steps.
+The next hardware milestone is multi-word K accumulation so one output can span
+more than one packed VDOT. The current read-only DMA and two-word scratchpads
+prove autonomous operand fetch, but result writeback, larger SRAM banks, and
+double buffering remain later data-movement work. Data-accurate dimensions,
+bias/GELU, float-error accounting, and a defensible power-reduction claim also
+remain subsequent paper-evidence steps.
 
 ## Contribution Spine
 

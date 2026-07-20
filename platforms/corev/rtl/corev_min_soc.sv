@@ -77,6 +77,12 @@ module corev_min_soc #(
   logic [X_ID_WIDTH-1:0] vpu_rsp_id;
   logic [31:0]           vpu_rsp_data;
   logic                  vpu_rsp_exc;
+  logic                  vpu_dma_req;
+  logic                  vpu_dma_gnt;
+  logic [31:0]           vpu_dma_addr;
+  logic                  vpu_dma_rvalid;
+  logic [31:0]           vpu_dma_rdata;
+  logic                  vpu_dma_err;
 
   function automatic logic [31:0] read_rom(input logic [31:0] addr);
     begin
@@ -178,7 +184,13 @@ module corev_min_soc #(
     .rsp_ready_i(vpu_rsp_ready),
     .rsp_id_o(vpu_rsp_id),
     .rsp_data_o(vpu_rsp_data),
-    .rsp_exc_o(vpu_rsp_exc)
+    .rsp_exc_o(vpu_rsp_exc),
+    .dma_req_o(vpu_dma_req),
+    .dma_gnt_i(vpu_dma_gnt),
+    .dma_addr_o(vpu_dma_addr),
+    .dma_rvalid_i(vpu_dma_rvalid),
+    .dma_rdata_i(vpu_dma_rdata),
+    .dma_err_i(vpu_dma_err)
   );
 
   initial begin
@@ -190,6 +202,7 @@ module corev_min_soc #(
   assign instr_gnt    = instr_req;
 
   assign data_gnt    = data_req;
+  assign vpu_dma_gnt = vpu_dma_req && !data_req;
 
   always_ff @(posedge clk_i or negedge rst_ni) begin
     if (!rst_ni) begin
@@ -197,6 +210,9 @@ module corev_min_soc #(
       instr_rdata     <= 32'h0000_0013;
       data_rvalid     <= 1'b0;
       data_rdata      <= 32'h0000_0000;
+      vpu_dma_rvalid  <= 1'b0;
+      vpu_dma_rdata   <= 32'h0000_0000;
+      vpu_dma_err     <= 1'b0;
       uart_tx_valid_o <= 1'b0;
       uart_tx_data_o  <= 8'h00;
       exit_valid_o    <= 1'b0;
@@ -206,6 +222,10 @@ module corev_min_soc #(
       instr_rdata     <= read_rom(instr_addr);
       data_rvalid     <= data_req && data_gnt;
       data_rdata      <= read_data(data_addr);
+      vpu_dma_rvalid  <= vpu_dma_req && vpu_dma_gnt;
+      vpu_dma_rdata   <= read_data(vpu_dma_addr);
+      vpu_dma_err     <= !((vpu_dma_addr >= RAM_BASE) &&
+                           (((vpu_dma_addr - RAM_BASE) >> 2) < RAM_WORDS));
       uart_tx_valid_o <= 1'b0;
       exit_valid_o    <= 1'b0;
       if (data_req && data_gnt && data_we) begin

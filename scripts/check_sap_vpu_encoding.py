@@ -20,6 +20,7 @@ EXPECTED = {
     "SAP_FUNCT7_VTLOAD": "0x20",
     "SAP_FUNCT7_VTSTART": "0x21",
     "SAP_FUNCT7_VTREAD": "0x22",
+    "SAP_FUNCT7_VTDMA": "0x23",
 }
 
 

@@ -34,6 +34,10 @@ TILED_GEMM_SOC_BUILD_DIR ?= $(ROOT_DIR)/work/tiled_gemm_soc
 TILED_GEMM_SOC_ELF := $(TILED_GEMM_SOC_BUILD_DIR)/sap_vpu_tiled_gemm_soc.elf
 TILED_GEMM_SOC_BIN := $(TILED_GEMM_SOC_BUILD_DIR)/sap_vpu_tiled_gemm_soc.bin
 TILED_GEMM_SOC_HEX := $(TILED_GEMM_SOC_BUILD_DIR)/sap_vpu_tiled_gemm_soc.hex
+TILED_GEMM_DMA_SOC_BUILD_DIR ?= $(ROOT_DIR)/work/tiled_gemm_dma_soc
+TILED_GEMM_DMA_SOC_ELF := $(TILED_GEMM_DMA_SOC_BUILD_DIR)/sap_vpu_tiled_gemm_dma_soc.elf
+TILED_GEMM_DMA_SOC_BIN := $(TILED_GEMM_DMA_SOC_BUILD_DIR)/sap_vpu_tiled_gemm_dma_soc.bin
+TILED_GEMM_DMA_SOC_HEX := $(TILED_GEMM_DMA_SOC_BUILD_DIR)/sap_vpu_tiled_gemm_dma_soc.hex
 SAP_VPU_SOC_RTL := rtl/sap_vpu_pkg.sv rtl/sap_vpu_core.sv rtl/sap_vpu_tiled_gemm.sv rtl/sap_vpu_subsystem.sv
 TINYVIT_BUILD_DIR ?= $(ROOT_DIR)/work/tinyvit
 TINYVIT_ELF := $(TINYVIT_BUILD_DIR)/sap_vpu_tinyvit.elf
@@ -95,7 +99,7 @@ DC_GATE_POWER_REPORT_DIR ?= $(DC_GATE_SIM_DIR)/reports_power
 
 .DEFAULT_GOAL := help
 
-.PHONY: help plan-check corev-fetch corev-rtl-flist lint-adapter lint-core lint-tiled-gemm lint-subsystem lint lint-corev-soc sim-adapter sim-core sim-tiled-gemm sim-core-vcd sim-hello sim-vpu sim-tiled-gemm-soc sim-tinyvit sim-tinyvit-vcd sim encoding-check legacy-summary hello-build hello-smoke vpu-build vpu-smoke tiled-gemm-soc-build tiled-gemm-soc-smoke tinyvit-fixture tinyvit-fixture-check tiled-gemm-check tiled-gemm-rtl-check tinyvit-build tinyvit-smoke tinyvit-summary tinyvit-paper-table fpga-vpu-synth fpga-vpu-funcsim-netlist fpga-vpu-funcsim-vcd fpga-vpu-funcsim-saif fpga-vpu-funcsim-saif-power fpga-vpu-policy-power-matrix fpga-vpu-saif-power fpga-vpu-summary dc-vpu-gate-netlist-check dc-vpu-gate-synth dc-vpu-gate-sim dc-vpu-gate-saif-power dc-vpu-precheck dc-vpu-synth dc-vpu-power dc-vpu-saif-power dc-vpu-tinyvit-saif-power dc-vpu-policy-power-matrix dc-vpu-summary
+.PHONY: help plan-check corev-fetch corev-rtl-flist lint-adapter lint-core lint-tiled-gemm lint-subsystem lint lint-corev-soc sim-adapter sim-core sim-tiled-gemm sim-core-vcd sim-hello sim-vpu sim-tiled-gemm-soc sim-tiled-gemm-dma-soc sim-tinyvit sim-tinyvit-vcd sim encoding-check legacy-summary hello-build hello-smoke vpu-build vpu-smoke tiled-gemm-soc-build tiled-gemm-soc-smoke tiled-gemm-dma-soc-build tiled-gemm-dma-soc-smoke tinyvit-fixture tinyvit-fixture-check tiled-gemm-check tiled-gemm-rtl-check tinyvit-build tinyvit-smoke tinyvit-summary tinyvit-paper-table fpga-vpu-synth fpga-vpu-funcsim-netlist fpga-vpu-funcsim-vcd fpga-vpu-funcsim-saif fpga-vpu-funcsim-saif-power fpga-vpu-policy-power-matrix fpga-vpu-saif-power fpga-vpu-summary dc-vpu-gate-netlist-check dc-vpu-gate-synth dc-vpu-gate-sim dc-vpu-gate-saif-power dc-vpu-precheck dc-vpu-synth dc-vpu-power dc-vpu-saif-power dc-vpu-tinyvit-saif-power dc-vpu-policy-power-matrix dc-vpu-summary
 
 help:
 	@printf '%s\n' \
@@ -116,6 +120,7 @@ help:
 	  'make hello-smoke' \
 	  'make vpu-smoke' \
 	  'make tiled-gemm-soc-smoke' \
+	  'make tiled-gemm-dma-soc-smoke' \
 	  'make tinyvit-smoke' \
 	  'make tinyvit-fixture [TINYVIT_FIXTURE_JSON=/path/to/fixture.json]' \
 	  'make tinyvit-fixture-check' \
@@ -155,11 +160,13 @@ plan-check:
 	test -f tb/sap_vpu_core_gate_tb.sv
 	test -f tb/sap_vpu_tiled_gemm_tb.sv
 	test -f tb/corev_min_soc_tiled_gemm_tb.sv
+	test -f tb/corev_min_soc_tiled_gemm_dma_tb.sv
 	test -f scripts/run_fpga_vpu_policy_matrix.ps1
 	test -f sw/baremetal/sap_vpu_custom.h
 	test -f sw/baremetal/hello.S
 	test -f sw/baremetal/vpu_smoke.S
 	test -f sw/baremetal/tiled_gemm_soc_smoke.S
+	test -f sw/baremetal/tiled_gemm_dma_soc_smoke.S
 	test -f sw/baremetal/tinyvit_mlp_smoke.S
 	test -f sw/baremetal/fixtures/tinyvit_mlp2_smoke.json
 	test -f sw/baremetal/link.ld
@@ -225,6 +232,9 @@ sim-adapter:
 	  platforms/corev/rtl/cvxif_sap_vpu_adapter.sv \
 	  tb/cvxif_sap_vpu_adapter_tb.sv \
 	  --Mdir "$(SIM_DIR)/adapter_obj" \
+	  -MAKEFLAGS "CXX=$(VERILATOR_CXX)" \
+	  -CFLAGS "$(VERILATOR_TIMING_CFLAGS)" \
+	  -LDFLAGS "$(VERILATOR_TIMING_LDFLAGS)" \
 	  -o cvxif_sap_vpu_adapter_tb
 	"$(SIM_DIR)/adapter_obj/cvxif_sap_vpu_adapter_tb"
 
@@ -235,6 +245,9 @@ sim-core:
 	  rtl/sap_vpu_core.sv \
 	  tb/sap_vpu_core_tb.sv \
 	  --Mdir "$(SIM_DIR)/core_obj" \
+	  -MAKEFLAGS "CXX=$(VERILATOR_CXX)" \
+	  -CFLAGS "$(VERILATOR_TIMING_CFLAGS)" \
+	  -LDFLAGS "$(VERILATOR_TIMING_LDFLAGS)" \
 	  -o sap_vpu_core_tb
 	"$(SIM_DIR)/core_obj/sap_vpu_core_tb"
 
@@ -328,6 +341,26 @@ sim-tiled-gemm-soc: tiled-gemm-soc-build corev-rtl-flist
 	  -o corev_min_soc_tiled_gemm_tb
 	"$(SIM_DIR)/tiled_gemm_soc_obj/corev_min_soc_tiled_gemm_tb"
 
+sim-tiled-gemm-dma-soc: tiled-gemm-dma-soc-build corev-rtl-flist
+	mkdir -p "$(SIM_DIR)"
+	DESIGN_RTL_DIR="$(COREV_DIR)/rtl" $(VERILATOR) --binary --timing -sv \
+	  -DCOREV_ASSERT_OFF --top-module corev_min_soc_tiled_gemm_dma_tb -Wno-fatal \
+	  -Wno-BLKANDNBLK -Wno-TIMESCALEMOD -Wno-UNOPTFLAT \
+	  -Wno-WIDTHEXPAND -Wno-WIDTHTRUNC -Wno-WIDTHCONCAT \
+	  -Wno-ASCRANGE -Wno-IMPLICIT -Wno-UNSIGNED -Wno-COMBDLY \
+	  --output-split $(VERILATOR_OUTPUT_SPLIT) --output-split-cfuncs $(VERILATOR_OUTPUT_SPLIT_CFUNCS) \
+	  -f "$(COREV_RTL_FLIST)" \
+	  $(SAP_VPU_SOC_RTL) \
+	  platforms/corev/rtl/cvxif_sap_vpu_adapter.sv \
+	  platforms/corev/rtl/corev_min_soc.sv \
+	  tb/corev_min_soc_tiled_gemm_dma_tb.sv \
+	  --Mdir "$(SIM_DIR)/tiled_gemm_dma_soc_obj" \
+	  -MAKEFLAGS "CXX=$(VERILATOR_CXX)" \
+	  -CFLAGS "$(VERILATOR_TIMING_CFLAGS)" \
+	  -LDFLAGS "$(VERILATOR_TIMING_LDFLAGS)" \
+	  -o corev_min_soc_tiled_gemm_dma_tb
+	"$(SIM_DIR)/tiled_gemm_dma_soc_obj/corev_min_soc_tiled_gemm_dma_tb"
+
 sim-tinyvit: tinyvit-build corev-rtl-flist
 	mkdir -p "$(SIM_DIR)"
 	DESIGN_RTL_DIR="$(COREV_DIR)/rtl" $(VERILATOR) --binary --timing -sv \
@@ -416,6 +449,18 @@ tiled-gemm-soc-build:
 
 tiled-gemm-soc-smoke: sim-tiled-gemm-soc lint-corev-soc
 	test -s "$(TILED_GEMM_SOC_HEX)"
+
+tiled-gemm-dma-soc-build:
+	mkdir -p "$(TILED_GEMM_DMA_SOC_BUILD_DIR)"
+	$(RISCV_AS) -march=rv32imc -mabi=ilp32 \
+	  -o "$(TILED_GEMM_DMA_SOC_BUILD_DIR)/tiled_gemm_dma_soc_smoke.o" sw/baremetal/tiled_gemm_dma_soc_smoke.S
+	$(RISCV_LD) -m elf32lriscv -T sw/baremetal/link.ld \
+	  -o "$(TILED_GEMM_DMA_SOC_ELF)" "$(TILED_GEMM_DMA_SOC_BUILD_DIR)/tiled_gemm_dma_soc_smoke.o"
+	$(RISCV_OBJCOPY) -O binary "$(TILED_GEMM_DMA_SOC_ELF)" "$(TILED_GEMM_DMA_SOC_BIN)"
+	$(PYTHON) scripts/bin_to_verilog_hex.py "$(TILED_GEMM_DMA_SOC_BIN)" "$(TILED_GEMM_DMA_SOC_HEX)"
+
+tiled-gemm-dma-soc-smoke: sim-tiled-gemm-dma-soc lint-corev-soc
+	test -s "$(TILED_GEMM_DMA_SOC_HEX)"
 
 tinyvit-fixture:
 	mkdir -p "$(TINYVIT_FIXTURE_DIR)"
