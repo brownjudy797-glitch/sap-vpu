@@ -49,6 +49,28 @@ module sap_vpu_core_tb;
     end
   endtask
 
+  task automatic send_fast_zero_vdot(input logic [3:0] id);
+    begin
+      cmd_valid = 1'b1;
+      cmd_id = id;
+      cmd_op = SAP_OP_VDOT;
+      cmd_rs1 = 32'h7654_3210;
+      cmd_rs2 = 32'h1234_5678;
+      if (!cmd_ready) $fatal(1, "zero-group VDOT was not accepted");
+      tick();
+      cmd_valid = 1'b0;
+      if (!rsp_valid) begin
+        $fatal(1, "zero-group VDOT did not take the fast path: sparse=%h elem=%b dot=%b sum=%b",
+               dut.sparse_bitmap_q, dut.vdot_elem_pending_q, dut.vdot_pending_q,
+               dut.vdot_sum_pending_q);
+      end
+      if (rsp_id != id) $fatal(1, "zero-group VDOT response id mismatch");
+      if (rsp_data != 32'h0) $fatal(1, "zero-group VDOT result was not zero");
+      if (rsp_exc) $fatal(1, "zero-group VDOT raised an exception");
+      tick();
+    end
+  endtask
+
   task automatic clear_inputs;
     begin
       cmd_valid = 1'b0;
@@ -120,8 +142,20 @@ module sap_vpu_core_tb;
     send_cmd(4'h7, SAP_OP_VREADCNT, 32'(SAP_CNT_INST), 32'h0);
     assert(rsp_data == 32'd1);
 
+    send_cmd(4'h8, SAP_OP_VSETSPARSE_BMP, 32'h0, 32'h0);
+    send_fast_zero_vdot(4'h9);
+
+    send_cmd(4'ha, SAP_OP_VREADCNT, 32'(SAP_CNT_MAC_ACTIVE), 32'h0);
+    if (rsp_data != 32'd0) $fatal(1, "zero-group VDOT incremented MAC_ACTIVE");
+
+    send_cmd(4'hb, SAP_OP_VREADCNT, 32'(SAP_CNT_SKIPPED), 32'h0);
+    if (rsp_data != 32'd8) $fatal(1, "zero-group VDOT skipped-lane count mismatch");
+
+    send_cmd(4'hc, SAP_OP_VREADCNT, 32'(SAP_CNT_GROUP_SKIPPED), 32'h0);
+    if (rsp_data != 32'd1) $fatal(1, "zero-group VDOT group-skip count mismatch");
+
     cmd_valid = 1'b1;
-    cmd_id = 4'h8;
+    cmd_id = 4'hd;
     cmd_op = 7'h7f;
     assert(cmd_ready);
     tick();

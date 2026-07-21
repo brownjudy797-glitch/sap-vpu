@@ -32,6 +32,7 @@ module sap_vpu_core #(
   logic [31:0] inst_count_q;
   logic [31:0] mac_active_q;
   logic [31:0] skipped_count_q;
+  logic [31:0] group_skipped_count_q;
 
   logic                  rsp_valid_q;
   logic [X_ID_WIDTH-1:0] rsp_id_q;
@@ -139,6 +140,7 @@ module sap_vpu_core #(
         SAP_CNT_SKIPPED:    counter_value = XLEN'(skipped_count_q);
         SAP_CNT_SPARSE:     counter_value = XLEN'(sparse_bitmap_q);
         SAP_CNT_LANE:       counter_value = XLEN'(active_lanes_q);
+        SAP_CNT_GROUP_SKIPPED: counter_value = XLEN'(group_skipped_count_q);
         default:            counter_value = '0;
       endcase
     end
@@ -188,6 +190,7 @@ module sap_vpu_core #(
       inst_count_q    <= '0;
       mac_active_q    <= '0;
       skipped_count_q <= '0;
+      group_skipped_count_q <= '0;
       rsp_valid_q     <= 1'b0;
       rsp_id_q        <= '0;
       rsp_data_q      <= '0;
@@ -211,6 +214,7 @@ module sap_vpu_core #(
       int unsigned lanes;
       int unsigned skipped;
       int unsigned next_inst_count;
+      logic        group_active;
 
       cycle_count_q <= cycle_count_q + 32'd1;
 
@@ -256,6 +260,7 @@ module sap_vpu_core #(
         skipped = 0;
         lanes = lanes_for_precision(precision_q);
         next_inst_count = inst_count_q + 32'd1;
+        group_active = 1'b0;
 
         rsp_valid_q <= (cmd_op_i != SAP_OP_VDOT);
         rsp_id_q    <= cmd_id_i;
@@ -294,23 +299,35 @@ module sap_vpu_core #(
 
           SAP_OP_VDOT: begin
             for (int unsigned i = 0; i < SAP_FRONT_MAX_LANES; i++) begin
-              if (i < lanes) begin
-                if ((i < active_lanes_q) && sparse_bitmap_q[i]) begin
-                  vdot_lhs_q[i] <= packed_elem(cmd_rs1_i[31:0], i, precision_q);
-                  vdot_rhs_q[i] <= packed_elem(cmd_rs2_i[31:0], i, precision_q);
+              if ((i < lanes) && (i < active_lanes_q) && sparse_bitmap_q[i]) begin
+                group_active = 1'b1;
+              end
+            end
+            if (!group_active) begin
+              rsp_valid_q <= 1'b1;
+              rsp_data_q  <= '0;
+              skipped_count_q <= skipped_count_q + 32'(lanes);
+              group_skipped_count_q <= group_skipped_count_q + 32'd1;
+            end else begin
+              for (int unsigned i = 0; i < SAP_FRONT_MAX_LANES; i++) begin
+                if (i < lanes) begin
+                  if ((i < active_lanes_q) && sparse_bitmap_q[i]) begin
+                    vdot_lhs_q[i] <= packed_elem(cmd_rs1_i[31:0], i, precision_q);
+                    vdot_rhs_q[i] <= packed_elem(cmd_rs2_i[31:0], i, precision_q);
+                  end else begin
+                    skipped++;
+                    vdot_lhs_q[i] <= '0;
+                    vdot_rhs_q[i] <= '0;
+                  end
                 end else begin
-                  skipped++;
                   vdot_lhs_q[i] <= '0;
                   vdot_rhs_q[i] <= '0;
                 end
-              end else begin
-                vdot_lhs_q[i] <= '0;
-                vdot_rhs_q[i] <= '0;
               end
+              vdot_id_q           <= cmd_id_i;
+              vdot_skipped_q      <= skipped[4:0];
+              vdot_elem_pending_q <= 1'b1;
             end
-            vdot_id_q           <= cmd_id_i;
-            vdot_skipped_q      <= skipped[4:0];
-            vdot_elem_pending_q <= 1'b1;
           end
 
           SAP_OP_VREADCNT: begin
@@ -322,6 +339,7 @@ module sap_vpu_core #(
             inst_count_q    <= '0;
             mac_active_q    <= '0;
             skipped_count_q <= '0;
+            group_skipped_count_q <= '0;
             rsp_data_q      <= '0;
           end
 

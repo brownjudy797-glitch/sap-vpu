@@ -23,7 +23,7 @@ The paper must keep these boundaries explicit:
 | Legacy baseline | Available as a tracked summary, with old sources kept outside this repo. | `make legacy-summary`, `docs/SAP_VPU_BASELINE_LEDGER.md` |
 | Minimal CORE-V SoC | CV32E40X wrapper with ROM, RAM, UART, exit MMIO, and OBI timing smoke. | `make hello-smoke` |
 | CV-X-IF attachment | `corev_min_soc` enables `X_EXT` and connects SAP-VPU through the flattened adapter. | `make lint-corev-soc`, `make hello-smoke` |
-| VPU instruction path | Bare-metal custom-0 smoke covers base, precision, sparse, lane, and counter ops. | `make vpu-smoke` |
+| VPU instruction path | Bare-metal custom-0 smoke covers base, precision, sparse, lane, and counter ops. The core now returns an all-zero effective-bitmap VDOT without entering its multiply/reduction pipeline and exposes a group-skip counter. | `make sim-core`, `make vpu-smoke` |
 | Tiled GEMM path | A bounded M<=2, N<=2, K<=8 scheduler accumulates up to two packed VDOT blocks per output. `VTDMA` fetches up to four packed words from SoC RAM and `VTSTORE` writes row-major results back over a single-outstanding OBI path. K=3/4/5/8 cases pass. | `make tiled-gemm-rtl-check`, `make tiled-gemm-soc-smoke`, `make tiled-gemm-dma-soc-smoke` |
 | Paper workload | TinyViT policy smokes cover INT8/INT4/INT2, bitmap and software-scheduled sparsity, ablations, counters, reuse, and RAM traffic. The default fixture combines real-image activations and `fc1/fc2` slices from the same timm TinyViT-5M checkpoint. The original 2x4x4x2 MLP2 path remains a partial two-layer smoke. A separate system smoke executes two tokens across all 128 FC1 input channels and 128 output channels using eight independently host-loaded 16-channel windows. It checks exact INT32 accumulation, performs CV32E40X bias/Q16/GELU postprocessing, writes runtime GELU bytes to RAM, checks the corresponding FC2 window partials, and verifies their host-side sum. The remaining 384 hidden channels, runtime window swapping, and end-to-end inference remain outside the claim; GELU is not claimed as VPU hardware. | `make tinyvit-paper-table`, `make tinyvit-fc1-k128-smoke`, `make tinyvit-fixture-check`, `docs/SAP_VPU_TINYVIT_SMOKE_RECORD.md` |
 | FPGA evidence | Standalone core and complete `sap_vpu_subsystem` both pass same-mode Artix-7 OOC implementation at 100/140 MHz. At 140 MHz the subsystem uses 2752 LUTs and 1332 FFs with +0.091 ns WNS. The real-activation run maps 128 fixed 2x4x4x2 MLP2 slices through 384 autonomous tiles and 1536 VDOTs; its post-synth SAIF annotates 6452/6461 routed nets and reports 0.013 W dynamic power and 16.990 nJ/MLP2. Software requantization/ReLU/repacking, external RAM, CPU, and board power remain outside a full inference claim. | `make fpga-vpu-synth`, `make fpga-vpu-subsystem-saif-power`, `docs/SAP_VPU_FPGA_FLOW.md` |
@@ -72,12 +72,16 @@ custom instruction, TinyML, and edge-AI accelerator work.
 
 ## Next Engineering Sequence
 
-1. Move complete-subsystem ASIC mapping to a newer compatible DC installation
-   or regenerate and validate the TSMC28 `.db`; repeat matched core/subsystem
-   10 ns runs before publishing an ASIC area delta.
-2. Measure quantization error over more tokens and images instead of relying on
+1. Carry per-K-block group metadata through `VTDMA` and the tiled scheduler so
+   all-zero groups avoid both OBI payload reads and VDOT issue.
+2. Export matching structured metadata from the real-model fixture and check
+   numerical equivalence, VDOT reduction, OBI-read reduction, and skip counters.
+3. Measure quantization error over more tokens and images instead of relying on
    the current two-token partial contribution.
-3. Replace register scratchpads with explicit SRAM-macro assumptions only after
+4. Repeat FPGA and ASIC ablations on the completed sparse path. Move
+   complete-subsystem ASIC mapping to a compatible DC/library installation
+   before publishing an ASIC area delta.
+5. Replace register scratchpads with explicit SRAM-macro assumptions only after
    capacity and traffic experiments justify the change.
 
 ## TinyViT Kernel Plan

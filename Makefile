@@ -273,7 +273,7 @@ sim-adapter:
 
 sim-core:
 	mkdir -p "$(SIM_DIR)"
-	$(VERILATOR) --binary -sv \
+	$(VERILATOR) --binary --timing --assert -sv -DSAP_VPU_TRACE_TIMING \
 	  rtl/sap_vpu_pkg.sv \
 	  rtl/sap_vpu_core.sv \
 	  tb/sap_vpu_core_tb.sv \
