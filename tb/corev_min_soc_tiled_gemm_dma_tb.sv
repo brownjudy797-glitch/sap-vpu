@@ -5,6 +5,8 @@ module corev_min_soc_tiled_gemm_dma_tb #(
   parameter string RAM_INIT_FILE = ""
 );
   localparam int unsigned TIMEOUT_CYCLES = 30000;
+  localparam int unsigned FC2_SUM_RAM_WORD = 12;
+  localparam int unsigned WINDOW_ID_RAM_WORD = 60;
 
   logic clk;
   logic rst_n;
@@ -14,6 +16,7 @@ module corev_min_soc_tiled_gemm_dma_tb #(
   logic exit_valid;
   logic [31:0] exit_code;
   logic core_sleep;
+  logic report_fc2_window;
   string ram_init_file;
 
   corev_min_soc #(
@@ -40,6 +43,14 @@ module corev_min_soc_tiled_gemm_dma_tb #(
       if (exit_code !== 32'd1) begin
         $fatal(1, "Tiled GEMM DMA SoC smoke exit code expected 1 got %0d", exit_code);
       end
+      if (report_fc2_window) begin
+        $display("TinyViT FC2 window %0d: %0d %0d %0d %0d",
+                 dut.ram[WINDOW_ID_RAM_WORD],
+                 $signed(dut.ram[FC2_SUM_RAM_WORD]),
+                 $signed(dut.ram[FC2_SUM_RAM_WORD + 1]),
+                 $signed(dut.ram[FC2_SUM_RAM_WORD + 2]),
+                 $signed(dut.ram[FC2_SUM_RAM_WORD + 3]));
+      end
       $display("Tiled GEMM DMA SoC smoke exit code: %0d", exit_code);
       $finish;
     end
@@ -49,8 +60,10 @@ module corev_min_soc_tiled_gemm_dma_tb #(
     clk = 1'b0;
     rst_n = 1'b0;
     fetch_enable = 1'b0;
+    report_fc2_window = 1'b0;
     if ($value$plusargs("ram_init=%s", ram_init_file)) begin
       $readmemh(ram_init_file, dut.ram);
+      report_fc2_window = 1'b1;
     end
 
     repeat (5) @(posedge clk);

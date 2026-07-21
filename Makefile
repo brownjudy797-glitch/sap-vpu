@@ -63,6 +63,8 @@ TINYVIT_FC1_K128_HEX := $(TINYVIT_FC1_K128_BUILD_DIR)/sap_vpu_tinyvit_fc1_k128.h
 TINYVIT_FC1_K128_ASM := $(TINYVIT_FC1_K128_BUILD_DIR)/tinyvit_fc1_k128_fixture.inc
 TINYVIT_FC1_K128_RAM0_HEX := $(TINYVIT_FC1_K128_BUILD_DIR)/tinyvit_fc1_k128_ram_window0.hex
 TINYVIT_FC1_K128_RAM1_HEX := $(TINYVIT_FC1_K128_BUILD_DIR)/tinyvit_fc1_k128_ram_window1.hex
+TINYVIT_FC1_K128_LOG0 := $(TINYVIT_FC1_K128_BUILD_DIR)/tinyvit_fc1_k128_window0.log
+TINYVIT_FC1_K128_LOG1 := $(TINYVIT_FC1_K128_BUILD_DIR)/tinyvit_fc1_k128_window1.log
 VPU_CORE_ACTIVITY_DIR ?= $(ROOT_DIR)/work/activity/vpu_core
 VPU_CORE_VCD ?= $(VPU_CORE_ACTIVITY_DIR)/sap_vpu_core_tb.vcd
 VPU_CORE_SAIF ?= $(VPU_CORE_ACTIVITY_DIR)/sap_vpu_core.saif
@@ -206,6 +208,7 @@ plan-check:
 	test -x scripts/export_tinyvit_checkpoint_fixture.py
 	test -x scripts/export_tinyvit_activation_fixture.py
 	test -x scripts/prepare_tinyvit_fc1_k128.py
+	test -x scripts/check_tinyvit_fc2_window_aggregate.py
 	test -x scripts/check_tiled_gemm_reference.py
 	test -f docs/SAP_VPU_MODEL_MAPPING_CONTRACT.md
 	test -f scripts/vivado_vpu_synth.tcl
@@ -414,9 +417,13 @@ sim-tinyvit-fc1-k128: tinyvit-fc1-k128-build corev-rtl-flist
 	  -LDFLAGS "$(VERILATOR_TIMING_LDFLAGS)" \
 	  -o corev_min_soc_tinyvit_fc1_k128_tb
 	"$(SIM_DIR)/tinyvit_fc1_k128_obj/corev_min_soc_tinyvit_fc1_k128_tb" \
-	  +ram_init="$(TINYVIT_FC1_K128_RAM0_HEX)"
+	  +ram_init="$(TINYVIT_FC1_K128_RAM0_HEX)" > "$(TINYVIT_FC1_K128_LOG0)"
+	cat "$(TINYVIT_FC1_K128_LOG0)"
 	"$(SIM_DIR)/tinyvit_fc1_k128_obj/corev_min_soc_tinyvit_fc1_k128_tb" \
-	  +ram_init="$(TINYVIT_FC1_K128_RAM1_HEX)"
+	  +ram_init="$(TINYVIT_FC1_K128_RAM1_HEX)" > "$(TINYVIT_FC1_K128_LOG1)"
+	cat "$(TINYVIT_FC1_K128_LOG1)"
+	$(PYTHON) scripts/check_tinyvit_fc2_window_aggregate.py \
+	  "$(TINYVIT_FIXTURE_JSON)" "$(TINYVIT_FC1_K128_LOG0)" "$(TINYVIT_FC1_K128_LOG1)"
 
 sim-tinyvit: tinyvit-build corev-rtl-flist
 	mkdir -p "$(SIM_DIR)" "$(dir $(TINYVIT_COUNTER_CSV))"
@@ -541,6 +548,8 @@ tinyvit-fc1-k128-smoke: sim-tinyvit-fc1-k128 lint-corev-soc
 	test -s "$(TINYVIT_FC1_K128_HEX)"
 	test -s "$(TINYVIT_FC1_K128_RAM0_HEX)"
 	test -s "$(TINYVIT_FC1_K128_RAM1_HEX)"
+	test -s "$(TINYVIT_FC1_K128_LOG0)"
+	test -s "$(TINYVIT_FC1_K128_LOG1)"
 
 tinyvit-checkpoint-fixture:
 	$(PYTHON) scripts/export_tinyvit_checkpoint_fixture.py \

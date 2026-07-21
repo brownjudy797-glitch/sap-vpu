@@ -6,6 +6,7 @@
   .equ INPUT_BASE,    0x00010100
   .equ WEIGHT_BASE,   0x00010200
   .equ FC2_OUT_BASE,  0x00010020
+  .equ FC2_SUM_BASE,  0x00010030
   .equ FC2_INPUT_BASE, 0x00010a00
   .equ FC2_WEIGHT_BASE, 0x00010a20
   .equ EXIT_ADDR,     0x10000004
@@ -198,6 +199,12 @@ _start:
   bne s5, t1, fail_fc2
   lw t1, 12(t0)
   bne s6, t1, fail_fc2
+
+  li t0, FC2_SUM_BASE
+  sw s3, 0(t0)
+  sw s4, 4(t0)
+  sw s5, 8(t0)
+  sw s6, 12(t0)
 
   li t0, 2
   sap_r 0x1a, 0x0, 28, 5, 0     /* VREADCNT MAC_ACTIVE */

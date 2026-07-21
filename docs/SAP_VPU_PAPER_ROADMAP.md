@@ -35,13 +35,13 @@ evidence. ASIC front-end checks also pass, but complete mapping is blocked by
 the local DC/library combination. The current four-word scratchpads prove
 autonomous operand fetch, two-block K accumulation, and result writeback, but
 larger SRAM banks and double buffering remain later work.
-Software bias/GELU execution and FC2 window partials are now checked for the
-K=128, 32-output slice. One 1624-byte executable runs against two generated
-16-channel model images while the simulated SoC RAM remains 4 KiB. This proves
-bounded host-loaded window reuse, not runtime window swapping or an
-external-memory loader. Full output dimensions, system-level accumulation
-across all FC2 input channels, and a defensible power-reduction claim remain
-subsequent paper-evidence steps.
+Software bias/GELU execution, FC2 window partials, and their checked host-side
+sum are now covered for the K=128, 32-output slice. One executable runs against
+two generated 16-channel model images while the simulated SoC RAM remains
+4 KiB. This proves bounded host-loaded window reuse and host aggregation, not
+runtime window swapping or an external-memory loader. Full output dimensions,
+accumulation across all 512 FC2 input channels, and a defensible power-reduction
+claim remain subsequent paper-evidence steps.
 
 ## Contribution Spine
 
@@ -75,9 +75,9 @@ custom instruction, TinyML, and edge-AI accelerator work.
 1. Move complete-subsystem ASIC mapping to a newer compatible DC installation
    or regenerate and validate the TSMC28 `.db`; repeat matched core/subsystem
    10 ns runs before publishing an ASIC area delta.
-2. Add a checked host aggregation of the two FC2 window partials, then extend
-   the same fixed 16-channel window to more FC1 outputs without growing the
-   4 KiB RAM or presenting simulation preloading as product hardware.
+2. Extend the same fixed 16-channel window to more FC1 outputs and aggregate
+   further FC2 partials without growing the 4 KiB RAM or presenting simulation
+   preloading as product hardware.
 3. Measure quantization error over more tokens and images instead of relying on
    the current two-token partial contribution.
 4. Replace register scratchpads with explicit SRAM-macro assumptions only after

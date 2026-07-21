@@ -114,6 +114,9 @@ FC1 weight tile, and 32-byte FC2 weight slice. Simulation runs the same program
 once per host-loaded window, so model tensors do not consume code ROM or require
 scalar copy loops. This is reproducible test-platform loading, not runtime
 window swapping, external-memory DMA, or cache coherence.
+The program writes each final 2x2 FC2 partial to SoC RAM. The testbench reports
+those values and a host checker verifies that their element-wise sum equals the
+tracked 32-channel fixture result.
 
 ## Evidence Covered
 
@@ -140,8 +143,10 @@ The current smoke covers the next paper-roadmap evidence hooks:
   eight 2-channel output tiles per window through the existing four-word
   scratchpads and accumulates 64 checked signed 32-bit outputs in total.
 - Separate generated code-ROM and model-RAM images for the K=128 smoke. The
-  executable is 1624 bytes; both windows preserve the checked numerical path
+  executable is 1648 bytes; both windows preserve the checked numerical path
   and independently report `MAC_ACTIVE=1040`.
+- Checked host aggregation of the two independently executed FC2 partials into
+  the tracked 32-channel result `[[5422, -1028], [1670, -906]]`.
 - A three-tile subsystem mapping of the same MLP2 fixture: two FC1 tiles,
   testbench-boundary requantization/ReLU/repack, and one FC2 tile, with 12
   checked VDOTs, 12 OBI reads, and 12 OBI writes per inference.
@@ -213,7 +218,7 @@ window swapping, FC2 bias, and end-to-end model execution remain omitted. GELU
 is software evidence and is not included in the VPU hardware claim.
 
 Use this record to justify that SAP-VPU now has a repeatable TinyViT-oriented
-kernel path, captured model activations, a full-K FC1 output slice, and an
-explicit and tested software/hardware boundary for bias/GELU. The next evidence
-step is separating code ROM from model-data loading, then widening FC1 coverage
+kernel path, captured model activations, a full-K FC1 output slice, checked host
+aggregation, and an explicit software/hardware boundary for bias/GELU. The next
+evidence step is widening FC1 coverage with the same fixed 16-channel RAM window
 and accumulating further FC2 partials before any full-layer or full-model claim.

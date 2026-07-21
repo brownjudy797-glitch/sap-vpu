@@ -42,8 +42,11 @@ dequantized GELU error `0.03561` against the captured PyTorch activation.
 The checked GELU bytes are then written to SoC RAM in K=8 chunk-major order and
 consumed by existing M=2, N=2, K=8 tiles. Two separately loaded 16-channel
 windows cover the first 32 FC2 input-channel contributions for two output
-channels. This is a no-bias partial result; it does not imply that the remaining
-480 hidden channels or the complete FC2 layer execute.
+channels. Each run writes its final 2x2 partial to SoC RAM; the host checker
+extracts both results from the simulation logs and verifies their element-wise
+sum against the tracked 32-channel fixture. This is a no-bias partial result;
+it does not imply that the remaining 480 hidden channels or the complete FC2
+layer execute.
 
 The K=128 smoke generates one code ROM image and two model RAM window images.
 Simulation runs the executable once per window, preloading each weight slice
@@ -165,6 +168,7 @@ a Python environment with PyTorch, torchvision, timm, Pillow, and SafeTensors.
 SAP-VPU, while `sim-subsystem-mlp2` checks the same data through the three-tile
 subsystem path. Across two 16-channel runs, `tinyvit-fc1-k128-smoke` checks all
 64 K=128 INT32 FC1 outputs, their CPU-executed bias/requantization/GELU INT8
-results, and eight accumulated FC2 window-partial outputs. The executable is
-1624 bytes; each activation and weight window is emitted separately as a
-sparse-addressed RAM initialization image.
+results, and eight accumulated FC2 window-partial outputs. It also checks the
+host-side sum of the two final 2x2 partials against the full 32-channel fixture.
+Each activation and weight window is emitted separately as a sparse-addressed
+RAM initialization image.
