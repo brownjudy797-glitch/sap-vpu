@@ -1,6 +1,8 @@
 `timescale 1ns/1ps
 
-module corev_min_soc_tiled_gemm_dma_tb;
+module corev_min_soc_tiled_gemm_dma_tb #(
+  parameter string ROM_INIT_FILE = "work/tiled_gemm_dma_soc/sap_vpu_tiled_gemm_dma_soc.hex"
+);
   localparam int unsigned TIMEOUT_CYCLES = 30000;
 
   logic clk;
@@ -13,7 +15,7 @@ module corev_min_soc_tiled_gemm_dma_tb;
   logic core_sleep;
 
   corev_min_soc #(
-    .ROM_INIT_FILE("work/tiled_gemm_dma_soc/sap_vpu_tiled_gemm_dma_soc.hex")
+    .ROM_INIT_FILE(ROM_INIT_FILE)
   ) dut (
     .clk_i(clk),
     .rst_ni(rst_n),

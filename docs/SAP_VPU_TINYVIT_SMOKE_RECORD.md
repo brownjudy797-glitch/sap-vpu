@@ -44,6 +44,16 @@ This writes `work/tinyvit/tinyvit_paper_table.md`. That generated file is the
 current source of truth for smoke numbers; do not hand-copy it into this
 document as a fixed claim.
 
+The full-input-channel FC1 slice has a separate system smoke:
+
+```sh
+make tinyvit-fc1-k128-smoke
+```
+
+It validates two image-derived tokens across all 128 FC1 input channels and two
+of the 512 output channels. The test is a correctness checkpoint and does not
+yet export paper-facing cycle or energy measurements.
+
 Focused summary-only command:
 
 ```sh
@@ -93,6 +103,13 @@ uses all channels, bias, and exact GELU; these values are recorded as float
 references but are not executed by the VPU path. Consequently, this fixture is
 not a full TinyViT layer or inference claim.
 
+The same tracked JSON also contains an `fc1_k128` fixture. It preserves both
+selected tokens, expands the FC1 reduction from 4 to all 128 input channels,
+and keeps two output channels. The preparation script validates the integer
+golden result and packs the matrices as 16 K=8 chunks. Bare-metal setup copies
+the 256-byte activation tile and 256-byte weight tile from ROM to SoC RAM because
+the VPU DMA intentionally accesses RAM only.
+
 ## Evidence Covered
 
 The current smoke covers the next paper-roadmap evidence hooks:
@@ -113,6 +130,9 @@ The current smoke covers the next paper-roadmap evidence hooks:
 - An INT8 `tinyvit_mlp2` projection with two image-derived tokens and a real data
   dependency: 4 input -> 4 register-packed hidden -> requantization/ReLU -> 2
   output. It is a partial MLP-shaped smoke, not a full residual block.
+- An INT8 FC1 output slice with two image-derived tokens, all 128 input
+  channels, and two output channels. Software iterates 16 K=8 tiles through the
+  existing four-word scratchpads and accumulates four signed 32-bit outputs.
 - A three-tile subsystem mapping of the same MLP2 fixture: two FC1 tiles,
   testbench-boundary requantization/ReLU/repack, and one FC2 tile, with 12
   checked VDOTs, 12 OBI reads, and 12 OBI writes per inference.
@@ -166,8 +186,16 @@ rather than inference energy. The report rounds to 0.001 W and is numerically
 unchanged from the basis-probe run at that resolution, so no power improvement
 is claimed.
 
+The K=128 FC1 system smoke checks integer outputs
+`[[-15845, -5456], [6267, -5774]]`. Its 16 chunks issue 128 packed VDOTs,
+representing 512 INT8 scalar products, and the `MAC_ACTIVE` counter reports the
+expected 128 completed VDOT operations. The maximum dequantized error against
+the matching no-bias floating-point FC1 slice is `0.0208`. This closes the full
+FC1 input-channel reduction for two output channels, but it still omits bias,
+GELU, the other 510 FC1 outputs, FC2, and end-to-end model execution.
+
 Use this record to justify that SAP-VPU now has a repeatable TinyViT-oriented
-kernel path, captured model activations, and an explicit float-reference
-boundary. The next evidence step is extending beyond four channels and
-executing bias/GELU at a defined software/hardware boundary before any
-full-layer or full-model claim.
+kernel path, captured model activations, a full-K FC1 output slice, and an
+explicit float-reference boundary. The next evidence step is widening the
+output-channel coverage and executing bias/GELU at a defined software/hardware
+boundary before any full-layer or full-model claim.
