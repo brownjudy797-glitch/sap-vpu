@@ -30,7 +30,15 @@ The fixture records the actual full-model FC1, GELU, and FC2 selected-channel
 values plus local float and dequantized integer partial contributions. The
 tracked `tinyvit_mlp2_checkpoint.json` basis probe and `tinyvit_mlp2_smoke.json`
 synthetic data remain regressions. Bias/GELU and the omitted channels are not
-executed by the current VPU mapping.
+executed by the original four-channel VPU mapping.
+
+The same fixture also contains a two-token, K=128, eight-output FC1 slice. For
+this slice, SAP-VPU returns signed INT32 accumulators and CV32E40X software adds
+the quantized INT32 bias, applies a Q16 signed requantization, clamps to INT8,
+and indexes a 256-entry INT8 GELU table. This is an explicit software boundary,
+not a VPU GELU instruction or datapath claim. The generated contract currently
+uses multiplier 387 and shift 16; the tracked two-token slice has maximum
+dequantized GELU error `0.01185` against the captured PyTorch activation.
 
 ## Layout and Command Stream
 
@@ -132,6 +140,7 @@ make tiled-gemm-soc-smoke
 make tiled-gemm-dma-soc-smoke
 make tinyvit-fixture
 make tinyvit-smoke
+make tinyvit-fc1-k128-smoke
 make sim-subsystem-mlp2
 ```
 
@@ -142,4 +151,5 @@ fixtures let normal regression run without downloading it.
 a Python environment with PyTorch, torchvision, timm, Pillow, and SafeTensors.
 `tinyvit-smoke` checks the generated data through CV32E40X, CV-X-IF, and
 SAP-VPU, while `sim-subsystem-mlp2` checks the same data through the three-tile
-subsystem path.
+subsystem path. `tinyvit-fc1-k128-smoke` additionally checks all 16 K=128 INT32
+FC1 outputs and their CPU-executed bias/requantization/GELU INT8 results.

@@ -51,8 +51,10 @@ make tinyvit-fc1-k128-smoke
 ```
 
 It validates two image-derived tokens across all 128 FC1 input channels and eight
-of the 512 output channels. The test is a correctness checkpoint and does not
-yet export paper-facing cycle or energy measurements.
+of the 512 output channels. SAP-VPU produces the INT32 accumulators; CV32E40X
+then executes accumulator-domain bias addition, Q16 requantization, and an INT8
+GELU lookup. The test is a correctness checkpoint and does not yet export
+paper-facing cycle or energy measurements.
 
 Focused summary-only command:
 
@@ -194,12 +196,18 @@ The K=128 FC1 system smoke checks integer outputs
 issue 512 packed VDOTs, representing 2048 INT8 scalar products, and the
 `MAC_ACTIVE` counter reports the expected 512 completed VDOT operations. The
 maximum dequantized error against the matching no-bias floating-point FC1 slice
-is `0.0208`. This closes the full FC1 input-channel reduction for eight output
-channels, but it still omits bias, GELU, the other 504 FC1 outputs, FC2, and
-end-to-end model execution.
+is `0.0208`. CV32E40X software then adds the tracked accumulator-domain biases,
+uses Q16 multiplier 387 with shift 16 and signed ties-away rounding, and indexes
+a 256-entry INT8 GELU table. The checked GELU outputs are
+`[[-1, -6, -1, -5, -8, -6, 2, -9],` and
+`[2, -6, 24, -6, -7, -8, -8, -5]]`; their maximum dequantized error against the
+captured model GELU slice is `0.01185`. This closes the full FC1 input-channel
+reduction and CPU bias/GELU boundary for eight output channels, but it still
+omits the other 504 FC1 outputs, FC2, and end-to-end model execution. GELU is
+software evidence and is not included in the VPU hardware claim.
 
 Use this record to justify that SAP-VPU now has a repeatable TinyViT-oriented
 kernel path, captured model activations, a full-K FC1 output slice, and an
-explicit float-reference boundary. The next evidence step is defining the
-software/hardware boundary for bias/GELU, followed by wider output-channel
-coverage before any full-layer or full-model claim.
+explicit and tested software/hardware boundary for bias/GELU. The next evidence
+step is wider output-channel coverage and feeding the post-GELU activation into
+FC2 before any full-layer or full-model claim.

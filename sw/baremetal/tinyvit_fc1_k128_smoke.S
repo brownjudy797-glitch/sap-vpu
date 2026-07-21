@@ -30,6 +30,39 @@
     j 1b
   .endm
 
+  .macro check_gelu value, bias_offset, expected_offset
+    lw t4, \bias_offset(s10)
+    add t4, \value, t4
+    li t5, TINYVIT_FC1_K128_GELU_REQUANT_MULTIPLIER
+    mul t4, t4, t5
+    bgez t4, 5f
+    neg t4, t4
+    li t5, TINYVIT_FC1_K128_GELU_REQUANT_ROUND
+    add t4, t4, t5
+    srli t4, t4, TINYVIT_FC1_K128_GELU_REQUANT_SHIFT
+    neg t4, t4
+    j 6f
+5:
+    li t5, TINYVIT_FC1_K128_GELU_REQUANT_ROUND
+    add t4, t4, t5
+    srli t4, t4, TINYVIT_FC1_K128_GELU_REQUANT_SHIFT
+6:
+    li t5, 127
+    ble t4, t5, 7f
+    li t4, 127
+7:
+    li t5, -128
+    bge t4, t5, 8f
+    li t4, -128
+8:
+    addi t4, t4, 128
+    la t5, tinyvit_fc1_k128_gelu_lut
+    add t5, t5, t4
+    lb t4, 0(t5)
+    lb t5, \expected_offset(s11)
+    bne t4, t5, fail_postprocess
+  .endm
+
   .include "tinyvit_fc1_k128_fixture.inc"
 
 _start:
@@ -61,6 +94,8 @@ _start:
   li s7, TINYVIT_FC1_K128_OUTPUT_TILES
   li s8, WEIGHT_BASE
   la s9, tinyvit_fc1_k128_expected
+  la s10, tinyvit_fc1_k128_bias
+  la s11, tinyvit_fc1_k128_gelu_expected
 
 3:
   li s0, INPUT_BASE
@@ -102,8 +137,15 @@ _start:
   lw t4, 12(s9)
   bne s6, t4, fail_output
 
+  check_gelu s3, 0, 0
+  check_gelu s4, 4, 1
+  check_gelu s5, 0, 2
+  check_gelu s6, 4, 3
+
   addi s8, s8, 16
   addi s9, s9, 16
+  addi s10, s10, 8
+  addi s11, s11, 4
   addi s7, s7, -1
   bnez s7, 3b
 
@@ -118,3 +160,5 @@ fail_output:
   exit_with 41
 fail_mac_count:
   exit_with 45
+fail_postprocess:
+  exit_with 46

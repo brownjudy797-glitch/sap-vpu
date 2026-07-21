@@ -22,6 +22,7 @@ DEFAULT_IMAGE_URL = (
 )
 TOKEN_INDICES = (0, 1)
 FC1_K128_OUTPUT_CHANNELS = 8
+FC1_GELU_REQUANT_SHIFT = 16
 
 
 def sha256(path: Path) -> str:
@@ -70,6 +71,20 @@ def requantize_relu(accumulators: Any, shift: int) -> Any:
 def error_metrics(reference: Any, estimate: Any) -> dict[str, float]:
     difference = (reference - estimate).abs()
     return {"max_abs": float(difference.max()), "mean_abs": float(difference.mean())}
+
+
+def round_ties_away(tensor: Any) -> Any:
+    import torch
+
+    return torch.sign(tensor) * torch.floor(torch.abs(tensor) + 0.5)
+
+
+def requantize_signed(values: Any, multiplier: int, shift: int) -> Any:
+    import torch
+
+    scaled = values.to(torch.int64) * multiplier
+    rounded = (scaled.abs() + (1 << (shift - 1))) >> shift
+    return torch.where(scaled < 0, -rounded, rounded).clamp(-128, 127).to(torch.int32)
 
 
 def build_fixture(checkpoint: Path, image: Path, image_url: str) -> dict[str, Any]:
@@ -145,6 +160,38 @@ def build_fixture(checkpoint: Path, image: Path, image_url: str) -> dict[str, An
     fc1_k128_actual = captured["fc1_output"][
         0, list(TOKEN_INDICES), :FC1_K128_OUTPUT_CHANNELS
     ]
+    fc1_k128_actual_gelu = captured["fc2_input"][
+        0, list(TOKEN_INDICES), :FC1_K128_OUTPUT_CHANNELS
+    ]
+    fc1_k128_accumulator_scale = fc1_k128_input_scale * fc1_k128_weight_scale
+    fc1_k128_bias_accumulator = round_ties_away(
+        mlp.fc1.bias[:FC1_K128_OUTPUT_CHANNELS] / fc1_k128_accumulator_scale
+    ).to(torch.int32)
+    fc1_k128_biased_accumulator = fc1_k128_accumulator + fc1_k128_bias_accumulator
+    fc1_k128_gelu_scale = float(fc1_k128_actual.abs().max()) / 127.0
+    fc1_k128_requant_multiplier = int(
+        math.floor(
+            fc1_k128_accumulator_scale
+            / fc1_k128_gelu_scale
+            * (1 << FC1_GELU_REQUANT_SHIFT)
+            + 0.5
+        )
+    )
+    fc1_k128_preactivation_int8 = requantize_signed(
+        fc1_k128_biased_accumulator,
+        fc1_k128_requant_multiplier,
+        FC1_GELU_REQUANT_SHIFT,
+    )
+    fc1_k128_gelu_lut_input = (
+        torch.arange(-128, 128, dtype=torch.float32) * fc1_k128_gelu_scale
+    )
+    fc1_k128_gelu_lut = round_ties_away(
+        functional.gelu(fc1_k128_gelu_lut_input) / fc1_k128_gelu_scale
+    ).clamp(-128, 127).to(torch.int32)
+    fc1_k128_gelu_int8 = fc1_k128_gelu_lut[
+        (fc1_k128_preactivation_int8 + 128).to(torch.int64)
+    ]
+    fc1_k128_gelu_dequantized = fc1_k128_gelu_int8.to(torch.float32) * fc1_k128_gelu_scale
 
     return {
         "schema": "sap-vpu-tinyvit-mlp2-int8-v1",
@@ -229,6 +276,23 @@ def build_fixture(checkpoint: Path, image: Path, image_url: str) -> dict[str, An
             "input_tokens": as_list(fc1_k128_input_int8),
             "weights": as_list(fc1_k128_weight_int8),
             "expected_integer_output": as_list(fc1_k128_accumulator),
+            "software_postprocess": {
+                "boundary": "cv32e40x-int32-bias-q16-requant-int8-gelu-lut",
+                "bias_accumulator": as_list(fc1_k128_bias_accumulator),
+                "requant_multiplier": fc1_k128_requant_multiplier,
+                "requant_shift": FC1_GELU_REQUANT_SHIFT,
+                "gelu_scale": fc1_k128_gelu_scale,
+                "gelu_lut": as_list(fc1_k128_gelu_lut),
+                "expected_preactivation_int8": as_list(fc1_k128_preactivation_int8),
+                "expected_gelu_int8": as_list(fc1_k128_gelu_int8),
+                "float_reference": {
+                    "actual_gelu": as_list(fc1_k128_actual_gelu),
+                    "integer_gelu_dequantized": as_list(fc1_k128_gelu_dequantized),
+                    "integer_vs_actual_gelu_error": error_metrics(
+                        fc1_k128_actual_gelu, fc1_k128_gelu_dequantized
+                    ),
+                },
+            },
             "quantization": {
                 "scheme": "symmetric-int8",
                 "input_scale": fc1_k128_input_scale,
