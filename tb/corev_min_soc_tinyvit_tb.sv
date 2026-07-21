@@ -44,6 +44,7 @@ module corev_min_soc_tinyvit_tb #(
   int unsigned weight_read_count [0:13];
   int unsigned kernel_tile_read_count [0:13];
   string vcd_file;
+  string counter_csv_file;
 
   corev_min_soc #(
     .ROM_WORDS(2048),
@@ -62,6 +63,9 @@ module corev_min_soc_tinyvit_tb #(
   always #5 clk = ~clk;
 
   initial begin
+    if (!$value$plusargs("counter_csv=%s", counter_csv_file)) begin
+      counter_csv_file = "work/tinyvit/tinyvit_smoke_counters.csv";
+    end
     if ($value$plusargs("vcd=%s", vcd_file)) begin
       $dumpfile(vcd_file);
       $dumpvars(0, dut.vpu_i);
@@ -255,7 +259,7 @@ module corev_min_soc_tinyvit_tb #(
             (dut.ram[77] == 32'd0) || (dut.ram[78] == 32'd0)) begin
           $fatal(1, "TinyViT cycle/inst counters must be nonzero");
         end
-        result_fd = $fopen("work/tinyvit/tinyvit_smoke_counters.csv", "w");
+        result_fd = $fopen(counter_csv_file, "w");
         if (result_fd == 0) begin
           $fatal(1, "Could not open TinyViT counter CSV");
         end

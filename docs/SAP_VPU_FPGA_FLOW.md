@@ -219,14 +219,16 @@ design:
 
 | MLP2 iterations | Tiles | VDOTs | RAM reads | RAM writes | Duration ps | Nets matched | Confidence | Total W | Dynamic W | Dynamic pJ/MLP2 | Dynamic pJ/tile | Dynamic pJ/VDOT |
 | ---: | ---: | ---: | ---: | ---: | ---: | ---: | --- | ---: | ---: | ---: | ---: | ---: |
-| 128 | 384 | 1536 | 1536 | 1536 | 167,290,637 | 6452/6461 (99.86%) | High | 0.080 | 0.012 | 15,683.497 | 5,227.832 | 1,306.958 |
+| 128 | 384 | 1536 | 1536 | 1536 | 167,290,637 | 6452/6461 (99.86%) | High | 0.081 | 0.013 | 16,990.455 | 5,663.485 | 1,415.871 |
 
-This synthetic fixture-driven checkpoint maps a two-layer 2x4x4x2 MLP through
-three autonomous read-compute-write tiles per inference. ReLU and hidden-word
-repacking remain at the testbench software boundary, and the result excludes
-external RAM, CPU, interconnect, and board power. It is therefore not
-end-to-end TinyViT energy. The 0.001 W report resolution also prevents using
-small power differences as a reduction claim.
+This checkpoint maps quantized `fc1/fc2` weight slices from timm TinyViT-5M
+through three autonomous read-compute-write tiles per fixture. The checkpoint
+SHA-256, model, layer, and exact tensor slices are recorded in the generated
+summary. Inputs are deterministic basis probes rather than captured model
+activations; ReLU/repacking, external RAM, CPU, interconnect, and board power
+are excluded. It is therefore not end-to-end TinyViT energy. The 0.001 W report
+resolution also prevents using small fixture-to-fixture differences as a power
+claim.
 
 Current local SAIF power-flow smoke on the 140 MHz checkpoint:
 
@@ -273,10 +275,9 @@ paper-facing result.
 ## Next FPGA Steps
 
 1. Re-run both 140 MHz OOC checkpoints after any RTL datapath change.
-2. Replace the synthetic fixture with a checkpoint-derived slice under the same
-   2x4x4x2 contract, including model, layer, quantization, and SHA-256 metadata.
-3. Extend the model mapping beyond fixed 2x4x4x2 dimensions and account for
-   bias, activation, and quantization-boundary work.
+2. Replace the deterministic input probes with captured TinyViT layer
+   activations and account for bias, GELU, and quantization-boundary work.
+3. Extend the model mapping beyond fixed 2x4x4x2 dimensions.
 4. Add a structured sparse scheduling path that eliminates whole inactive VDOT
    operations before claiming sparse speedup from the TinyViT kernel.
 5. Add a board-level top and constraints only after the subsystem report remains

@@ -90,13 +90,17 @@ def requantize_int8(accumulator: int, multiplier: int, shift: int, *, relu: bool
 
 def self_test() -> None:
     root = Path(__file__).resolve().parents[1]
-    fixture = validate_fixture(
-        json.loads((root / "sw/baremetal/fixtures/tinyvit_mlp2_smoke.json").read_text(encoding="utf-8"))
-    )
-    hidden_acc, _ = tiled_gemm(fixture["input_tokens"], transpose(fixture["fc1_weights"]))
-    hidden = [[requantize_int8(value, 1, 0, relu=True) for value in row] for row in hidden_acc]
-    output, _ = tiled_gemm(hidden, transpose(fixture["fc2_weights"]))
-    assert output == [[20, 16], [20, 14]]
+    for filename, expected in (
+        ("tinyvit_mlp2_smoke.json", [[20, 16], [20, 14]]),
+        ("tinyvit_mlp2_checkpoint.json", [[-2286, -240], [10391, -7315]]),
+    ):
+        fixture = validate_fixture(
+            json.loads((root / "sw/baremetal/fixtures" / filename).read_text(encoding="utf-8"))
+        )
+        hidden_acc, _ = tiled_gemm(fixture["input_tokens"], transpose(fixture["fc1_weights"]))
+        hidden = [[requantize_int8(value, 1, 0, relu=True) for value in row] for row in hidden_acc]
+        output, _ = tiled_gemm(hidden, transpose(fixture["fc2_weights"]))
+        assert output == expected
 
     tail_lhs = [[1, 2, 3, 4, 5], [5, 4, 3, 2, 1], [-1, 0, 1, 0, -1]]
     tail_rhs = [[1, 0, 2], [0, 1, 2], [1, 1, 0], [2, 0, 1], [0, 2, 1]]

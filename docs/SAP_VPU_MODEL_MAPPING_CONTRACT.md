@@ -8,16 +8,24 @@ It freezes data layout, command accounting, and current hardware limits.
 
 ## Current Artifact
 
-The input is `sw/baremetal/fixtures/tinyvit_mlp2_smoke.json`:
+The default input is `sw/baremetal/fixtures/tinyvit_mlp2_checkpoint.json`:
 
-- `input_tokens[M][K]`: M=2, K=4, signed INT8.
-- `fc1_weights[H][K]`: H=4, signed INT8, followed by scalar ReLU.
-- `fc2_weights[N][H]`: N=2, signed INT8.
-- Quantization is symmetric INT8 with zero-points fixed at zero.
+- `input_tokens[M][K]`: M=2, K=4, deterministic signed INT8 basis probes.
+- `fc1_weights[H][K]`: H=4, selected from
+  `stages.1.blocks.0.mlp.fc1.weight[0:4,0:4]`.
+- `fc2_weights[N][H]`: N=2, selected from
+  `stages.1.blocks.0.mlp.fc2.weight[0:2,0:4]`.
+- The selected weight slices use symmetric per-slice INT8 quantization with
+  zero-points fixed at zero.
 
-An actual export must set `provenance.kind` to `checkpoint`, provide the model
-and layer identifiers, and include the checkpoint SHA-256. The tracked smoke
-fixture remains a deterministic input, not a model checkpoint.
+The source is the timm `tiny_vit_5m_224.dist_in22k_ft_in1k` SafeTensors
+checkpoint with SHA-256
+`6887cbcb87b340515b477b1582bdada6a7cafff15720dd1a9c102b3aaa579c82`.
+The tracked `tinyvit_mlp2_smoke.json` remains only as the generator self-test.
+The default fixture proves checkpoint weight provenance, not real image
+activation capture: its input is a deterministic basis probe, biases are
+omitted, and the current mapping uses ReLU instead of the model's full MLP
+software semantics.
 
 ## Layout and Command Stream
 
@@ -109,14 +117,18 @@ of synthesized subsystem power.
 
 ```sh
 make tinyvit-fixture-check
+make tinyvit-checkpoint-fixture
 make tiled-gemm-check
 make tiled-gemm-rtl-check
 make tiled-gemm-soc-smoke
 make tiled-gemm-dma-soc-smoke
 make tinyvit-fixture
 make tinyvit-smoke
+make sim-subsystem-mlp2
 ```
 
-The first two commands validate the mapping and pre-RTL tiled behavior. The
-final command checks the generated model data through the CV32E40X plus CV-X-IF
-plus SAP-VPU SoC path.
+`tinyvit-checkpoint-fixture` requires the downloaded checkpoint at
+`work/models/tiny_vit_5m_224.dist_in22k_ft_in1k/model.safetensors`; the tracked
+fixture lets normal regression run without downloading it. `tinyvit-smoke`
+checks the generated data through CV32E40X, CV-X-IF, and SAP-VPU, while
+`sim-subsystem-mlp2` checks the same data through the three-tile subsystem path.

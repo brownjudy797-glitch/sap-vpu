@@ -56,8 +56,9 @@ The `tinyvit_mlp2` portion of the smoke no longer owns its packed words or its
 integer golden result in hand-written assembly. `make tinyvit-fixture` validates
 a JSON fixture and generates the assembler include, testbench golden include,
 and a metadata record under `TINYVIT_BUILD_DIR/fixture/`. The tracked
-`sw/baremetal/fixtures/tinyvit_mlp2_smoke.json` preserves the current smoke
-case.
+`sw/baremetal/fixtures/tinyvit_mlp2_checkpoint.json` is now the default. It
+contains quantized `fc1/fc2` slices from timm TinyViT-5M checkpoint
+`6887cbcb...579c82`; `tinyvit_mlp2_smoke.json` remains the generator self-test.
 
 The generated SystemVerilog include also carries packed FC1/FC2 operands, FC1
 golden outputs, ReLU-packed hidden words, and FC2 golden outputs. The subsystem
@@ -77,15 +78,14 @@ The accepted `sap-vpu-tinyvit-mlp2-int8-v1` schema deliberately has a small
 fixed contract: two tokens, four INT8 input channels, four INT8 first-projection
 rows, and two INT8 second-projection rows. It requires symmetric INT8 metadata,
 zero zero-points, positive scales, and provenance. A fixture marked
-`checkpoint` must carry a 64-character checkpoint SHA-256; the tracked
-`smoke` fixture is explicitly marked as synthetic.
+`checkpoint` must carry a 64-character checkpoint SHA-256. The default fixture
+also records exact tensor slices and the checkpoint source URL.
 
 This interface proves integer data-path correctness for an exported projection
-slice. It does not yet support bias, non-zero zero-points, GELU, arbitrary
-dimensions, or float-reference error measurement. Consequently, loading a
-checkpoint-derived fixture is not by itself a full TinyViT inference claim.
-Those features remain required before reporting model-accuracy or end-to-end
-energy results.
+weight slice. Its two inputs are deterministic INT8 basis probes, not activations
+captured from an image. It does not yet support bias, non-zero zero-points,
+GELU, arbitrary dimensions, or float-reference error measurement. Consequently,
+this checkpoint-derived fixture is not by itself a full TinyViT inference claim.
 
 ## Evidence Covered
 
@@ -144,20 +144,20 @@ direct hardware-bitmap speedup or a final TinyViT claim.
 
 `tinyvit_mlp2` provides the first data-dependent projection pair rather than a
 repeat of an independent 2x2 macro-tile. Across 16 deterministic repeats it
-checks output 1,120, 192 active VDOTs, no hardware skips, and 32 operand plus
-96 shared-weight RAM reads. Its negative fourth hidden channel is clamped by
-ReLU before the output projection. The current 2,004-cycle result is functional
-smoke evidence only: it has no residual path, quantization-scale error, or full
-TinyViT dimensions.
+checks output 8,800, 192 active VDOTs, no hardware skips, and 32 operand plus
+96 shared-weight RAM reads. The current 1,942-cycle result is checkpoint-weight
+functional evidence only: it has no captured model activations, bias, GELU,
+residual path, quantization-error analysis, or full TinyViT dimensions.
 
 The corresponding 140 MHz subsystem gate-SAIF run repeats the three-tile
 mapping 128 times, covering 384 tiles and 1536 VDOTs with 99.86% routed-net
-annotation. It reports 0.012 W dynamic power and 15.683 nJ per MLP2 fixture.
-This excludes the software-boundary ReLU/repacking, RAM array, CPU, full SoC,
-and board, so it remains subsystem activity evidence rather than inference
-energy.
+annotation. The checkpoint-weight run reports 0.013 W dynamic power and 16.990
+nJ per MLP2 fixture. It excludes the software-boundary ReLU/repacking, RAM
+array, CPU, full SoC, and board, so it remains subsystem activity evidence
+rather than inference energy. The difference from the earlier synthetic fixture
+is switching activity, not a performance or power-improvement claim.
 
 Use this record to justify that SAP-VPU now has a repeatable TinyViT-oriented
 kernel path and a controlled input-fixture boundary. The next evidence step is
-a checkpoint-derived fixture within this contract, followed by larger dimensions,
-bias/GELU handling, and float-error accounting before any full-model claim.
+captured TinyViT layer activations with bias/GELU and float-error accounting,
+followed by larger dimensions before any full-model claim.

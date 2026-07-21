@@ -33,6 +33,7 @@ $netlistDir = Join-Path $OutDir 'netlist'
 $xsimDir = Join-Path $OutDir 'xsim'
 $powerDir = Join-Path $OutDir 'power'
 $fixtureDir = 'work\tinyvit\fixture'
+$fixtureMetadataRel = Join-Path $fixtureDir 'tinyvit_mlp2_fixture_metadata.json'
 $vcdRel = Join-Path $OutDir 'sap_vpu_subsystem_gate.vcd'
 $saifRel = Join-Path $OutDir 'sap_vpu_subsystem_gate.saif'
 $netlistRel = Join-Path $netlistDir 'sap_vpu_subsystem_funcsim.v'
@@ -43,6 +44,7 @@ foreach ($path in @(
   (Join-Path $repo $PostSynthDcp),
   (Join-Path $repo $PostRouteDcp),
   (Join-Path $repo (Join-Path $fixtureDir 'tinyvit_mlp2_fixture_tb.svh')),
+  (Join-Path $repo $fixtureMetadataRel),
   (Join-Path $repo 'rtl\sap_vpu_pkg.sv'),
   (Join-Path $repo 'tb\sap_vpu_subsystem_gate_tb.sv'),
   (Join-Path $repo 'scripts\vivado_vpu_write_funcsim.tcl'),
@@ -50,6 +52,7 @@ foreach ($path in @(
 )) {
   if (!(Test-Path -LiteralPath $path)) { throw "Missing required file: $path" }
 }
+$fixtureMetadata = Get-Content -Raw -LiteralPath (Join-Path $repo $fixtureMetadataRel) | ConvertFrom-Json
 & wsl.exe -d $wslDistro -- test -x $vcd2saif
 if ($LASTEXITCODE -ne 0) { throw "Missing vcd2saif: $vcd2saif" }
 
@@ -157,6 +160,11 @@ $dynamicEnergyPj = $dynamicW * $durationPs
 $summary = [pscustomobject]@{
   top = 'sap_vpu_subsystem'
   workload = 'tinyvit_mlp2_2x4x4x2'
+  fixture_kind = $fixtureMetadata.provenance.kind
+  model_id = $fixtureMetadata.provenance.model_id
+  layer_id = $fixtureMetadata.provenance.layer_id
+  checkpoint_sha256 = $fixtureMetadata.provenance.checkpoint_sha256
+  input_source = $fixtureMetadata.provenance.input_source
   clock_mhz = $ClockMhz.ToString('0.###', [cultureinfo]::InvariantCulture)
   iterations = $Iterations
   tiles = $tiles

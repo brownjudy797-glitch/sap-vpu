@@ -24,12 +24,16 @@ Run:
 
 ```sh
 make tinyvit-fixture-check
-make tinyvit-smoke
-make tinyvit-summary
+make tinyvit-smoke \
+  TINYVIT_FIXTURE_JSON=sw/baremetal/fixtures/tinyvit_mlp2_smoke.json \
+  TINYVIT_BUILD_DIR=work/tinyvit_vdot_v0
+make tinyvit-summary \
+  TINYVIT_FIXTURE_JSON=sw/baremetal/fixtures/tinyvit_mlp2_smoke.json \
+  TINYVIT_BUILD_DIR=work/tinyvit_vdot_v0
 ```
 
 The generated assembly include, testbench golden include, ROM image, counter
-CSV, and rendered tables are intentionally placed under `work/tinyvit/`.
+CSV, and rendered tables are intentionally placed under `work/tinyvit_vdot_v0/`.
 
 ## Reference Observations
 

@@ -45,7 +45,9 @@ TINYVIT_BIN := $(TINYVIT_BUILD_DIR)/sap_vpu_tinyvit.bin
 TINYVIT_HEX := $(TINYVIT_BUILD_DIR)/sap_vpu_tinyvit.hex
 TINYVIT_COUNTER_CSV ?= $(TINYVIT_BUILD_DIR)/tinyvit_smoke_counters.csv
 TINYVIT_PAPER_TABLE ?= $(TINYVIT_BUILD_DIR)/tinyvit_paper_table.md
-TINYVIT_FIXTURE_JSON ?= $(ROOT_DIR)/sw/baremetal/fixtures/tinyvit_mlp2_smoke.json
+TINYVIT_FIXTURE_JSON ?= $(ROOT_DIR)/sw/baremetal/fixtures/tinyvit_mlp2_checkpoint.json
+TINYVIT_CHECKPOINT ?= $(ROOT_DIR)/work/models/tiny_vit_5m_224.dist_in22k_ft_in1k/model.safetensors
+TINYVIT_CHECKPOINT_FIXTURE ?= $(ROOT_DIR)/sw/baremetal/fixtures/tinyvit_mlp2_checkpoint.json
 TINYVIT_FIXTURE_DIR ?= $(TINYVIT_BUILD_DIR)/fixture
 TINYVIT_FIXTURE_ASM := $(TINYVIT_FIXTURE_DIR)/tinyvit_mlp2_fixture.inc
 TINYVIT_FIXTURE_SVH := $(TINYVIT_FIXTURE_DIR)/tinyvit_mlp2_fixture_tb.svh
@@ -107,7 +109,7 @@ DC_GATE_POWER_REPORT_DIR ?= $(DC_GATE_SIM_DIR)/reports_power
 
 .DEFAULT_GOAL := help
 
-.PHONY: help plan-check corev-fetch corev-rtl-flist lint-adapter lint-core lint-tiled-gemm lint-subsystem lint lint-corev-soc sim-adapter sim-core sim-tiled-gemm sim-core-vcd sim-hello sim-vpu sim-tiled-gemm-soc sim-tiled-gemm-dma-soc sim-tinyvit sim-tinyvit-vcd sim encoding-check legacy-summary hello-build hello-smoke vpu-build vpu-smoke tiled-gemm-soc-build tiled-gemm-soc-smoke tiled-gemm-dma-soc-build tiled-gemm-dma-soc-smoke tinyvit-fixture tinyvit-fixture-check tiled-gemm-check tiled-gemm-rtl-check tinyvit-build tinyvit-smoke tinyvit-summary tinyvit-paper-table fpga-vpu-synth fpga-vpu-funcsim-netlist fpga-vpu-funcsim-vcd fpga-vpu-funcsim-saif fpga-vpu-funcsim-saif-power fpga-vpu-policy-power-matrix fpga-vpu-subsystem-saif-power fpga-vpu-saif-power fpga-vpu-summary dc-vpu-gate-netlist-check dc-vpu-gate-synth dc-vpu-gate-sim dc-vpu-gate-saif-power dc-vpu-precheck dc-vpu-synth dc-vpu-power dc-vpu-saif-power dc-vpu-tinyvit-saif-power dc-vpu-policy-power-matrix dc-vpu-summary
+.PHONY: help plan-check corev-fetch corev-rtl-flist lint-adapter lint-core lint-tiled-gemm lint-subsystem lint lint-corev-soc sim-adapter sim-core sim-tiled-gemm sim-core-vcd sim-hello sim-vpu sim-tiled-gemm-soc sim-tiled-gemm-dma-soc sim-tinyvit sim-tinyvit-vcd sim-subsystem-mlp2 sim encoding-check legacy-summary hello-build hello-smoke vpu-build vpu-smoke tiled-gemm-soc-build tiled-gemm-soc-smoke tiled-gemm-dma-soc-build tiled-gemm-dma-soc-smoke tinyvit-checkpoint-fixture tinyvit-fixture tinyvit-fixture-check tiled-gemm-check tiled-gemm-rtl-check tinyvit-build tinyvit-smoke tinyvit-summary tinyvit-paper-table fpga-vpu-synth fpga-vpu-funcsim-netlist fpga-vpu-funcsim-vcd fpga-vpu-funcsim-saif fpga-vpu-funcsim-saif-power fpga-vpu-policy-power-matrix fpga-vpu-subsystem-saif-power fpga-vpu-saif-power fpga-vpu-summary dc-vpu-gate-netlist-check dc-vpu-gate-synth dc-vpu-gate-sim dc-vpu-gate-saif-power dc-vpu-precheck dc-vpu-synth dc-vpu-power dc-vpu-saif-power dc-vpu-tinyvit-saif-power dc-vpu-policy-power-matrix dc-vpu-summary
 
 help:
 	@printf '%s\n' \
@@ -122,6 +124,7 @@ help:
 	  'make sim-core-vcd' \
 	  'make sim-hello' \
 	  'make sim-tinyvit-vcd' \
+	  'make sim-subsystem-mlp2' \
 	  'make encoding-check' \
 	  'make legacy-summary [LEGACY_RESULTS_DIR=../nutvpu/results]' \
 	  'make hello-build' \
@@ -130,6 +133,7 @@ help:
 	  'make tiled-gemm-soc-smoke' \
 	  'make tiled-gemm-dma-soc-smoke' \
 	  'make tinyvit-smoke' \
+	  'make tinyvit-checkpoint-fixture [TINYVIT_CHECKPOINT=/path/to/model.safetensors]' \
 	  'make tinyvit-fixture [TINYVIT_FIXTURE_JSON=/path/to/fixture.json]' \
 	  'make tinyvit-fixture-check' \
 	  'make tiled-gemm-check' \
@@ -180,10 +184,12 @@ plan-check:
 	test -f sw/baremetal/tiled_gemm_dma_soc_smoke.S
 	test -f sw/baremetal/tinyvit_mlp_smoke.S
 	test -f sw/baremetal/fixtures/tinyvit_mlp2_smoke.json
+	test -f sw/baremetal/fixtures/tinyvit_mlp2_checkpoint.json
 	test -f sw/baremetal/link.ld
 	test -x scripts/bin_to_verilog_hex.py
 	test -x scripts/summarize_tinyvit_counters.py
 	test -x scripts/prepare_tinyvit_mlp2_fixture.py
+	test -x scripts/export_tinyvit_checkpoint_fixture.py
 	test -x scripts/check_tiled_gemm_reference.py
 	test -f docs/SAP_VPU_MODEL_MAPPING_CONTRACT.md
 	test -f scripts/vivado_vpu_synth.tcl
@@ -373,7 +379,7 @@ sim-tiled-gemm-dma-soc: tiled-gemm-dma-soc-build corev-rtl-flist
 	"$(SIM_DIR)/tiled_gemm_dma_soc_obj/corev_min_soc_tiled_gemm_dma_tb"
 
 sim-tinyvit: tinyvit-build corev-rtl-flist
-	mkdir -p "$(SIM_DIR)"
+	mkdir -p "$(SIM_DIR)" "$(dir $(TINYVIT_COUNTER_CSV))"
 	DESIGN_RTL_DIR="$(COREV_DIR)/rtl" $(VERILATOR) --binary --timing -sv \
 	  -DCOREV_ASSERT_OFF --top-module corev_min_soc_tinyvit_tb -Wno-fatal \
 	  -GROM_INIT_FILE=\"$(TINYVIT_HEX)\" \
@@ -392,10 +398,10 @@ sim-tinyvit: tinyvit-build corev-rtl-flist
 	  -CFLAGS "$(VERILATOR_TIMING_CFLAGS)" \
 	  -LDFLAGS "$(VERILATOR_TIMING_LDFLAGS)" \
 	  -o corev_min_soc_tinyvit_tb
-	"$(SIM_DIR)/tinyvit_obj/corev_min_soc_tinyvit_tb"
+	"$(SIM_DIR)/tinyvit_obj/corev_min_soc_tinyvit_tb" +counter_csv="$(TINYVIT_COUNTER_CSV)"
 
 sim-tinyvit-vcd: tinyvit-build corev-rtl-flist
-	mkdir -p "$(SIM_DIR)" "$(TINYVIT_ACTIVITY_DIR)"
+	mkdir -p "$(SIM_DIR)" "$(TINYVIT_ACTIVITY_DIR)" "$(dir $(TINYVIT_COUNTER_CSV))"
 	DESIGN_RTL_DIR="$(COREV_DIR)/rtl" $(VERILATOR) --binary --timing --trace -sv \
 	  -DCOREV_ASSERT_OFF --top-module corev_min_soc_tinyvit_tb -Wno-fatal \
 	  -GROM_INIT_FILE=\"$(TINYVIT_HEX)\" \
@@ -414,7 +420,8 @@ sim-tinyvit-vcd: tinyvit-build corev-rtl-flist
 	  -CFLAGS "$(VERILATOR_TIMING_CFLAGS)" \
 	  -LDFLAGS "$(VERILATOR_TIMING_LDFLAGS)" \
 	  -o corev_min_soc_tinyvit_tb
-	"$(SIM_DIR)/tinyvit_vcd_obj/corev_min_soc_tinyvit_tb" +vcd="$(TINYVIT_VCD)"
+	"$(SIM_DIR)/tinyvit_vcd_obj/corev_min_soc_tinyvit_tb" \
+	  +counter_csv="$(TINYVIT_COUNTER_CSV)" +vcd="$(TINYVIT_VCD)"
 	test -s "$(TINYVIT_VCD)"
 
 sim: sim-adapter sim-core
@@ -473,6 +480,10 @@ tiled-gemm-dma-soc-build:
 tiled-gemm-dma-soc-smoke: sim-tiled-gemm-dma-soc lint-corev-soc
 	test -s "$(TILED_GEMM_DMA_SOC_HEX)"
 
+tinyvit-checkpoint-fixture:
+	$(PYTHON) scripts/export_tinyvit_checkpoint_fixture.py \
+	  "$(TINYVIT_CHECKPOINT)" "$(TINYVIT_CHECKPOINT_FIXTURE)"
+
 tinyvit-fixture:
 	mkdir -p "$(TINYVIT_FIXTURE_DIR)"
 	$(PYTHON) scripts/prepare_tinyvit_mlp2_fixture.py "$(TINYVIT_FIXTURE_JSON)" \
@@ -483,6 +494,18 @@ tinyvit-fixture:
 
 tinyvit-fixture-check:
 	$(PYTHON) scripts/prepare_tinyvit_mlp2_fixture.py --self-test
+	$(PYTHON) scripts/export_tinyvit_checkpoint_fixture.py --self-test
+
+sim-subsystem-mlp2: tinyvit-fixture
+	mkdir -p "$(SIM_DIR)/subsystem_mlp2_obj"
+	$(VERILATOR) --binary --timing -sv --top-module sap_vpu_subsystem_gate_tb -Wno-fatal \
+	  -I"$(TINYVIT_FIXTURE_DIR)" $(SAP_VPU_SOC_RTL) tb/sap_vpu_subsystem_gate_tb.sv \
+	  --Mdir "$(SIM_DIR)/subsystem_mlp2_obj" \
+	  -MAKEFLAGS "CXX=clang++-12" \
+	  -CFLAGS "-std=c++20 -O0 -Wno-unknown-warning-option" \
+	  -LDFLAGS "-no-pie" \
+	  -o sap_vpu_subsystem_mlp2_tb
+	"$(SIM_DIR)/subsystem_mlp2_obj/sap_vpu_subsystem_mlp2_tb" +iterations=1
 
 tiled-gemm-check:
 	$(PYTHON) scripts/check_tiled_gemm_reference.py

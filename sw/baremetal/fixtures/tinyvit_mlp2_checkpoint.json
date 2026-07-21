@@ -1,0 +1,80 @@
+{
+  "fc1_weights": [
+    [
+      -36,
+      34,
+      -53,
+      119
+    ],
+    [
+      -31,
+      -44,
+      -13,
+      64
+    ],
+    [
+      127,
+      0,
+      14,
+      18
+    ],
+    [
+      56,
+      77,
+      -36,
+      -8
+    ]
+  ],
+  "fc2_weights": [
+    [
+      18,
+      26,
+      -74,
+      127
+    ],
+    [
+      0,
+      96,
+      40,
+      -95
+    ]
+  ],
+  "input_tokens": [
+    [
+      1,
+      0,
+      0,
+      0
+    ],
+    [
+      0,
+      1,
+      0,
+      0
+    ]
+  ],
+  "provenance": {
+    "checkpoint_sha256": "6887cbcb87b340515b477b1582bdada6a7cafff15720dd1a9c102b3aaa579c82",
+    "checkpoint_source_url": "https://huggingface.co/timm/tiny_vit_5m_224.dist_in22k_ft_in1k/resolve/main/model.safetensors",
+    "input_source": "deterministic-int8-basis-probe-not-model-activation",
+    "kind": "checkpoint",
+    "layer_id": "stages.1.blocks.0.mlp",
+    "model_id": "timm/tiny_vit_5m_224.dist_in22k_ft_in1k",
+    "tensor_slices": {
+      "fc1_weights": "stages.1.blocks.0.mlp.fc1.weight[0:4,0:4]",
+      "fc2_weights": "stages.1.blocks.0.mlp.fc2.weight[0:2,0:4]"
+    }
+  },
+  "quantization": {
+    "fc1_weight_scale": 0.003931499606981052,
+    "fc1_weight_zero_point": 0,
+    "fc2_weight_scale": 0.003389810013958788,
+    "fc2_weight_zero_point": 0,
+    "input_scale": 1.0,
+    "input_zero_point": 0,
+    "rounding": "nearest-ties-away-from-zero",
+    "scheme": "symmetric-int8",
+    "weight_scope": "selected-slice-max-abs"
+  },
+  "schema": "sap-vpu-tinyvit-mlp2-int8-v1"
+}
