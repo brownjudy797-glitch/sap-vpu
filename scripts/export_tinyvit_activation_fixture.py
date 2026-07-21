@@ -21,6 +21,7 @@ DEFAULT_IMAGE_URL = (
     "resolve/main/beignets-task-guide.png"
 )
 TOKEN_INDICES = (0, 1)
+FC1_K128_OUTPUT_CHANNELS = 8
 
 
 def sha256(path: Path) -> str:
@@ -130,7 +131,7 @@ def build_fixture(checkpoint: Path, image: Path, image_url: str) -> dict[str, An
     actual_fc2 = captured["fc2_output"][0, list(TOKEN_INDICES), :2]
 
     fc1_k128_input = captured["fc1_input"][0, list(TOKEN_INDICES), :128]
-    fc1_k128_weight = mlp.fc1.weight[:2, :128].detach()
+    fc1_k128_weight = mlp.fc1.weight[:FC1_K128_OUTPUT_CHANNELS, :128].detach()
     fc1_k128_input_int8, fc1_k128_input_scale = quantize_symmetric(fc1_k128_input)
     fc1_k128_weight_int8, fc1_k128_weight_scale = quantize_symmetric(fc1_k128_weight)
     fc1_k128_accumulator = fc1_k128_input_int8 @ fc1_k128_weight_int8.T
@@ -138,8 +139,12 @@ def build_fixture(checkpoint: Path, image: Path, image_url: str) -> dict[str, An
         fc1_k128_accumulator.to(torch.float32) * fc1_k128_input_scale * fc1_k128_weight_scale
     )
     fc1_k128_float_no_bias = fc1_k128_input @ fc1_k128_weight.T
-    fc1_k128_float_with_bias = fc1_k128_float_no_bias + mlp.fc1.bias[:2]
-    fc1_k128_actual = captured["fc1_output"][0, list(TOKEN_INDICES), :2]
+    fc1_k128_float_with_bias = (
+        fc1_k128_float_no_bias + mlp.fc1.bias[:FC1_K128_OUTPUT_CHANNELS]
+    )
+    fc1_k128_actual = captured["fc1_output"][
+        0, list(TOKEN_INDICES), :FC1_K128_OUTPUT_CHANNELS
+    ]
 
     return {
         "schema": "sap-vpu-tinyvit-mlp2-int8-v1",
@@ -172,6 +177,10 @@ def build_fixture(checkpoint: Path, image: Path, image_url: str) -> dict[str, An
                 "fc1_input": f"{LAYER_ID}.fc1_input[0,{list(TOKEN_INDICES)},0:4]",
                 "fc1_weights": f"{LAYER_ID}.fc1.weight[0:4,0:4]",
                 "fc2_weights": f"{LAYER_ID}.fc2.weight[0:2,0:4]",
+                "fc1_k128_input": f"{LAYER_ID}.fc1_input[0,{list(TOKEN_INDICES)},0:128]",
+                "fc1_k128_weights": (
+                    f"{LAYER_ID}.fc1.weight[0:{FC1_K128_OUTPUT_CHANNELS},0:128]"
+                ),
             },
             "model_semantics": {
                 "fc1_bias": True,
@@ -211,7 +220,11 @@ def build_fixture(checkpoint: Path, image: Path, image_url: str) -> dict[str, An
         "fc2_weights": as_list(fc2_int8),
         "fc1_k128": {
             "schema": "sap-vpu-tinyvit-fc1-k128-int8-v1",
-            "shape": {"tokens": 2, "input_channels": 128, "output_channels": 2},
+            "shape": {
+                "tokens": 2,
+                "input_channels": 128,
+                "output_channels": FC1_K128_OUTPUT_CHANNELS,
+            },
             "chunk_k": 8,
             "input_tokens": as_list(fc1_k128_input_int8),
             "weights": as_list(fc1_k128_weight_int8),
@@ -226,7 +239,7 @@ def build_fixture(checkpoint: Path, image: Path, image_url: str) -> dict[str, An
             },
             "float_reference": {
                 "fc1_no_bias": as_list(fc1_k128_float_no_bias),
-                "fc1_bias": as_list(mlp.fc1.bias[:2]),
+                "fc1_bias": as_list(mlp.fc1.bias[:FC1_K128_OUTPUT_CHANNELS]),
                 "fc1_with_bias": as_list(fc1_k128_float_with_bias),
                 "actual_full_fc1_preactivation": as_list(fc1_k128_actual),
                 "integer_path_dequantized": as_list(fc1_k128_dequantized),

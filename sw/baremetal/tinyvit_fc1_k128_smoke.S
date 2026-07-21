@@ -4,7 +4,6 @@
   .equ OUT_BASE,      0x00010000
   .equ INPUT_BASE,    0x00010100
   .equ WEIGHT_BASE,   0x00010200
-  .equ FIXTURE_WORDS, 64
   .equ EXIT_ADDR,     0x10000004
 
   .macro sap_r funct7, funct3, rd, rs1, rs2
@@ -39,7 +38,7 @@ _start:
 
   la t0, tinyvit_fc1_k128_inputs
   li t1, INPUT_BASE
-  li t2, FIXTURE_WORDS
+  li t2, TINYVIT_FC1_K128_INPUT_WORDS
 1:
   lw t3, 0(t0)
   sw t3, 0(t1)
@@ -50,7 +49,7 @@ _start:
 
   la t0, tinyvit_fc1_k128_weights
   li t1, WEIGHT_BASE
-  li t2, FIXTURE_WORDS
+  li t2, TINYVIT_FC1_K128_WEIGHT_WORDS
 2:
   lw t3, 0(t0)
   sw t3, 0(t1)
@@ -59,15 +58,20 @@ _start:
   addi t2, t2, -1
   bnez t2, 2b
 
+  li s7, TINYVIT_FC1_K128_OUTPUT_TILES
+  li s8, WEIGHT_BASE
+  la s9, tinyvit_fc1_k128_expected
+
+3:
   li s0, INPUT_BASE
-  li s1, WEIGHT_BASE
+  mv s1, s8
   li s2, TINYVIT_FC1_K128_CHUNKS
   li s3, 0
   li s4, 0
   li s5, 0
   li s6, 0
 
-3:
+4:
   tile_dma_reg s0, 8             /* input: four packed words */
   tile_dma_reg s1, 9             /* weight: four packed words */
   li t0, 0x212                   /* M=2, N=2, K=8 */
@@ -85,33 +89,32 @@ _start:
   add s6, s6, a3
 
   addi s0, s0, 16
-  addi s1, s1, 16
+  addi s1, s1, TINYVIT_FC1_K128_WEIGHT_CHUNK_STRIDE
   addi s2, s2, -1
-  bnez s2, 3b
+  bnez s2, 4b
 
-  li t4, TINYVIT_FC1_K128_EXPECTED_00
-  bne s3, t4, fail_output_00
-  li t4, TINYVIT_FC1_K128_EXPECTED_01
-  bne s4, t4, fail_output_01
-  li t4, TINYVIT_FC1_K128_EXPECTED_10
-  bne s5, t4, fail_output_10
-  li t4, TINYVIT_FC1_K128_EXPECTED_11
-  bne s6, t4, fail_output_11
+  lw t4, 0(s9)
+  bne s3, t4, fail_output
+  lw t4, 4(s9)
+  bne s4, t4, fail_output
+  lw t4, 8(s9)
+  bne s5, t4, fail_output
+  lw t4, 12(s9)
+  bne s6, t4, fail_output
+
+  addi s8, s8, 16
+  addi s9, s9, 16
+  addi s7, s7, -1
+  bnez s7, 3b
 
   li t0, 2
   sap_r 0x1a, 0x0, 28, 5, 0     /* VREADCNT MAC_ACTIVE */
-  li t4, 128
+  li t4, 512
   bne t3, t4, fail_mac_count
 
   exit_with 1
 
-fail_output_00:
+fail_output:
   exit_with 41
-fail_output_01:
-  exit_with 42
-fail_output_10:
-  exit_with 43
-fail_output_11:
-  exit_with 44
 fail_mac_count:
   exit_with 45
