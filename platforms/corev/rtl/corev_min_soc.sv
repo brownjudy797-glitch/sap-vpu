@@ -7,7 +7,8 @@ module corev_min_soc #(
   parameter logic [31:0] RAM_BASE  = 32'h0001_0000,
   parameter logic [31:0] UART_ADDR = 32'h1000_0000,
   parameter logic [31:0] EXIT_ADDR = 32'h1000_0004,
-  parameter string       ROM_INIT_FILE = ""
+  parameter string       ROM_INIT_FILE = "",
+  parameter string       RAM_INIT_FILE = ""
 ) (
   input  logic        clk_i,
   input  logic        rst_ni,
@@ -202,6 +203,9 @@ module corev_min_soc #(
   initial begin
     if (ROM_INIT_FILE != "") begin
       $readmemh(ROM_INIT_FILE, rom);
+    end
+    if (RAM_INIT_FILE != "") begin
+      $readmemh(RAM_INIT_FILE, ram);
     end
   end
 

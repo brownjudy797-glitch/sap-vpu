@@ -45,6 +45,12 @@ sixteen FC2 input-channel contributions for two output channels. This is a
 no-bias partial result; it does not imply that the remaining 496 hidden channels
 or the complete FC2 layer execute.
 
+The K=128 smoke generates code ROM and model RAM as separate images. Simulation
+preloads the tracked activation and weight slices into the same SoC RAM addresses
+that `VTDMA` reads, while CV32E40X still writes the runtime GELU result before
+FC2. This removes model tensors from the executable but does not claim a
+hardware path from flash or external DRAM.
+
 ## Layout and Command Stream
 
 - Matrices are row-major. Each VDOT source word packs four signed INT8 values
@@ -158,6 +164,6 @@ a Python environment with PyTorch, torchvision, timm, Pillow, and SafeTensors.
 SAP-VPU, while `sim-subsystem-mlp2` checks the same data through the three-tile
 subsystem path. `tinyvit-fc1-k128-smoke` additionally checks all 32 K=128 INT32
 FC1 outputs, their CPU-executed bias/requantization/GELU INT8 results, and four
-accumulated FC2 partial outputs produced from two K=8 tiles. Its 3784-byte image
-fits the simulated SoC's 4096-byte ROM but leaves no room for another static
-doubling of embedded model weights.
+accumulated FC2 partial outputs produced from two K=8 tiles. The former
+3784-byte image is now a 1316-byte executable; the activation and weight payload
+is emitted separately as a sparse-addressed RAM initialization image.

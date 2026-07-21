@@ -73,39 +73,6 @@ _start:
   la sp, _stack_top
   sap_r 0x1d, 0x0, 0, 0, 0      /* VCLEARCNT */
 
-  la t0, tinyvit_fc1_k128_inputs
-  li t1, INPUT_BASE
-  li t2, TINYVIT_FC1_K128_INPUT_WORDS
-1:
-  lw t3, 0(t0)
-  sw t3, 0(t1)
-  addi t0, t0, 4
-  addi t1, t1, 4
-  addi t2, t2, -1
-  bnez t2, 1b
-
-  la t0, tinyvit_fc1_k128_weights
-  li t1, WEIGHT_BASE
-  li t2, TINYVIT_FC1_K128_WEIGHT_WORDS
-2:
-  lw t3, 0(t0)
-  sw t3, 0(t1)
-  addi t0, t0, 4
-  addi t1, t1, 4
-  addi t2, t2, -1
-  bnez t2, 2b
-
-  la t0, tinyvit_fc2_k8_weights
-  li t1, FC2_WEIGHT_BASE
-  li t2, TINYVIT_FC2_K8_WEIGHT_WORDS
-9:
-  lw t3, 0(t0)
-  sw t3, 0(t1)
-  addi t0, t0, 4
-  addi t1, t1, 4
-  addi t2, t2, -1
-  bnez t2, 9b
-
   li s7, TINYVIT_FC1_K128_OUTPUT_TILES
   li s8, WEIGHT_BASE
   la s9, tinyvit_fc1_k128_expected

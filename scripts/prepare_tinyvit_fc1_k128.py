@@ -22,6 +22,9 @@ OUTPUT_TILE_CHANNELS = 2
 POSTPROCESS_BOUNDARY = "cv32e40x-int32-bias-q16-requant-int8-gelu-lut"
 FC2_OUTPUT_CHANNELS = 2
 FC2_BOUNDARY = "sap-vpu-int8-fc2-k8-chunked-partial-no-bias"
+INPUT_RAM_WORD = 0x40
+WEIGHT_RAM_WORD = 0x80
+FC2_WEIGHT_RAM_WORD = 0x288
 
 
 def require_matrix(value: Any, name: str, rows: int, columns: int) -> list[list[int]]:
@@ -167,15 +170,12 @@ def chunk_words(matrix: list[list[int]], channels: int = INPUT_CHANNELS) -> list
 
 def write_include(
     path: Path,
-    inputs: list[list[int]],
-    weights: list[list[int]],
     expected: list[list[int]],
     bias: list[int],
     multiplier: int,
     shift: int,
     lut: list[int],
     gelu: list[list[int]],
-    fc2_weights: list[list[int]],
     fc2_expected: list[list[int]],
 ) -> None:
     lines = [
@@ -183,20 +183,13 @@ def write_include(
         f".equ TINYVIT_FC1_K128_CHUNKS, {INPUT_CHANNELS // CHUNK_K}",
         f".equ TINYVIT_FC1_K128_OUTPUT_TILES, {OUTPUT_CHANNELS // OUTPUT_TILE_CHANNELS}",
         f".equ TINYVIT_FC1_K128_OUTPUT_CHANNELS, {OUTPUT_CHANNELS}",
-        f".equ TINYVIT_FC1_K128_INPUT_WORDS, {TOKENS * INPUT_CHANNELS // 4}",
-        f".equ TINYVIT_FC1_K128_WEIGHT_WORDS, {OUTPUT_CHANNELS * INPUT_CHANNELS // 4}",
         f".equ TINYVIT_FC1_K128_WEIGHT_CHUNK_STRIDE, {OUTPUT_CHANNELS * CHUNK_K}",
         f".equ TINYVIT_FC1_K128_GELU_REQUANT_MULTIPLIER, {multiplier}",
         f".equ TINYVIT_FC1_K128_GELU_REQUANT_SHIFT, {shift}",
         f".equ TINYVIT_FC1_K128_GELU_REQUANT_ROUND, {1 << (shift - 1)}",
-        f".equ TINYVIT_FC2_K8_WEIGHT_WORDS, {FC2_OUTPUT_CHANNELS * OUTPUT_CHANNELS // 4}",
         f".equ TINYVIT_FC2_K8_CHUNKS, {OUTPUT_CHANNELS // CHUNK_K}",
     ]
-    lines.extend((".section .rodata", ".balign 4", "tinyvit_fc1_k128_inputs:"))
-    lines.extend(f"  .word 0x{word:08x}" for word in chunk_words(inputs))
-    lines.extend((".balign 4", "tinyvit_fc1_k128_weights:"))
-    lines.extend(f"  .word 0x{word:08x}" for word in chunk_words(weights))
-    lines.extend((".balign 4", "tinyvit_fc1_k128_expected:"))
+    lines.extend((".section .rodata", ".balign 4", "tinyvit_fc1_k128_expected:"))
     for output_base in range(0, OUTPUT_CHANNELS, OUTPUT_TILE_CHANNELS):
         for token in range(TOKENS):
             for output in range(output_base, output_base + OUTPUT_TILE_CHANNELS):
@@ -210,12 +203,29 @@ def write_include(
                 lines.append(f"  .byte {gelu[token][output]}")
     lines.extend(("tinyvit_fc1_k128_gelu_lut:",))
     lines.extend(f"  .byte {value}" for value in lut)
-    lines.extend((".balign 4", "tinyvit_fc2_k8_weights:"))
-    lines.extend(f"  .word 0x{word:08x}" for word in chunk_words(fc2_weights, OUTPUT_CHANNELS))
     lines.extend((".balign 4", "tinyvit_fc2_k8_expected:"))
     for row in fc2_expected:
         lines.extend(f"  .word {value}" for value in row)
     lines.append(".section .text.start")
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text("\n".join(lines) + "\n", encoding="ascii")
+
+
+def write_ram_hex(
+    path: Path,
+    inputs: list[list[int]],
+    weights: list[list[int]],
+    fc2_weights: list[list[int]],
+) -> None:
+    sections = (
+        (INPUT_RAM_WORD, chunk_words(inputs)),
+        (WEIGHT_RAM_WORD, chunk_words(weights)),
+        (FC2_WEIGHT_RAM_WORD, chunk_words(fc2_weights, OUTPUT_CHANNELS)),
+    )
+    lines: list[str] = []
+    for address, words in sections:
+        lines.append(f"@{address:08x}")
+        lines.extend(f"{word:08x}" for word in words)
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text("\n".join(lines) + "\n", encoding="ascii")
 
@@ -247,56 +257,65 @@ def self_test() -> None:
     assert fc2_expected == [[3589, 402], [-1152, -5]]
     with tempfile.TemporaryDirectory() as directory:
         output = Path(directory) / "fixture.inc"
+        ram_output = Path(directory) / "fixture_ram.hex"
         write_include(
             output,
-            inputs,
-            weights,
             expected,
             bias,
             multiplier,
             shift,
             lut,
             gelu,
-            fc2_weights,
             fc2_expected,
         )
+        write_ram_hex(ram_output, inputs, weights, fc2_weights)
         generated = output.read_text(encoding="ascii")
+        generated_ram = ram_output.read_text(encoding="ascii")
         assert ".equ TINYVIT_FC1_K128_CHUNKS, 16" in generated
         assert ".equ TINYVIT_FC1_K128_OUTPUT_TILES, 8" in generated
         assert ".equ TINYVIT_FC2_K8_CHUNKS, 2" in generated
         assert "tinyvit_fc2_k8_expected:" in generated
+        assert "tinyvit_fc1_k128_inputs:" not in generated
+        assert "tinyvit_fc1_k128_weights:" not in generated
+        assert "tinyvit_fc2_k8_weights:" not in generated
+        expected_ram_lines = 3 + len(chunk_words(inputs)) + len(chunk_words(weights)) + len(
+            chunk_words(fc2_weights, OUTPUT_CHANNELS)
+        )
+        assert len(generated_ram.splitlines()) == expected_ram_lines
+        assert "@00000040\n" in generated_ram
+        assert "@00000080\n" in generated_ram
+        assert "@00000288\n" in generated_ram
 
 
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("fixture", type=Path, nargs="?")
     parser.add_argument("--asm", type=Path)
+    parser.add_argument("--ram-hex", type=Path)
     parser.add_argument("--self-test", action="store_true")
     args = parser.parse_args()
     try:
         if args.self_test:
-            if args.fixture or args.asm:
+            if args.fixture or args.asm or args.ram_hex:
                 parser.error("--self-test does not accept fixture output arguments")
             self_test()
-        elif not args.fixture or not args.asm:
-            parser.error("fixture and --asm are required")
+        elif not args.fixture or not args.asm or not args.ram_hex:
+            parser.error("fixture, --asm, and --ram-hex are required")
         else:
             inputs, weights, expected, bias, multiplier, shift, lut, gelu, fc2_weights, fc2_expected = validate(
                 json.loads(args.fixture.read_text(encoding="ascii"))
             )
             write_include(
                 args.asm,
-                inputs,
-                weights,
                 expected,
                 bias,
                 multiplier,
                 shift,
                 lut,
                 gelu,
-                fc2_weights,
                 fc2_expected,
             )
+            write_ram_hex(args.ram_hex, inputs, weights, fc2_weights)
     except (OSError, json.JSONDecodeError, ValueError) as exc:
         print(f"TinyViT FC1 K=128 fixture failed: {exc}", file=sys.stderr)
         return 1

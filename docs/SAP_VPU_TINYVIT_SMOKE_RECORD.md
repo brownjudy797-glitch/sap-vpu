@@ -109,9 +109,11 @@ The same tracked JSON also contains an `fc1_k128` fixture. It preserves both
 selected tokens, expands the FC1 reduction from 4 to all 128 input channels,
 and covers sixteen output channels. The preparation script validates the integer
 golden result and packs the matrices as eight output tiles, each with 16 K=8
-chunks. Bare-metal setup copies the 256-byte activation tile and 2048-byte
-weight tile from ROM to SoC RAM because the VPU DMA intentionally accesses RAM
-only.
+chunks. The same script emits a separate SoC RAM image containing the 256-byte
+activation tile, 2048-byte FC1 weight tile, and 32-byte FC2 weight slice. The
+simulation initializes RAM from this image, so model tensors no longer consume
+code ROM or require scalar copy loops. This is reproducible test-platform
+loading, not an external-memory DMA or cache-coherence claim.
 
 ## Evidence Covered
 
@@ -137,6 +139,9 @@ The current smoke covers the next paper-roadmap evidence hooks:
   channels, and sixteen output channels. Software iterates eight 2-channel
   output tiles through the existing four-word scratchpads and accumulates 32
   signed 32-bit outputs.
+- Separate generated code-ROM and model-RAM images for the K=128 smoke. The
+  executable shrinks from 3784 bytes to 1316 bytes while preserving the checked
+  numerical path and `MAC_ACTIVE=1040` result.
 - A three-tile subsystem mapping of the same MLP2 fixture: two FC1 tiles,
   testbench-boundary requantization/ReLU/repack, and one FC2 tile, with 12
   checked VDOTs, 12 OBI reads, and 12 OBI writes per inference.

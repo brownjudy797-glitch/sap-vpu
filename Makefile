@@ -61,6 +61,7 @@ TINYVIT_FC1_K128_ELF := $(TINYVIT_FC1_K128_BUILD_DIR)/sap_vpu_tinyvit_fc1_k128.e
 TINYVIT_FC1_K128_BIN := $(TINYVIT_FC1_K128_BUILD_DIR)/sap_vpu_tinyvit_fc1_k128.bin
 TINYVIT_FC1_K128_HEX := $(TINYVIT_FC1_K128_BUILD_DIR)/sap_vpu_tinyvit_fc1_k128.hex
 TINYVIT_FC1_K128_ASM := $(TINYVIT_FC1_K128_BUILD_DIR)/tinyvit_fc1_k128_fixture.inc
+TINYVIT_FC1_K128_RAM_HEX := $(TINYVIT_FC1_K128_BUILD_DIR)/tinyvit_fc1_k128_ram.hex
 VPU_CORE_ACTIVITY_DIR ?= $(ROOT_DIR)/work/activity/vpu_core
 VPU_CORE_VCD ?= $(VPU_CORE_ACTIVITY_DIR)/sap_vpu_core_tb.vcd
 VPU_CORE_SAIF ?= $(VPU_CORE_ACTIVITY_DIR)/sap_vpu_core.saif
@@ -397,6 +398,7 @@ sim-tinyvit-fc1-k128: tinyvit-fc1-k128-build corev-rtl-flist
 	DESIGN_RTL_DIR="$(COREV_DIR)/rtl" $(VERILATOR) --binary --timing -sv \
 	  -DCOREV_ASSERT_OFF --top-module corev_min_soc_tiled_gemm_dma_tb -Wno-fatal \
 	  -GROM_INIT_FILE=\"$(TINYVIT_FC1_K128_HEX)\" \
+	  -GRAM_INIT_FILE=\"$(TINYVIT_FC1_K128_RAM_HEX)\" \
 	  -Wno-BLKANDNBLK -Wno-TIMESCALEMOD -Wno-UNOPTFLAT \
 	  -Wno-WIDTHEXPAND -Wno-WIDTHTRUNC -Wno-WIDTHCONCAT \
 	  -Wno-ASCRANGE -Wno-IMPLICIT -Wno-UNSIGNED -Wno-COMBDLY \
@@ -518,7 +520,8 @@ tiled-gemm-dma-soc-smoke: sim-tiled-gemm-dma-soc lint-corev-soc
 tinyvit-fc1-k128-fixture:
 	mkdir -p "$(TINYVIT_FC1_K128_BUILD_DIR)"
 	$(PYTHON) scripts/prepare_tinyvit_fc1_k128.py "$(TINYVIT_FIXTURE_JSON)" \
-	  --asm "$(TINYVIT_FC1_K128_ASM)"
+	  --asm "$(TINYVIT_FC1_K128_ASM)" \
+	  --ram-hex "$(TINYVIT_FC1_K128_RAM_HEX)"
 
 tinyvit-fc1-k128-build: tinyvit-fc1-k128-fixture
 	$(RISCV_AS) -I "$(TINYVIT_FC1_K128_BUILD_DIR)" -march=rv32imc -mabi=ilp32 \
@@ -530,6 +533,7 @@ tinyvit-fc1-k128-build: tinyvit-fc1-k128-fixture
 
 tinyvit-fc1-k128-smoke: sim-tinyvit-fc1-k128 lint-corev-soc
 	test -s "$(TINYVIT_FC1_K128_HEX)"
+	test -s "$(TINYVIT_FC1_K128_RAM_HEX)"
 
 tinyvit-checkpoint-fixture:
 	$(PYTHON) scripts/export_tinyvit_checkpoint_fixture.py \

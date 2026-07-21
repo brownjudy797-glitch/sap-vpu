@@ -36,9 +36,11 @@ the local DC/library combination. The current four-word scratchpads prove
 autonomous operand fetch, two-block K accumulation, and result writeback, but
 larger SRAM banks and double buffering remain later work.
 Software bias/GELU execution and two accumulated K=8 FC2 partials are now
-checked for the K=128 sixteen-output slice. The image occupies 3784 of the
-simulated SoC ROM's 4096 bytes, so further coverage requires model-data loading
-instead of larger statically embedded tables. Full output dimensions,
+checked for the K=128 sixteen-output slice. Code and model data now use separate
+generated images: the executable occupies 1316 bytes instead of 3784 bytes, and
+simulation preloads activation and weight slices into SoC RAM. This removes the
+ROM-capacity blocker without claiming an external-memory loader. The 4 KiB RAM
+capacity is now the next scaling constraint; full output dimensions,
 accumulation across all FC2 input channels, and a defensible power-reduction
 claim remain subsequent paper-evidence steps.
 
@@ -74,8 +76,9 @@ custom instruction, TinyML, and edge-AI accelerator work.
 1. Move complete-subsystem ASIC mapping to a newer compatible DC installation
    or regenerate and validate the TSMC28 `.db`; repeat matched core/subsystem
    10 ns runs before publishing an ASIC area delta.
-2. Separate code ROM from model-data loading, then widen the validated K=128
-   FC1 slice beyond sixteen outputs and accumulate further FC2 partials.
+2. Widen the validated K=128 FC1 slice beyond sixteen outputs and accumulate
+   further FC2 partials using bounded model-data windows; do not grow the 4 KiB
+   RAM blindly or present simulation preloading as product hardware.
 3. Measure quantization error over more tokens and images instead of relying on
    the current two-token partial contribution.
 4. Replace register scratchpads with explicit SRAM-macro assumptions only after
