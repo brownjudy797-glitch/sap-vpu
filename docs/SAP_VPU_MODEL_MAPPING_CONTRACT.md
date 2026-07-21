@@ -32,17 +32,18 @@ tracked `tinyvit_mlp2_checkpoint.json` basis probe and `tinyvit_mlp2_smoke.json`
 synthetic data remain regressions. Bias/GELU and the omitted channels are not
 executed by the original four-channel VPU mapping.
 
-The same fixture also contains a two-token, K=128, eight-output FC1 slice. For
+The same fixture also contains a two-token, K=128, sixteen-output FC1 slice. For
 this slice, SAP-VPU returns signed INT32 accumulators and CV32E40X software adds
 the quantized INT32 bias, applies a Q16 signed requantization, clamps to INT8,
 and indexes a 256-entry INT8 GELU table. This is an explicit software boundary,
 not a VPU GELU instruction or datapath claim. The generated contract currently
 uses multiplier 387 and shift 16; the tracked two-token slice has maximum
 dequantized GELU error `0.01185` against the captured PyTorch activation.
-The checked GELU bytes are then written to SoC RAM and consumed by one existing
-M=2, N=2, K=8 tile using the first eight FC2 input channels and two output
-channels. This FC2 result is a no-bias partial contribution; it does not imply
-that the remaining 504 hidden channels or the complete FC2 layer execute.
+The checked GELU bytes are then written to SoC RAM in K=8 chunk-major order and
+consumed by two existing M=2, N=2, K=8 tiles. Software accumulates their first
+sixteen FC2 input-channel contributions for two output channels. This is a
+no-bias partial result; it does not imply that the remaining 496 hidden channels
+or the complete FC2 layer execute.
 
 ## Layout and Command Stream
 
@@ -155,6 +156,8 @@ fixtures let normal regression run without downloading it.
 a Python environment with PyTorch, torchvision, timm, Pillow, and SafeTensors.
 `tinyvit-smoke` checks the generated data through CV32E40X, CV-X-IF, and
 SAP-VPU, while `sim-subsystem-mlp2` checks the same data through the three-tile
-subsystem path. `tinyvit-fc1-k128-smoke` additionally checks all 16 K=128 INT32
+subsystem path. `tinyvit-fc1-k128-smoke` additionally checks all 32 K=128 INT32
 FC1 outputs, their CPU-executed bias/requantization/GELU INT8 results, and four
-FC2 K=8 partial outputs produced from those runtime GELU bytes.
+accumulated FC2 partial outputs produced from two K=8 tiles. Its 3784-byte image
+fits the simulated SoC's 4096-byte ROM but leaves no room for another static
+doubling of embedded model weights.

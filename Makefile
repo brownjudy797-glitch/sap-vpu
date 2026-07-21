@@ -570,7 +570,7 @@ tinyvit-build: tinyvit-fixture
 	mkdir -p "$(TINYVIT_BUILD_DIR)"
 	$(RISCV_AS) -I "$(TINYVIT_FIXTURE_DIR)" -march=rv32imc -mabi=ilp32 \
 	  -o "$(TINYVIT_BUILD_DIR)/tinyvit_mlp_smoke.o" sw/baremetal/tinyvit_mlp_smoke.S
-	$(RISCV_LD) -m elf32lriscv -T sw/baremetal/link.ld \
+	$(RISCV_LD) -m elf32lriscv --defsym=__rom_length=8192 -T sw/baremetal/link.ld \
 	  -o "$(TINYVIT_ELF)" "$(TINYVIT_BUILD_DIR)/tinyvit_mlp_smoke.o"
 	$(RISCV_OBJCOPY) -O binary "$(TINYVIT_ELF)" "$(TINYVIT_BIN)"
 	$(PYTHON) scripts/bin_to_verilog_hex.py "$(TINYVIT_BIN)" "$(TINYVIT_HEX)"

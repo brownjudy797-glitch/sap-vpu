@@ -5,8 +5,8 @@
   .equ INPUT_BASE,    0x00010100
   .equ WEIGHT_BASE,   0x00010200
   .equ FC2_OUT_BASE,  0x00010020
-  .equ FC2_INPUT_BASE, 0x00010600
-  .equ FC2_WEIGHT_BASE, 0x00010610
+  .equ FC2_INPUT_BASE, 0x00010a00
+  .equ FC2_WEIGHT_BASE, 0x00010a20
   .equ EXIT_ADDR,     0x10000004
 
   .macro sap_r funct7, funct3, rd, rs1, rs2
@@ -159,7 +159,11 @@ _start:
 
   li t0, TINYVIT_FC1_K128_OUTPUT_TILES
   sub t0, t0, s7
+  srli t1, t0, 2
+  slli t1, t1, 4
+  andi t0, t0, 3
   slli t0, t0, 1
+  add t0, t0, t1
   li t1, FC2_INPUT_BASE
   add t0, t0, t1
   sb a0, 0(t0)
@@ -175,31 +179,46 @@ _start:
   bnez s7, 3b
 
   li s0, FC2_INPUT_BASE
-  tile_dma_reg s0, 8
   li s1, FC2_WEIGHT_BASE
+  li s2, TINYVIT_FC2_K8_CHUNKS
+  li s3, 0
+  li s4, 0
+  li s5, 0
+  li s6, 0
+.Lfc2_loop:
+  tile_dma_reg s0, 8
   tile_dma_reg s1, 9
   li t0, 0x212                   /* M=2, N=2, K=8 */
   sap_r 0x21, 0x0, 0, 5, 0
   tile_store FC2_OUT_BASE
 
   li t0, FC2_OUT_BASE
-  la t1, tinyvit_fc2_k8_expected
-  lw t2, 0(t0)
-  lw t4, 0(t1)
-  bne t2, t4, fail_fc2
-  lw t2, 4(t0)
-  lw t4, 4(t1)
-  bne t2, t4, fail_fc2
-  lw t2, 8(t0)
-  lw t4, 8(t1)
-  bne t2, t4, fail_fc2
-  lw t2, 12(t0)
-  lw t4, 12(t1)
-  bne t2, t4, fail_fc2
+  lw a0, 0(t0)
+  lw a1, 4(t0)
+  lw a2, 8(t0)
+  lw a3, 12(t0)
+  add s3, s3, a0
+  add s4, s4, a1
+  add s5, s5, a2
+  add s6, s6, a3
+  addi s0, s0, 16
+  addi s1, s1, 16
+  addi s2, s2, -1
+  bnez s2, .Lfc2_loop
+
+  la t0, tinyvit_fc2_k8_expected
+  lw t1, 0(t0)
+  bne s3, t1, fail_fc2
+  lw t1, 4(t0)
+  bne s4, t1, fail_fc2
+  lw t1, 8(t0)
+  bne s5, t1, fail_fc2
+  lw t1, 12(t0)
+  bne s6, t1, fail_fc2
 
   li t0, 2
   sap_r 0x1a, 0x0, 28, 5, 0     /* VREADCNT MAC_ACTIVE */
-  li t4, 520
+  li t4, 1040
   bne t3, t4, fail_mac_count
 
   exit_with 1
