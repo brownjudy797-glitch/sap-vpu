@@ -32,24 +32,25 @@ tracked `tinyvit_mlp2_checkpoint.json` basis probe and `tinyvit_mlp2_smoke.json`
 synthetic data remain regressions. Bias/GELU and the omitted channels are not
 executed by the original four-channel VPU mapping.
 
-The same fixture also contains a two-token, K=128, sixteen-output FC1 slice. For
+The same fixture also contains a two-token, K=128, 32-output FC1 slice. For
 this slice, SAP-VPU returns signed INT32 accumulators and CV32E40X software adds
 the quantized INT32 bias, applies a Q16 signed requantization, clamps to INT8,
 and indexes a 256-entry INT8 GELU table. This is an explicit software boundary,
 not a VPU GELU instruction or datapath claim. The generated contract currently
-uses multiplier 387 and shift 16; the tracked two-token slice has maximum
-dequantized GELU error `0.01185` against the captured PyTorch activation.
+uses multiplier 313 and shift 16; the tracked two-token slice has maximum
+dequantized GELU error `0.03561` against the captured PyTorch activation.
 The checked GELU bytes are then written to SoC RAM in K=8 chunk-major order and
-consumed by two existing M=2, N=2, K=8 tiles. Software accumulates their first
-sixteen FC2 input-channel contributions for two output channels. This is a
-no-bias partial result; it does not imply that the remaining 496 hidden channels
-or the complete FC2 layer execute.
+consumed by existing M=2, N=2, K=8 tiles. Two separately loaded 16-channel
+windows cover the first 32 FC2 input-channel contributions for two output
+channels. This is a no-bias partial result; it does not imply that the remaining
+480 hidden channels or the complete FC2 layer execute.
 
-The K=128 smoke generates code ROM and model RAM as separate images. Simulation
-preloads the tracked activation and weight slices into the same SoC RAM addresses
-that `VTDMA` reads, while CV32E40X still writes the runtime GELU result before
-FC2. This removes model tensors from the executable but does not claim a
-hardware path from flash or external DRAM.
+The K=128 smoke generates one code ROM image and two model RAM window images.
+Simulation runs the executable once per window, preloading each weight slice
+into the same 2 KiB SoC RAM region that `VTDMA` reads, while CV32E40X still
+writes the runtime GELU result before FC2. This removes model tensors from the
+executable but does not claim runtime window swapping, a hardware path from
+flash or external DRAM, or one uninterrupted 32-channel inference.
 
 ## Layout and Command Stream
 
@@ -162,8 +163,8 @@ fixtures let normal regression run without downloading it.
 a Python environment with PyTorch, torchvision, timm, Pillow, and SafeTensors.
 `tinyvit-smoke` checks the generated data through CV32E40X, CV-X-IF, and
 SAP-VPU, while `sim-subsystem-mlp2` checks the same data through the three-tile
-subsystem path. `tinyvit-fc1-k128-smoke` additionally checks all 32 K=128 INT32
-FC1 outputs, their CPU-executed bias/requantization/GELU INT8 results, and four
-accumulated FC2 partial outputs produced from two K=8 tiles. The former
-3784-byte image is now a 1316-byte executable; the activation and weight payload
-is emitted separately as a sparse-addressed RAM initialization image.
+subsystem path. Across two 16-channel runs, `tinyvit-fc1-k128-smoke` checks all
+64 K=128 INT32 FC1 outputs, their CPU-executed bias/requantization/GELU INT8
+results, and eight accumulated FC2 window-partial outputs. The executable is
+1624 bytes; each activation and weight window is emitted separately as a
+sparse-addressed RAM initialization image.

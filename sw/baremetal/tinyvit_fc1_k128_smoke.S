@@ -2,6 +2,7 @@
   .globl _start
 
   .equ OUT_BASE,      0x00010000
+  .equ WINDOW_ID_BASE, 0x000100f0
   .equ INPUT_BASE,    0x00010100
   .equ WEIGHT_BASE,   0x00010200
   .equ FC2_OUT_BASE,  0x00010020
@@ -73,11 +74,22 @@ _start:
   la sp, _stack_top
   sap_r 0x1d, 0x0, 0, 0, 0      /* VCLEARCNT */
 
+  li t0, WINDOW_ID_BASE
+  lw t0, 0(t0)
+  li t1, TINYVIT_FC1_K128_OUTPUT_WINDOWS
+  bgeu t0, t1, fail_window
+
   li s7, TINYVIT_FC1_K128_OUTPUT_TILES
   li s8, WEIGHT_BASE
   la s9, tinyvit_fc1_k128_expected
+  slli t1, t0, 7
+  add s9, s9, t1
   la s10, tinyvit_fc1_k128_bias
+  slli t1, t0, 6
+  add s10, s10, t1
   la s11, tinyvit_fc1_k128_gelu_expected
+  slli t1, t0, 5
+  add s11, s11, t1
 
 3:
   li s0, INPUT_BASE
@@ -173,7 +185,11 @@ _start:
   addi s2, s2, -1
   bnez s2, .Lfc2_loop
 
+  li t0, WINDOW_ID_BASE
+  lw t1, 0(t0)
+  slli t1, t1, 4
   la t0, tinyvit_fc2_k8_expected
+  add t0, t0, t1
   lw t1, 0(t0)
   bne s3, t1, fail_fc2
   lw t1, 4(t0)
@@ -198,3 +214,5 @@ fail_postprocess:
   exit_with 46
 fail_fc2:
   exit_with 47
+fail_window:
+  exit_with 48

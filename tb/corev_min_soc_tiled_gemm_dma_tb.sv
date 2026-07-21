@@ -14,6 +14,7 @@ module corev_min_soc_tiled_gemm_dma_tb #(
   logic exit_valid;
   logic [31:0] exit_code;
   logic core_sleep;
+  string ram_init_file;
 
   corev_min_soc #(
     .ROM_INIT_FILE(ROM_INIT_FILE),
@@ -48,6 +49,9 @@ module corev_min_soc_tiled_gemm_dma_tb #(
     clk = 1'b0;
     rst_n = 1'b0;
     fetch_enable = 1'b0;
+    if ($value$plusargs("ram_init=%s", ram_init_file)) begin
+      $readmemh(ram_init_file, dut.ram);
+    end
 
     repeat (5) @(posedge clk);
     rst_n = 1'b1;

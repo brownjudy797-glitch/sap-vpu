@@ -21,7 +21,7 @@ DEFAULT_IMAGE_URL = (
     "resolve/main/beignets-task-guide.png"
 )
 TOKEN_INDICES = (0, 1)
-FC1_K128_OUTPUT_CHANNELS = 16
+FC1_K128_OUTPUT_CHANNELS = 32
 FC1_GELU_REQUANT_SHIFT = 16
 
 
