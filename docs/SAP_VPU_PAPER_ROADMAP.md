@@ -26,7 +26,7 @@ The paper must keep these boundaries explicit:
 | VPU instruction path | Bare-metal custom-0 smoke covers base, precision, sparse, lane, and counter ops. | `make vpu-smoke` |
 | Tiled GEMM path | A bounded M<=2, N<=2, K<=8 scheduler accumulates up to two packed VDOT blocks per output. `VTDMA` fetches up to four packed words from SoC RAM and `VTSTORE` writes row-major results back over a single-outstanding OBI path. K=3/4/5/8 cases pass. | `make tiled-gemm-rtl-check`, `make tiled-gemm-soc-smoke`, `make tiled-gemm-dma-soc-smoke` |
 | Paper workload | TinyViT MLP smoke now repeats an eight-block, 2-token x 2-output-channel policy tile 16 times, includes a 64-round `dense_x4` larger-shape row and a data-dependent 2-token 4-input -> 4-hidden -> ReLU -> 2-output INT8 projection, and exports INT8/INT4/INT2 policy, bitmap sparse counters, a software-scheduled 75% whole-vector sparse row, unstructured sparse counters, ablations, dense/adaptive reuse rows, and observed RAM tile traffic. The MLP2 slice is fixture-driven with checked provenance and quantization metadata; current numbers remain smoke-only evidence. | `make tinyvit-paper-table`, `make tinyvit-fixture-check`, `docs/SAP_VPU_TINYVIT_SMOKE_RECORD.md` |
-| FPGA evidence | Standalone core and complete `sap_vpu_subsystem` both pass same-mode Artix-7 OOC implementation at 100/140 MHz. At 140 MHz the subsystem uses 2752 LUTs and 1332 FFs with +0.091 ns WNS; this is internal-IP comparative evidence, not board or full-SoC timing. The existing core gate-SAIF policy flow remains core-only. | `make fpga-vpu-synth`, `make fpga-vpu-policy-power-matrix`, `docs/SAP_VPU_FPGA_FLOW.md` |
+| FPGA evidence | Standalone core and complete `sap_vpu_subsystem` both pass same-mode Artix-7 OOC implementation at 100/140 MHz. At 140 MHz the subsystem uses 2752 LUTs and 1332 FFs with +0.091 ns WNS. A 128-tile post-synth read-compute-write smoke annotates 6452/6461 routed nets and reports 0.011 W dynamic power, but excludes external RAM, CPU, and board power. | `make fpga-vpu-synth`, `make fpga-vpu-subsystem-saif-power`, `docs/SAP_VPU_FPGA_FLOW.md` |
 | ASIC evidence | The accepted TSMC28 `tt0p9v85c`, 10 ns gate/SAIF checkpoint remains standalone-core evidence. The complete subsystem passes DC analyze/elaborate/link/checks, but DC L-2016.03-SP1 crashes during mapping under three bounded settings, so no complete-subsystem ASIC PPA is claimed. | `make dc-vpu-precheck`, `docs/SAP_VPU_ASIC_FLOW.md` |
 
 The complete `sap_vpu_subsystem`, including the tiled scheduler, bounded
@@ -70,8 +70,9 @@ custom instruction, TinyML, and edge-AI accelerator work.
 1. Move complete-subsystem ASIC mapping to a newer compatible DC installation
    or regenerate and validate the TSMC28 `.db`; repeat matched core/subsystem
    10 ns runs before publishing an ASIC area delta.
-2. Add FPGA subsystem-level activity capture for the verified
-   read-compute-write path; keep it separate from board and full-SoC power.
+2. Broaden the verified FPGA subsystem activity from the repeated M=2, N=2,
+   K=4 tile to a larger TinyViT MLP layer slice; keep it separate from board
+   and full-SoC power.
 3. Resume larger TinyViT layer mapping while the ASIC toolchain is repaired,
    using the measured FPGA subsystem cost to bound scratchpad expansion.
 4. Replace register scratchpads with explicit SRAM-macro assumptions only after

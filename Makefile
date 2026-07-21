@@ -79,6 +79,11 @@ FPGA_POLICY_POWER_DIR ?= work\fpga\vpu_core_policy_power_matrix
 FPGA_POLICY_DCP ?= work\fpga\vpu_core_sliced_140\checkpoints\post_route.dcp
 FPGA_POLICY_NETLIST ?= work\fpga\vpu_core_sliced_140_funcsim\sap_vpu_core_funcsim.v
 FPGA_POLICY_CLOCK_MHZ ?= 140
+FPGA_SUBSYSTEM_POWER_DIR ?= work\fpga\vpu_subsystem_140_saif_power
+FPGA_SUBSYSTEM_POST_SYNTH_DCP ?= work\fpga\vpu_subsystem_140\checkpoints\post_synth.dcp
+FPGA_SUBSYSTEM_POST_ROUTE_DCP ?= work\fpga\vpu_subsystem_140\checkpoints\post_route.dcp
+FPGA_SUBSYSTEM_CLOCK_MHZ ?= 140
+FPGA_SUBSYSTEM_ITERATIONS ?= 128
 DC_CLOCK_PERIOD ?= 10.0
 DC_DESIGN_NAME ?= sap_vpu_core
 DC_WORK_DIR ?= $(ROOT_DIR)/work/dc/tsmc28/vpu_core
@@ -102,7 +107,7 @@ DC_GATE_POWER_REPORT_DIR ?= $(DC_GATE_SIM_DIR)/reports_power
 
 .DEFAULT_GOAL := help
 
-.PHONY: help plan-check corev-fetch corev-rtl-flist lint-adapter lint-core lint-tiled-gemm lint-subsystem lint lint-corev-soc sim-adapter sim-core sim-tiled-gemm sim-core-vcd sim-hello sim-vpu sim-tiled-gemm-soc sim-tiled-gemm-dma-soc sim-tinyvit sim-tinyvit-vcd sim encoding-check legacy-summary hello-build hello-smoke vpu-build vpu-smoke tiled-gemm-soc-build tiled-gemm-soc-smoke tiled-gemm-dma-soc-build tiled-gemm-dma-soc-smoke tinyvit-fixture tinyvit-fixture-check tiled-gemm-check tiled-gemm-rtl-check tinyvit-build tinyvit-smoke tinyvit-summary tinyvit-paper-table fpga-vpu-synth fpga-vpu-funcsim-netlist fpga-vpu-funcsim-vcd fpga-vpu-funcsim-saif fpga-vpu-funcsim-saif-power fpga-vpu-policy-power-matrix fpga-vpu-saif-power fpga-vpu-summary dc-vpu-gate-netlist-check dc-vpu-gate-synth dc-vpu-gate-sim dc-vpu-gate-saif-power dc-vpu-precheck dc-vpu-synth dc-vpu-power dc-vpu-saif-power dc-vpu-tinyvit-saif-power dc-vpu-policy-power-matrix dc-vpu-summary
+.PHONY: help plan-check corev-fetch corev-rtl-flist lint-adapter lint-core lint-tiled-gemm lint-subsystem lint lint-corev-soc sim-adapter sim-core sim-tiled-gemm sim-core-vcd sim-hello sim-vpu sim-tiled-gemm-soc sim-tiled-gemm-dma-soc sim-tinyvit sim-tinyvit-vcd sim encoding-check legacy-summary hello-build hello-smoke vpu-build vpu-smoke tiled-gemm-soc-build tiled-gemm-soc-smoke tiled-gemm-dma-soc-build tiled-gemm-dma-soc-smoke tinyvit-fixture tinyvit-fixture-check tiled-gemm-check tiled-gemm-rtl-check tinyvit-build tinyvit-smoke tinyvit-summary tinyvit-paper-table fpga-vpu-synth fpga-vpu-funcsim-netlist fpga-vpu-funcsim-vcd fpga-vpu-funcsim-saif fpga-vpu-funcsim-saif-power fpga-vpu-policy-power-matrix fpga-vpu-subsystem-saif-power fpga-vpu-saif-power fpga-vpu-summary dc-vpu-gate-netlist-check dc-vpu-gate-synth dc-vpu-gate-sim dc-vpu-gate-saif-power dc-vpu-precheck dc-vpu-synth dc-vpu-power dc-vpu-saif-power dc-vpu-tinyvit-saif-power dc-vpu-policy-power-matrix dc-vpu-summary
 
 help:
 	@printf '%s\n' \
@@ -135,6 +140,7 @@ help:
 	  'make fpga-vpu-funcsim-vcd' \
 	  'make fpga-vpu-funcsim-saif-power [FPGA_SAIF_DCP=work/fpga/vpu_core_sliced_140/checkpoints/post_route.dcp]' \
 	  'make fpga-vpu-policy-power-matrix' \
+	  'make fpga-vpu-subsystem-saif-power' \
 	  'make fpga-vpu-saif-power [FPGA_SAIF_DCP=work/fpga/vpu_core_sliced_140/checkpoints/post_route.dcp]' \
 	  'make fpga-vpu-summary' \
 	  'make dc-vpu-gate-netlist-check [DC_NETLIST_DIR=netlist/dc/tsmc28/vpu_core]' \
@@ -164,7 +170,9 @@ plan-check:
 	test -f tb/sap_vpu_tiled_gemm_tb.sv
 	test -f tb/corev_min_soc_tiled_gemm_tb.sv
 	test -f tb/corev_min_soc_tiled_gemm_dma_tb.sv
+	test -f tb/sap_vpu_subsystem_gate_tb.sv
 	test -f scripts/run_fpga_vpu_policy_matrix.ps1
+	test -f scripts/run_fpga_vpu_subsystem_power.ps1
 	test -f sw/baremetal/sap_vpu_custom.h
 	test -f sw/baremetal/hello.S
 	test -f sw/baremetal/vpu_smoke.S
@@ -537,6 +545,16 @@ fpga-vpu-policy-power-matrix:
 	  -Dcp '$(FPGA_POLICY_DCP)' \
 	  -Netlist '$(FPGA_POLICY_NETLIST)' \
 	  -ClockMhz '$(FPGA_POLICY_CLOCK_MHZ)'
+
+fpga-vpu-subsystem-saif-power:
+	$(POWERSHELL) -NoProfile -ExecutionPolicy Bypass \
+	  -File scripts/run_fpga_vpu_subsystem_power.ps1 \
+	  -VivadoRoot '$(VIVADO_ROOT_WINDOWS)' \
+	  -OutDir '$(FPGA_SUBSYSTEM_POWER_DIR)' \
+	  -PostSynthDcp '$(FPGA_SUBSYSTEM_POST_SYNTH_DCP)' \
+	  -PostRouteDcp '$(FPGA_SUBSYSTEM_POST_ROUTE_DCP)' \
+	  -ClockMhz '$(FPGA_SUBSYSTEM_CLOCK_MHZ)' \
+	  -Iterations '$(FPGA_SUBSYSTEM_ITERATIONS)'
 
 fpga-vpu-saif-power: sim-core-vcd
 	$(VCD2SAIF) -input "$(VPU_CORE_VCD)" -output "$(VPU_CORE_SAIF)"

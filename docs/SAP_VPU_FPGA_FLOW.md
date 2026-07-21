@@ -45,6 +45,16 @@ make fpga-vpu-synth \
   FPGA_BUILD_DIR=work/fpga/vpu_subsystem_140
 ```
 
+Run the complete subsystem post-synthesis read-compute-write smoke, convert its
+VCD to SAIF, and annotate the matched 140 MHz routed checkpoint:
+
+```sh
+make fpga-vpu-subsystem-saif-power
+```
+
+The default run executes 128 identical INT8 M=2, N=2, K=4 tiles. Override
+`FPGA_SUBSYSTEM_ITERATIONS` only when a longer activity window is required.
+
 Run power from an existing routed checkpoint with VPU smoke SAIF activity:
 
 ```sh
@@ -114,6 +124,10 @@ The flow writes:
 - `work/fpga/vpu_core_sliced_140_funcsim_saif_power/reports/post_route_saif_power.rpt`
 - `work/fpga/vpu_core_policy_power_matrix/fpga_vpu_policy_power_matrix.csv`
 - `work/fpga/vpu_core_policy_power_matrix/fpga_vpu_policy_power_matrix.md`
+- `work/fpga/vpu_subsystem_140_saif_power/sap_vpu_subsystem_gate.vcd`
+- `work/fpga/vpu_subsystem_140_saif_power/sap_vpu_subsystem_gate.saif`
+- `work/fpga/vpu_subsystem_140_saif_power/fpga_vpu_subsystem_power.csv`
+- `work/fpga/vpu_subsystem_140_saif_power/power/reports/post_route_saif_power.rpt`
 - `work/fpga/vpu_core/checkpoints/post_synth.dcp`
 - `work/fpga/vpu_core/checkpoints/post_route.dcp`
 
@@ -148,6 +162,12 @@ The flow writes:
   `sap_vpu_subsystem` is internal SoC IP, not a package pin-level top. Vivado
   warns that `HD.CLK_SRC` and `HD.PARTPIN_LOCS` are absent in this mode, so the
   numbers support internal comparative PPA only, not board timing signoff.
+- The subsystem gate-SAIF flow covers the subsystem command path, four-word
+  register scratchpads, tiled GEMM scheduler, core, and OBI read/write pins. Its
+  testbench memory model is outside the synthesized checkpoint, so the result
+  excludes RAM-array, CPU, interconnect, and board power.
+- The runner requires a passing RAM read/write/result check, at least 99% routed
+  net annotation, High confidence, and no Vivado clock/reset activity warning.
 - Generated reports remain under ignored `work/` and must not be committed.
 - These are standalone VPU-core or VPU-subsystem reports, not board-validated
   or full-SoC reports.
@@ -188,6 +208,19 @@ the same OOC flow. The near-equal WNS is a comparative IP result; it is not a
 claim that full-SoC or board timing is unchanged. Vectorless power rounds to
 0.082 W for both 140 MHz runs and is therefore not used as evidence of equal
 power.
+
+Current complete-subsystem gate-SAIF checkpoint on the same 140 MHz routed
+design:
+
+| Tiles | Shape | VDOTs | RAM reads | RAM writes | Duration ps | Nets matched | Confidence | Total W | Dynamic W | Static W | Dynamic pJ/tile |
+| ---: | --- | ---: | ---: | ---: | ---: | ---: | --- | ---: | ---: | ---: | ---: |
+| 128 | INT8 M=2, N=2, K=4 | 512 | 512 | 512 | 55,761,165 | 6452/6461 (99.86%) | High | 0.080 | 0.011 | 0.068 | 4,791.975 |
+
+This is a deterministic repeated-tile activity checkpoint. It proves that the
+autonomous read-compute-write datapath can drive a high-coverage FPGA power
+run; it is not end-to-end TinyViT energy or evidence that external memory is
+free. The 0.001 W report resolution also prevents using the difference from the
+0.082 W vectorless estimate as a power-reduction claim.
 
 Current local SAIF power-flow smoke on the 140 MHz checkpoint:
 
@@ -234,11 +267,10 @@ paper-facing result.
 ## Next FPGA Steps
 
 1. Re-run both 140 MHz OOC checkpoints after any RTL datapath change.
-2. Add complete-subsystem activity capture for the read-compute-write path.
-3. Broaden the runtime activity from this deterministic tile to a larger MLP
+2. Broaden the runtime activity from this deterministic tile to a larger MLP
    shape before treating dynamic-power differences below Vivado report
    resolution as evidence.
-4. Add a structured sparse scheduling path that eliminates whole inactive VDOT
+3. Add a structured sparse scheduling path that eliminates whole inactive VDOT
    operations before claiming sparse speedup from the TinyViT kernel.
-5. Add a board-level top and constraints only after the subsystem report remains
+4. Add a board-level top and constraints only after the subsystem report remains
    reproducible.
