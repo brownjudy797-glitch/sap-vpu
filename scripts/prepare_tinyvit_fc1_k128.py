@@ -16,7 +16,7 @@ from prepare_tinyvit_mlp2_fixture import pack_int8
 SCHEMA = "sap-vpu-tinyvit-fc1-k128-int8-v1"
 TOKENS = 2
 INPUT_CHANNELS = 128
-OUTPUT_CHANNELS = 32
+OUTPUT_CHANNELS = 64
 WINDOW_OUTPUT_CHANNELS = 16
 CHUNK_K = 8
 OUTPUT_TILE_CHANNELS = 2
@@ -258,28 +258,30 @@ def self_test() -> None:
     raw = json.loads((root / "sw/baremetal/fixtures/tinyvit_mlp2_activation.json").read_text(encoding="ascii"))
     inputs, weights, expected, bias, multiplier, shift, lut, gelu, fc2_weights, fc2_expected = validate(raw)
     assert expected[0][:4] == [-9095, -3141, 1800, 372]
-    assert expected[0][-4:] == [198, 816, 3664, 1989]
+    assert expected[0][-4:] == [2786, -803, -8415, -7580]
     assert expected[1][:4] == [3440, -3172, 5054, -13]
-    assert expected[1][-4:] == [1311, 2540, 3951, 3695]
+    assert expected[1][-4:] == [-4021, -4265, 3730, 76]
     assert len(chunk_words(inputs)) == 64
-    assert len(chunk_words(weights)) == 1024
+    assert len(chunk_words(weights)) == 2048
     assert bias[:4] == [-3302, -3547, -1956, -1551]
-    assert bias[-4:] == [-4185, -4120, -592, -3046]
+    assert bias[-4:] == [-2354, -2898, -2937, -3954]
     assert multiplier == 313
     assert shift == 16
     assert gelu[0][:4] == [0, -3, 0, -2]
-    assert gelu[0][-4:] == [-4, -4, 11, -2]
+    assert gelu[0][-4:] == [1, -4, -1, -1]
     assert gelu[1][:4] == [1, -3, 11, -3]
-    assert gelu[1][-4:] == [-4, -3, 12, 2]
+    assert gelu[1][-4:] == [-3, -2, 2, -4]
     assert fc2_weights[0][:4] == [12, 17, -50, 86]
-    assert fc2_weights[0][-4:] == [-5, -122, 37, -99]
+    assert fc2_weights[0][-4:] == [-16, -30, 19, 34]
     assert fc2_weights[1][:4] == [0, 65, 27, -64]
-    assert fc2_weights[1][-4:] == [56, 90, 1, 16]
-    assert fc2_expected == [[5422, -1028], [1670, -906]]
+    assert fc2_weights[1][-4:] == [33, 24, -8, 48]
+    assert fc2_expected == [[5818, -825], [2552, -1298]]
     window_outputs = fc2_window_outputs(gelu, fc2_weights)
     assert window_outputs == [
         [[1647, 196], [-512, -69]],
         [[3775, -1224], [2182, -837]],
+        [[291, -51], [640, 157]],
+        [[105, 254], [242, -549]],
     ]
     assert [
         [sum(window[token][output] for window in window_outputs) for output in range(FC2_OUTPUT_CHANNELS)]
@@ -299,7 +301,7 @@ def self_test() -> None:
         )
         generated = output.read_text(encoding="ascii")
         assert ".equ TINYVIT_FC1_K128_CHUNKS, 16" in generated
-        assert ".equ TINYVIT_FC1_K128_OUTPUT_WINDOWS, 2" in generated
+        assert ".equ TINYVIT_FC1_K128_OUTPUT_WINDOWS, 4" in generated
         assert ".equ TINYVIT_FC1_K128_OUTPUT_TILES, 8" in generated
         assert ".equ TINYVIT_FC2_K8_CHUNKS, 2" in generated
         assert "tinyvit_fc2_k8_expected:" in generated

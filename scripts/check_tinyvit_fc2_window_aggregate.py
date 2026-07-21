@@ -26,14 +26,15 @@ def parse_window_result(path: Path) -> tuple[int, list[int]]:
 def main() -> None:
     parser = argparse.ArgumentParser()
     parser.add_argument("fixture", type=Path)
-    parser.add_argument("logs", nargs=2, type=Path)
+    parser.add_argument("logs", nargs="+", type=Path)
     args = parser.parse_args()
 
     results = dict(parse_window_result(path) for path in args.logs)
-    if set(results) != {0, 1}:
-        raise ValueError(f"expected windows 0 and 1, found {sorted(results)}")
+    expected_windows = set(range(len(args.logs)))
+    if set(results) != expected_windows:
+        raise ValueError(f"expected windows {sorted(expected_windows)}, found {sorted(results)}")
 
-    actual = [left + right for left, right in zip(results[0], results[1])]
+    actual = [sum(results[window][index] for window in expected_windows) for index in range(4)]
     fixture = json.loads(args.fixture.read_text(encoding="utf-8"))
     expected_matrix = fixture["fc1_k128"]["fc2_partial"]["expected_integer_output"]
     expected = [value for row in expected_matrix for value in row]

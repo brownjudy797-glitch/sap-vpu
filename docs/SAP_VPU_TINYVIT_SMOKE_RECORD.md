@@ -107,16 +107,16 @@ not a full TinyViT layer or inference claim.
 
 The same tracked JSON also contains an `fc1_k128` fixture. It preserves both
 selected tokens, expands the FC1 reduction from 4 to all 128 input channels,
-and covers 32 output channels. The preparation script validates the integer
-golden result and packs two 16-channel RAM windows as eight output tiles, each
-with 16 K=8 chunks. Each window contains the 256-byte activation tile, 2048-byte
+and covers 64 output channels. The preparation script validates the integer
+golden result and packs four 16-channel RAM windows, each containing eight
+output tiles with 16 K=8 chunks. Each window contains the 256-byte activation tile, 2048-byte
 FC1 weight tile, and 32-byte FC2 weight slice. Simulation runs the same program
 once per host-loaded window, so model tensors do not consume code ROM or require
 scalar copy loops. This is reproducible test-platform loading, not runtime
 window swapping, external-memory DMA, or cache coherence.
 The program writes each final 2x2 FC2 partial to SoC RAM. The testbench reports
 those values and a host checker verifies that their element-wise sum equals the
-tracked 32-channel fixture result.
+tracked 64-channel fixture result.
 
 ## Evidence Covered
 
@@ -139,14 +139,14 @@ The current smoke covers the next paper-roadmap evidence hooks:
   dependency: 4 input -> 4 register-packed hidden -> requantization/ReLU -> 2
   output. It is a partial MLP-shaped smoke, not a full residual block.
 - An INT8 FC1 output slice with two image-derived tokens, all 128 input
-  channels, and 32 output channels across two 16-channel runs. Software iterates
+  channels, and 64 output channels across four 16-channel runs. Software iterates
   eight 2-channel output tiles per window through the existing four-word
-  scratchpads and accumulates 64 checked signed 32-bit outputs in total.
+  scratchpads and accumulates 128 checked signed 32-bit outputs in total.
 - Separate generated code-ROM and model-RAM images for the K=128 smoke. The
-  executable is 1648 bytes; both windows preserve the checked numerical path
+  executable is 2132 bytes; all four windows preserve the checked numerical path
   and independently report `MAC_ACTIVE=1040`.
-- Checked host aggregation of the two independently executed FC2 partials into
-  the tracked 32-channel result `[[5422, -1028], [1670, -906]]`.
+- Checked host aggregation of the four independently executed FC2 partials into
+  the tracked 64-channel result `[[5818, -825], [2552, -1298]]`.
 - A three-tile subsystem mapping of the same MLP2 fixture: two FC1 tiles,
   testbench-boundary requantization/ReLU/repack, and one FC2 tile, with 12
   checked VDOTs, 12 OBI reads, and 12 OBI writes per inference.
@@ -200,25 +200,26 @@ rather than inference energy. The report rounds to 0.001 W and is numerically
 unchanged from the basis-probe run at that resolution, so no power improvement
 is claimed.
 
-Across two 16-channel runs, the K=128 FC1 system smoke checks all 64 tracked
+Across four 16-channel runs, the K=128 FC1 system smoke checks all 128 tracked
 integer outputs. Each run issues 1024 packed FC1 VDOTs, representing 4096 INT8
 scalar products. The maximum dequantized error against the matching no-bias
-floating-point FC1 slice is `0.04628`. CV32E40X software then adds the tracked
+floating-point FC1 slice is `0.05887`. CV32E40X software then adds the tracked
 accumulator-domain biases, uses Q16 multiplier 313 with shift 16 and signed
-ties-away rounding, and indexes a 256-entry INT8 GELU table. The 64 checked GELU
+ties-away rounding, and indexes a 256-entry INT8 GELU table. The 128 checked GELU
 outputs have maximum dequantized error `0.03561` against the captured model
 slice. Each runtime GELU window is written to RAM in two K=8 chunks and consumed
-by two FC2 tiles. The two no-bias window partials are
-`[[1647, 196], [-512, -69]]` and `[[3775, -1224], [2182, -837]]`; their checked
-sum is `[[5422, -1028], [1670, -906]]`. The maximum dequantized error against
-the matching 32-channel floating-point partial is `0.02430`. FC2 adds 16 VDOTs
+by two FC2 tiles. The four no-bias window partials are
+`[[1647, 196], [-512, -69]]`, `[[3775, -1224], [2182, -837]]`,
+`[[291, -51], [640, 157]]`, and `[[105, 254], [242, -549]]`; their checked sum
+is `[[5818, -825], [2552, -1298]]`. The maximum dequantized error against the
+matching 64-channel floating-point partial is `0.02874`. FC2 adds 16 VDOTs
 per window, so `MAC_ACTIVE` reports 1040 completed VDOT operations in each
-independent run. The other 480 FC1 outputs and FC2 input channels, runtime
+independent run. The other 448 FC1 outputs and FC2 input channels, runtime
 window swapping, FC2 bias, and end-to-end model execution remain omitted. GELU
 is software evidence and is not included in the VPU hardware claim.
 
 Use this record to justify that SAP-VPU now has a repeatable TinyViT-oriented
 kernel path, captured model activations, a full-K FC1 output slice, checked host
 aggregation, and an explicit software/hardware boundary for bias/GELU. The next
-evidence step is widening FC1 coverage with the same fixed 16-channel RAM window
-and accumulating further FC2 partials before any full-layer or full-model claim.
+evidence step is widening FC1 coverage to 128 outputs with the same fixed
+16-channel RAM window before any full-layer or full-model claim.
