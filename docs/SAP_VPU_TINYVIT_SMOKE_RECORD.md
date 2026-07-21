@@ -59,6 +59,11 @@ and a metadata record under `TINYVIT_BUILD_DIR/fixture/`. The tracked
 `sw/baremetal/fixtures/tinyvit_mlp2_smoke.json` preserves the current smoke
 case.
 
+The generated SystemVerilog include also carries packed FC1/FC2 operands, FC1
+golden outputs, ReLU-packed hidden words, and FC2 golden outputs. The subsystem
+gate testbench uses these arrays to drive the same fixture through three
+autonomous tiles instead of duplicating test data.
+
 To run a separately exported fixture without overwriting the default work
 directory:
 
@@ -102,6 +107,9 @@ The current smoke covers the next paper-roadmap evidence hooks:
 - An INT8 `tinyvit_mlp2` projection with two tokens and a real data dependency:
   4 input -> 4 register-packed hidden -> ReLU -> 2 output. It is a
   MLP-shaped smoke, not a full residual block.
+- A three-tile subsystem mapping of the same MLP2 fixture: two FC1 tiles,
+  testbench-boundary ReLU/repack, and one FC2 tile, with 12 checked VDOTs, 12
+  OBI reads, and 12 OBI writes per inference.
 - Three policy-level ablations: no sparse skip, no lane gating, and no
   precision gating.
 - Testbench assertion that the smoke performs 11392 operand/weight reads from
@@ -141,6 +149,13 @@ checks output 1,120, 192 active VDOTs, no hardware skips, and 32 operand plus
 ReLU before the output projection. The current 2,004-cycle result is functional
 smoke evidence only: it has no residual path, quantization-scale error, or full
 TinyViT dimensions.
+
+The corresponding 140 MHz subsystem gate-SAIF run repeats the three-tile
+mapping 128 times, covering 384 tiles and 1536 VDOTs with 99.86% routed-net
+annotation. It reports 0.012 W dynamic power and 15.683 nJ per MLP2 fixture.
+This excludes the software-boundary ReLU/repacking, RAM array, CPU, full SoC,
+and board, so it remains subsystem activity evidence rather than inference
+energy.
 
 Use this record to justify that SAP-VPU now has a repeatable TinyViT-oriented
 kernel path and a controlled input-fixture boundary. The next evidence step is

@@ -87,6 +87,24 @@ The current data mover has one outstanding transaction, fills the bounded
 four-word operand and weight scratchpads, and writes row-major results. Larger
 SRAM banks and double buffering remain outside this slice.
 
+## Subsystem MLP2 Activity Mapping
+
+`tb/sap_vpu_subsystem_gate_tb.sv` maps the tracked 2x4x4x2 fixture through the
+autonomous subsystem path used for FPGA gate-SAIF evidence:
+
+1. FC1 channels 0-1 execute as one M=2, N=2, K=4 tile.
+2. FC1 channels 2-3 execute as a second M=2, N=2, K=4 tile.
+3. The testbench software boundary applies ReLU and repacks the four hidden
+   channels into two words.
+4. FC2 executes as one M=2, N=2, K=4 tile and checks all four outputs.
+
+One MLP2 inference therefore issues three tiles, 12 VDOTs, 12 OBI reads, and
+12 OBI writes. The generated SystemVerilog fixture include is the single source
+for packed operands, FC1 outputs, ReLU-packed hidden words, and FC2 golden
+outputs. `make fpga-vpu-subsystem-saif-power` repeats this mapping for the
+gate-level activity window. The testbench-side ReLU/repacking work is not part
+of synthesized subsystem power.
+
 ## Reproduction
 
 ```sh

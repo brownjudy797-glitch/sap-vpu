@@ -546,7 +546,7 @@ fpga-vpu-policy-power-matrix:
 	  -Netlist '$(FPGA_POLICY_NETLIST)' \
 	  -ClockMhz '$(FPGA_POLICY_CLOCK_MHZ)'
 
-fpga-vpu-subsystem-saif-power:
+fpga-vpu-subsystem-saif-power: tinyvit-fixture
 	$(POWERSHELL) -NoProfile -ExecutionPolicy Bypass \
 	  -File scripts/run_fpga_vpu_subsystem_power.ps1 \
 	  -VivadoRoot '$(VIVADO_ROOT_WINDOWS)' \

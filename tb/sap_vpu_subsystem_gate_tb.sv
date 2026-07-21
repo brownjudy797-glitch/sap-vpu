@@ -3,11 +3,17 @@
 module sap_vpu_subsystem_gate_tb;
   import sap_vpu_pkg::*;
 
+`include "tinyvit_mlp2_fixture_tb.svh"
+
   localparam realtime DEFAULT_CLK_HALF_PERIOD_NS = 3.5715;
   localparam int unsigned DEFAULT_ITERATIONS = 128;
-  localparam logic [31:0] LHS_BASE = 32'h0000_0100;
-  localparam logic [31:0] RHS_BASE = 32'h0000_0200;
-  localparam logic [31:0] OUT_BASE = 32'h0000_0300;
+  localparam logic [31:0] TOKEN_BASE = 32'h0000_0100;
+  localparam logic [31:0] FC1_WEIGHT_BASE = 32'h0000_0200;
+  localparam logic [31:0] FC1_OUT0_BASE = 32'h0000_0300;
+  localparam logic [31:0] FC1_OUT1_BASE = 32'h0000_0320;
+  localparam logic [31:0] HIDDEN_BASE = 32'h0000_0400;
+  localparam logic [31:0] FC2_WEIGHT_BASE = 32'h0000_0500;
+  localparam logic [31:0] FC2_OUT_BASE = 32'h0000_0600;
 
   logic        clk_i;
   logic        rst_ni;
@@ -32,7 +38,10 @@ module sap_vpu_subsystem_gate_tb;
   logic        dma_rvalid_i;
   logic [31:0] dma_rdata_i;
   logic        dma_err_i;
-  logic [31:0] result_mem [0:3];
+  logic [31:0] fc1_output_0 [0:3];
+  logic [31:0] fc1_output_1 [0:3];
+  logic [31:0] fc2_output [0:3];
+  logic [31:0] hidden_words [0:1];
   int unsigned read_transactions;
   int unsigned write_transactions;
   int unsigned iterations = DEFAULT_ITERATIONS;
@@ -76,7 +85,9 @@ module sap_vpu_subsystem_gate_tb;
       read_transactions <= 0;
       write_transactions <= 0;
       for (int i = 0; i < 4; i++) begin
-        result_mem[i] <= '0;
+        fc1_output_0[i] <= '0;
+        fc1_output_1[i] <= '0;
+        fc2_output[i]   <= '0;
       end
     end else begin
       dma_rvalid_i <= 1'b0;
@@ -89,20 +100,34 @@ module sap_vpu_subsystem_gate_tb;
             dma_err_i <= 1'b1;
           end else begin
             case (dma_addr_o)
-              OUT_BASE + 0:  result_mem[0] <= dma_wdata_o;
-              OUT_BASE + 4:  result_mem[1] <= dma_wdata_o;
-              OUT_BASE + 8:  result_mem[2] <= dma_wdata_o;
-              OUT_BASE + 12: result_mem[3] <= dma_wdata_o;
-              default:       dma_err_i <= 1'b1;
+              FC1_OUT0_BASE + 0:  fc1_output_0[0] <= dma_wdata_o;
+              FC1_OUT0_BASE + 4:  fc1_output_0[1] <= dma_wdata_o;
+              FC1_OUT0_BASE + 8:  fc1_output_0[2] <= dma_wdata_o;
+              FC1_OUT0_BASE + 12: fc1_output_0[3] <= dma_wdata_o;
+              FC1_OUT1_BASE + 0:  fc1_output_1[0] <= dma_wdata_o;
+              FC1_OUT1_BASE + 4:  fc1_output_1[1] <= dma_wdata_o;
+              FC1_OUT1_BASE + 8:  fc1_output_1[2] <= dma_wdata_o;
+              FC1_OUT1_BASE + 12: fc1_output_1[3] <= dma_wdata_o;
+              FC2_OUT_BASE + 0:   fc2_output[0] <= dma_wdata_o;
+              FC2_OUT_BASE + 4:   fc2_output[1] <= dma_wdata_o;
+              FC2_OUT_BASE + 8:   fc2_output[2] <= dma_wdata_o;
+              FC2_OUT_BASE + 12:  fc2_output[3] <= dma_wdata_o;
+              default:            dma_err_i <= 1'b1;
             endcase
           end
         end else begin
           read_transactions <= read_transactions + 1;
           case (dma_addr_o)
-            LHS_BASE + 0: dma_rdata_i <= 32'h0403_0201;
-            LHS_BASE + 4: dma_rdata_i <= 32'h0102_0304;
-            RHS_BASE + 0: dma_rdata_i <= 32'h0101_0101;
-            RHS_BASE + 4: dma_rdata_i <= 32'h0001_0001;
+            TOKEN_BASE + 0:      dma_rdata_i <= TINYVIT_MLP2_WORDS[0];
+            TOKEN_BASE + 4:      dma_rdata_i <= TINYVIT_MLP2_WORDS[1];
+            FC1_WEIGHT_BASE + 0: dma_rdata_i <= TINYVIT_MLP2_WORDS[2];
+            FC1_WEIGHT_BASE + 4: dma_rdata_i <= TINYVIT_MLP2_WORDS[3];
+            FC1_WEIGHT_BASE + 8: dma_rdata_i <= TINYVIT_MLP2_WORDS[4];
+            FC1_WEIGHT_BASE + 12: dma_rdata_i <= TINYVIT_MLP2_WORDS[5];
+            HIDDEN_BASE + 0:     dma_rdata_i <= hidden_words[0];
+            HIDDEN_BASE + 4:     dma_rdata_i <= hidden_words[1];
+            FC2_WEIGHT_BASE + 0: dma_rdata_i <= TINYVIT_MLP2_WORDS[6];
+            FC2_WEIGHT_BASE + 4: dma_rdata_i <= TINYVIT_MLP2_WORDS[7];
             default: begin
               dma_rdata_i <= '0;
               dma_err_i   <= 1'b1;
@@ -176,22 +201,85 @@ module sap_vpu_subsystem_gate_tb;
     end
   endtask
 
-  task automatic run_tile(input int unsigned index);
+  function automatic logic [31:0] output_word(
+    input logic [31:0] base,
+    input int unsigned index
+  );
+    begin
+      case (base)
+        FC1_OUT0_BASE: output_word = fc1_output_0[index];
+        FC1_OUT1_BASE: output_word = fc1_output_1[index];
+        FC2_OUT_BASE:  output_word = fc2_output[index];
+        default:       output_word = 'x;
+      endcase
+    end
+  endfunction
+
+  function automatic logic [7:0] relu_byte(input logic [31:0] value);
+    begin
+      relu_byte = $signed(value) < 0 ? 8'h00 : value[7:0];
+    end
+  endfunction
+
+  task automatic expect_tile(
+    input logic [31:0] base,
+    input logic [31:0] expected_0,
+    input logic [31:0] expected_1,
+    input logic [31:0] expected_2,
+    input logic [31:0] expected_3
+  );
+    begin
+      if (output_word(base, 0) !== expected_0 || output_word(base, 1) !== expected_1 ||
+          output_word(base, 2) !== expected_2 || output_word(base, 3) !== expected_3) begin
+        gate_fail("RAM writeback mismatch");
+      end
+    end
+  endtask
+
+  task automatic run_tile(
+    input int unsigned index,
+    input logic [31:0] lhs_base,
+    input logic [31:0] rhs_base,
+    input logic [31:0] out_base
+  );
     logic [3:0] id;
     begin
       id = index[3:0];
-      send_cmd(id, SAP_OP_VTDMA, LHS_BASE, 32'd4);
+      send_cmd(id, SAP_OP_VTDMA, lhs_base, 32'd4);
       expect_rsp(id, 32'd2);
-      send_cmd(id + 4'd1, SAP_OP_VTDMA, RHS_BASE, 32'd5);
+      send_cmd(id + 4'd1, SAP_OP_VTDMA, rhs_base, 32'd5);
       expect_rsp(id + 4'd1, 32'd2);
       send_cmd(id + 4'd2, SAP_OP_VTSTART, 32'h0000_0112, 32'h0);
       expect_rsp(id + 4'd2, 32'h0);
-      send_cmd(id + 4'd3, SAP_OP_VTSTORE, OUT_BASE, 32'h0);
+      send_cmd(id + 4'd3, SAP_OP_VTSTORE, out_base, 32'h0);
       expect_rsp(id + 4'd3, 32'h0);
-      if (result_mem[0] !== 32'd10 || result_mem[1] !== 32'd4 ||
-          result_mem[2] !== 32'd10 || result_mem[3] !== 32'd6) begin
-        gate_fail("RAM writeback mismatch");
+    end
+  endtask
+
+  task automatic run_mlp2(input int unsigned index);
+    begin
+      run_tile(index * 3, TOKEN_BASE, FC1_WEIGHT_BASE, FC1_OUT0_BASE);
+      expect_tile(FC1_OUT0_BASE,
+                  TINYVIT_MLP2_FC1_OUTPUTS[0], TINYVIT_MLP2_FC1_OUTPUTS[1],
+                  TINYVIT_MLP2_FC1_OUTPUTS[4], TINYVIT_MLP2_FC1_OUTPUTS[5]);
+      run_tile((index * 3) + 1, TOKEN_BASE, FC1_WEIGHT_BASE + 8, FC1_OUT1_BASE);
+      expect_tile(FC1_OUT1_BASE,
+                  TINYVIT_MLP2_FC1_OUTPUTS[2], TINYVIT_MLP2_FC1_OUTPUTS[3],
+                  TINYVIT_MLP2_FC1_OUTPUTS[6], TINYVIT_MLP2_FC1_OUTPUTS[7]);
+
+      hidden_words[0] = {relu_byte(fc1_output_1[1]), relu_byte(fc1_output_1[0]),
+                         relu_byte(fc1_output_0[1]), relu_byte(fc1_output_0[0])};
+      hidden_words[1] = {relu_byte(fc1_output_1[3]), relu_byte(fc1_output_1[2]),
+                         relu_byte(fc1_output_0[3]), relu_byte(fc1_output_0[2])};
+      if (hidden_words[0] !== TINYVIT_MLP2_HIDDEN_WORDS[0] ||
+          hidden_words[1] !== TINYVIT_MLP2_HIDDEN_WORDS[1]) begin
+        gate_fail("ReLU hidden activation mismatch");
       end
+
+      run_tile((index * 3) + 2, HIDDEN_BASE, FC2_WEIGHT_BASE, FC2_OUT_BASE);
+      expect_tile(FC2_OUT_BASE,
+                  TINYVIT_MLP2_FC2_OUTPUTS[0], TINYVIT_MLP2_FC2_OUTPUTS[1],
+                  TINYVIT_MLP2_FC2_OUTPUTS[2], TINYVIT_MLP2_FC2_OUTPUTS[3]);
     end
   endtask
 
@@ -199,6 +287,8 @@ module sap_vpu_subsystem_gate_tb;
     clk_i       = 1'b0;
     rst_ni      = 1'b0;
     rsp_ready_i = 1'b1;
+    hidden_words[0] = '0;
+    hidden_words[1] = '0;
     clear_cmd();
 
     if (!$value$plusargs("vcd=%s", vcd_file)) begin
@@ -220,19 +310,19 @@ module sap_vpu_subsystem_gate_tb;
     $dumpfile(vcd_file);
     $dumpvars(0, dut);
     for (int unsigned i = 0; i < iterations; i++) begin
-      run_tile(i);
+      run_mlp2(i);
     end
     $dumpoff;
 
     send_cmd(4'he, SAP_OP_VREADCNT, 32'(SAP_CNT_MAC_ACTIVE), 32'h0);
-    expect_rsp(4'he, 32'(iterations * 4));
-    if (read_transactions != iterations * 4 ||
-        write_transactions != iterations * 4) begin
+    expect_rsp(4'he, 32'(iterations * 12));
+    if (read_transactions != iterations * 12 ||
+        write_transactions != iterations * 12) begin
       gate_fail("DMA transaction count mismatch");
     end
 
-    $display("SUBSYSTEM_GATE_PASS: tiles=%0d reads=%0d writes=%0d",
-             iterations, read_transactions, write_transactions);
+    $display("SUBSYSTEM_GATE_PASS: mlp2=%0d tiles=%0d reads=%0d writes=%0d",
+             iterations, iterations * 3, read_transactions, write_transactions);
     $finish;
   end
 

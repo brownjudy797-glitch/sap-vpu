@@ -52,7 +52,9 @@ VCD to SAIF, and annotate the matched 140 MHz routed checkpoint:
 make fpga-vpu-subsystem-saif-power
 ```
 
-The default run executes 128 identical INT8 M=2, N=2, K=4 tiles. Override
+The default run executes 128 fixture-driven INT8 MLP2 inferences with shape
+2x4x4x2. Each inference uses two M=2, N=2, K=4 FC1 tiles, a software-boundary
+ReLU/repack step, and one M=2, N=2, K=4 FC2 tile. Override
 `FPGA_SUBSYSTEM_ITERATIONS` only when a longer activity window is required.
 
 Run power from an existing routed checkpoint with VPU smoke SAIF activity:
@@ -166,6 +168,9 @@ The flow writes:
   register scratchpads, tiled GEMM scheduler, core, and OBI read/write pins. Its
   testbench memory model is outside the synthesized checkpoint, so the result
   excludes RAM-array, CPU, interconnect, and board power.
+- ReLU and hidden-word repacking between FC1 and FC2 are performed at the
+  testbench software boundary. Their CPU energy is not included in the
+  subsystem power result.
 - The runner requires a passing RAM read/write/result check, at least 99% routed
   net annotation, High confidence, and no Vivado clock/reset activity warning.
 - Generated reports remain under ignored `work/` and must not be committed.
@@ -212,15 +217,16 @@ power.
 Current complete-subsystem gate-SAIF checkpoint on the same 140 MHz routed
 design:
 
-| Tiles | Shape | VDOTs | RAM reads | RAM writes | Duration ps | Nets matched | Confidence | Total W | Dynamic W | Static W | Dynamic pJ/tile |
-| ---: | --- | ---: | ---: | ---: | ---: | ---: | --- | ---: | ---: | ---: | ---: |
-| 128 | INT8 M=2, N=2, K=4 | 512 | 512 | 512 | 55,761,165 | 6452/6461 (99.86%) | High | 0.080 | 0.011 | 0.068 | 4,791.975 |
+| MLP2 iterations | Tiles | VDOTs | RAM reads | RAM writes | Duration ps | Nets matched | Confidence | Total W | Dynamic W | Dynamic pJ/MLP2 | Dynamic pJ/tile | Dynamic pJ/VDOT |
+| ---: | ---: | ---: | ---: | ---: | ---: | ---: | --- | ---: | ---: | ---: | ---: | ---: |
+| 128 | 384 | 1536 | 1536 | 1536 | 167,290,637 | 6452/6461 (99.86%) | High | 0.080 | 0.012 | 15,683.497 | 5,227.832 | 1,306.958 |
 
-This is a deterministic repeated-tile activity checkpoint. It proves that the
-autonomous read-compute-write datapath can drive a high-coverage FPGA power
-run; it is not end-to-end TinyViT energy or evidence that external memory is
-free. The 0.001 W report resolution also prevents using the difference from the
-0.082 W vectorless estimate as a power-reduction claim.
+This synthetic fixture-driven checkpoint maps a two-layer 2x4x4x2 MLP through
+three autonomous read-compute-write tiles per inference. ReLU and hidden-word
+repacking remain at the testbench software boundary, and the result excludes
+external RAM, CPU, interconnect, and board power. It is therefore not
+end-to-end TinyViT energy. The 0.001 W report resolution also prevents using
+small power differences as a reduction claim.
 
 Current local SAIF power-flow smoke on the 140 MHz checkpoint:
 
@@ -267,10 +273,11 @@ paper-facing result.
 ## Next FPGA Steps
 
 1. Re-run both 140 MHz OOC checkpoints after any RTL datapath change.
-2. Broaden the runtime activity from this deterministic tile to a larger MLP
-   shape before treating dynamic-power differences below Vivado report
-   resolution as evidence.
-3. Add a structured sparse scheduling path that eliminates whole inactive VDOT
+2. Replace the synthetic fixture with a checkpoint-derived slice under the same
+   2x4x4x2 contract, including model, layer, quantization, and SHA-256 metadata.
+3. Extend the model mapping beyond fixed 2x4x4x2 dimensions and account for
+   bias, activation, and quantization-boundary work.
+4. Add a structured sparse scheduling path that eliminates whole inactive VDOT
    operations before claiming sparse speedup from the TinyViT kernel.
-4. Add a board-level top and constraints only after the subsystem report remains
+5. Add a board-level top and constraints only after the subsystem report remains
    reproducible.

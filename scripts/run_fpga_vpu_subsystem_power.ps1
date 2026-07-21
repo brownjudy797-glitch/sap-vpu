@@ -32,6 +32,7 @@ foreach ($path in @($OutDir, $PostSynthDcp, $PostRouteDcp)) {
 $netlistDir = Join-Path $OutDir 'netlist'
 $xsimDir = Join-Path $OutDir 'xsim'
 $powerDir = Join-Path $OutDir 'power'
+$fixtureDir = 'work\tinyvit\fixture'
 $vcdRel = Join-Path $OutDir 'sap_vpu_subsystem_gate.vcd'
 $saifRel = Join-Path $OutDir 'sap_vpu_subsystem_gate.saif'
 $netlistRel = Join-Path $netlistDir 'sap_vpu_subsystem_funcsim.v'
@@ -41,6 +42,7 @@ foreach ($path in @(
   $settings,
   (Join-Path $repo $PostSynthDcp),
   (Join-Path $repo $PostRouteDcp),
+  (Join-Path $repo (Join-Path $fixtureDir 'tinyvit_mlp2_fixture_tb.svh')),
   (Join-Path $repo 'rtl\sap_vpu_pkg.sv'),
   (Join-Path $repo 'tb\sap_vpu_subsystem_gate_tb.sv'),
   (Join-Path $repo 'scripts\vivado_vpu_write_funcsim.tcl'),
@@ -79,7 +81,7 @@ if (!(Test-Path -LiteralPath $netlistPath) -or (Get-Item -LiteralPath $netlistPa
 }
 
 Invoke-VivadoCmd (
-  'pushd "{0}" && xvlog -sv "!root!\rtl\sap_vpu_pkg.sv" "!root!\tb\sap_vpu_subsystem_gate_tb.sv" "!root!\{1}" && xelab -debug typical -L unisims_ver sap_vpu_subsystem_gate_tb glbl -s sap_vpu_subsystem_gate_tb_snapshot && popd' -f $xsimDir, $netlistRel
+  'pushd "{0}" && xvlog -sv -i "!root!\{2}" "!root!\rtl\sap_vpu_pkg.sv" "!root!\tb\sap_vpu_subsystem_gate_tb.sv" "!root!\{1}" && xelab -debug typical -L unisims_ver sap_vpu_subsystem_gate_tb glbl -s sap_vpu_subsystem_gate_tb_snapshot && popd' -f $xsimDir, $netlistRel, $fixtureDir
 ) (Join-Path $OutDir 'compile.log')
 
 Invoke-VivadoCmd (
@@ -149,15 +151,25 @@ foreach ($field in @('Total On-Chip Power (W)', 'Dynamic (W)', 'Device Static (W
   $fields[$field] = $match.Groups[1].Value.Trim()
 }
 $dynamicW = [double]::Parse($fields['Dynamic (W)'], [cultureinfo]::InvariantCulture)
+$tiles = $Iterations * 3
+$vdots = $Iterations * 12
+$dynamicEnergyPj = $dynamicW * $durationPs
 $summary = [pscustomobject]@{
   top = 'sap_vpu_subsystem'
+  workload = 'tinyvit_mlp2_2x4x4x2'
   clock_mhz = $ClockMhz.ToString('0.###', [cultureinfo]::InvariantCulture)
   iterations = $Iterations
+  tiles = $tiles
+  vdots = $vdots
+  ram_reads = $vdots
+  ram_writes = $vdots
   total_w = $fields['Total On-Chip Power (W)']
   dynamic_w = $fields['Dynamic (W)']
   static_w = $fields['Device Static (W)']
   duration_ps = $durationPs
-  dynamic_pj_per_tile = ($dynamicW * $durationPs / $Iterations).ToString('0.000', [cultureinfo]::InvariantCulture)
+  dynamic_pj_per_mlp2 = ($dynamicEnergyPj / $Iterations).ToString('0.000', [cultureinfo]::InvariantCulture)
+  dynamic_pj_per_tile = ($dynamicEnergyPj / $tiles).ToString('0.000', [cultureinfo]::InvariantCulture)
+  dynamic_pj_per_vdot = ($dynamicEnergyPj / $vdots).ToString('0.000', [cultureinfo]::InvariantCulture)
   confidence = $fields['Confidence Level']
   nets_matched = $netsMatched
   design_nets = $designNets
