@@ -192,6 +192,13 @@ def build_fixture(checkpoint: Path, image: Path, image_url: str) -> dict[str, An
         (fc1_k128_preactivation_int8 + 128).to(torch.int64)
     ]
     fc1_k128_gelu_dequantized = fc1_k128_gelu_int8.to(torch.float32) * fc1_k128_gelu_scale
+    fc2_k8_weight = mlp.fc2.weight[:2, :FC1_K128_OUTPUT_CHANNELS].detach()
+    fc2_k8_weight_int8, fc2_k8_weight_scale = quantize_symmetric(fc2_k8_weight)
+    fc2_k8_accumulator = fc1_k128_gelu_int8 @ fc2_k8_weight_int8.T
+    fc2_k8_dequantized = (
+        fc2_k8_accumulator.to(torch.float32) * fc1_k128_gelu_scale * fc2_k8_weight_scale
+    )
+    fc2_k8_float_partial = fc1_k128_actual_gelu @ fc2_k8_weight.T
 
     return {
         "schema": "sap-vpu-tinyvit-mlp2-int8-v1",
@@ -227,6 +234,9 @@ def build_fixture(checkpoint: Path, image: Path, image_url: str) -> dict[str, An
                 "fc1_k128_input": f"{LAYER_ID}.fc1_input[0,{list(TOKEN_INDICES)},0:128]",
                 "fc1_k128_weights": (
                     f"{LAYER_ID}.fc1.weight[0:{FC1_K128_OUTPUT_CHANNELS},0:128]"
+                ),
+                "fc2_k8_weights": (
+                    f"{LAYER_ID}.fc2.weight[0:2,0:{FC1_K128_OUTPUT_CHANNELS}]"
                 ),
             },
             "model_semantics": {
@@ -290,6 +300,30 @@ def build_fixture(checkpoint: Path, image: Path, image_url: str) -> dict[str, An
                     "integer_gelu_dequantized": as_list(fc1_k128_gelu_dequantized),
                     "integer_vs_actual_gelu_error": error_metrics(
                         fc1_k128_actual_gelu, fc1_k128_gelu_dequantized
+                    ),
+                },
+            },
+            "fc2_partial": {
+                "boundary": "sap-vpu-int8-fc2-k8-partial-no-bias",
+                "shape": {
+                    "tokens": 2,
+                    "input_channels": FC1_K128_OUTPUT_CHANNELS,
+                    "output_channels": 2,
+                },
+                "weights": as_list(fc2_k8_weight_int8),
+                "expected_integer_output": as_list(fc2_k8_accumulator),
+                "quantization": {
+                    "scheme": "symmetric-int8",
+                    "input_scale": fc1_k128_gelu_scale,
+                    "weight_scale": fc2_k8_weight_scale,
+                    "input_zero_point": 0,
+                    "weight_zero_point": 0,
+                },
+                "float_reference": {
+                    "selected_channel_partial_no_bias": as_list(fc2_k8_float_partial),
+                    "integer_path_dequantized": as_list(fc2_k8_dequantized),
+                    "integer_vs_selected_partial_error": error_metrics(
+                        fc2_k8_float_partial, fc2_k8_dequantized
                     ),
                 },
             },

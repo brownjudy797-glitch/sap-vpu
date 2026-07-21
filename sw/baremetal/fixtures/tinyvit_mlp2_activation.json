@@ -23,6 +23,79 @@
         -16160
       ]
     ],
+    "fc2_partial": {
+      "boundary": "sap-vpu-int8-fc2-k8-partial-no-bias",
+      "expected_integer_output": [
+        [
+          645,
+          -99
+        ],
+        [
+          -2277,
+          705
+        ]
+      ],
+      "float_reference": {
+        "integer_path_dequantized": [
+          [
+            0.042949799448251724,
+            -0.006592295132577419
+          ],
+          [
+            -0.15162278711795807,
+            0.046945132315158844
+          ]
+        ],
+        "integer_vs_selected_partial_error": {
+          "max_abs": 0.006602182984352112,
+          "mean_abs": 0.003752161981537938
+        },
+        "selected_channel_partial_no_bias": [
+          [
+            0.04096098616719246,
+            -0.011281438171863556
+          ],
+          [
+            -0.15822497010231018,
+            0.045216623693704605
+          ]
+        ]
+      },
+      "quantization": {
+        "input_scale": 0.019643826747503805,
+        "input_zero_point": 0,
+        "scheme": "symmetric-int8",
+        "weight_scale": 0.003389810013958788,
+        "weight_zero_point": 0
+      },
+      "shape": {
+        "input_channels": 8,
+        "output_channels": 2,
+        "tokens": 2
+      },
+      "weights": [
+        [
+          18,
+          26,
+          -74,
+          127,
+          15,
+          -72,
+          75,
+          -102
+        ],
+        [
+          0,
+          96,
+          40,
+          -95,
+          87,
+          -42,
+          27,
+          -48
+        ]
+      ]
+    },
     "float_reference": {
       "actual_full_fc1_preactivation": [
         [
@@ -1997,6 +2070,7 @@
       "fc1_k128_input": "stages.1.blocks.0.mlp.fc1_input[0,[0, 1],0:128]",
       "fc1_k128_weights": "stages.1.blocks.0.mlp.fc1.weight[0:8,0:128]",
       "fc1_weights": "stages.1.blocks.0.mlp.fc1.weight[0:4,0:4]",
+      "fc2_k8_weights": "stages.1.blocks.0.mlp.fc2.weight[0:2,0:8]",
       "fc2_weights": "stages.1.blocks.0.mlp.fc2.weight[0:2,0:4]"
     },
     "token_indices": [

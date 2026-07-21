@@ -4,6 +4,9 @@
   .equ OUT_BASE,      0x00010000
   .equ INPUT_BASE,    0x00010100
   .equ WEIGHT_BASE,   0x00010200
+  .equ FC2_OUT_BASE,  0x00010020
+  .equ FC2_INPUT_BASE, 0x00010600
+  .equ FC2_WEIGHT_BASE, 0x00010610
   .equ EXIT_ADDR,     0x10000004
 
   .macro sap_r funct7, funct3, rd, rs1, rs2
@@ -30,7 +33,7 @@
     j 1b
   .endm
 
-  .macro check_gelu value, bias_offset, expected_offset
+  .macro check_gelu value, bias_offset, expected_offset, destination
     lw t4, \bias_offset(s10)
     add t4, \value, t4
     li t5, TINYVIT_FC1_K128_GELU_REQUANT_MULTIPLIER
@@ -61,6 +64,7 @@
     lb t4, 0(t5)
     lb t5, \expected_offset(s11)
     bne t4, t5, fail_postprocess
+    mv \destination, t4
   .endm
 
   .include "tinyvit_fc1_k128_fixture.inc"
@@ -90,6 +94,17 @@ _start:
   addi t1, t1, 4
   addi t2, t2, -1
   bnez t2, 2b
+
+  la t0, tinyvit_fc2_k8_weights
+  li t1, FC2_WEIGHT_BASE
+  li t2, TINYVIT_FC2_K8_WEIGHT_WORDS
+9:
+  lw t3, 0(t0)
+  sw t3, 0(t1)
+  addi t0, t0, 4
+  addi t1, t1, 4
+  addi t2, t2, -1
+  bnez t2, 9b
 
   li s7, TINYVIT_FC1_K128_OUTPUT_TILES
   li s8, WEIGHT_BASE
@@ -137,10 +152,20 @@ _start:
   lw t4, 12(s9)
   bne s6, t4, fail_output
 
-  check_gelu s3, 0, 0
-  check_gelu s4, 4, 1
-  check_gelu s5, 0, 2
-  check_gelu s6, 4, 3
+  check_gelu s3, 0, 0, a0
+  check_gelu s4, 4, 1, a1
+  check_gelu s5, 0, 2, a2
+  check_gelu s6, 4, 3, a3
+
+  li t0, TINYVIT_FC1_K128_OUTPUT_TILES
+  sub t0, t0, s7
+  slli t0, t0, 1
+  li t1, FC2_INPUT_BASE
+  add t0, t0, t1
+  sb a0, 0(t0)
+  sb a1, 1(t0)
+  sb a2, 8(t0)
+  sb a3, 9(t0)
 
   addi s8, s8, 16
   addi s9, s9, 16
@@ -149,9 +174,32 @@ _start:
   addi s7, s7, -1
   bnez s7, 3b
 
+  li s0, FC2_INPUT_BASE
+  tile_dma_reg s0, 8
+  li s1, FC2_WEIGHT_BASE
+  tile_dma_reg s1, 9
+  li t0, 0x212                   /* M=2, N=2, K=8 */
+  sap_r 0x21, 0x0, 0, 5, 0
+  tile_store FC2_OUT_BASE
+
+  li t0, FC2_OUT_BASE
+  la t1, tinyvit_fc2_k8_expected
+  lw t2, 0(t0)
+  lw t4, 0(t1)
+  bne t2, t4, fail_fc2
+  lw t2, 4(t0)
+  lw t4, 4(t1)
+  bne t2, t4, fail_fc2
+  lw t2, 8(t0)
+  lw t4, 8(t1)
+  bne t2, t4, fail_fc2
+  lw t2, 12(t0)
+  lw t4, 12(t1)
+  bne t2, t4, fail_fc2
+
   li t0, 2
   sap_r 0x1a, 0x0, 28, 5, 0     /* VREADCNT MAC_ACTIVE */
-  li t4, 512
+  li t4, 520
   bne t3, t4, fail_mac_count
 
   exit_with 1
@@ -162,3 +210,5 @@ fail_mac_count:
   exit_with 45
 fail_postprocess:
   exit_with 46
+fail_fc2:
+  exit_with 47

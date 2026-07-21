@@ -202,12 +202,17 @@ a 256-entry INT8 GELU table. The checked GELU outputs are
 `[[-1, -6, -1, -5, -8, -6, 2, -9],` and
 `[2, -6, 24, -6, -7, -8, -8, -5]]`; their maximum dequantized error against the
 captured model GELU slice is `0.01185`. This closes the full FC1 input-channel
-reduction and CPU bias/GELU boundary for eight output channels, but it still
-omits the other 504 FC1 outputs, FC2, and end-to-end model execution. GELU is
-software evidence and is not included in the VPU hardware claim.
+reduction and CPU bias/GELU boundary for eight output channels. The runtime
+GELU bytes are written to RAM and consumed by one M=2, N=2, K=8 FC2 tile. Its
+checked no-bias partial outputs are `[[645, -99], [-2277, 705]]`; the maximum
+dequantized error against the matching eight-channel floating-point partial is
+`0.00660`. The FC2 tile adds eight VDOTs, so the complete smoke checks 520
+completed VDOT operations. The other 504 FC1 outputs and FC2 input channels,
+FC2 bias, and end-to-end model execution remain omitted. GELU is software
+evidence and is not included in the VPU hardware claim.
 
 Use this record to justify that SAP-VPU now has a repeatable TinyViT-oriented
 kernel path, captured model activations, a full-K FC1 output slice, and an
 explicit and tested software/hardware boundary for bias/GELU. The next evidence
-step is wider output-channel coverage and feeding the post-GELU activation into
-FC2 before any full-layer or full-model claim.
+step is wider FC1 output-channel coverage and accumulation of successive FC2
+partials before any full-layer or full-model claim.

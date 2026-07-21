@@ -39,6 +39,10 @@ and indexes a 256-entry INT8 GELU table. This is an explicit software boundary,
 not a VPU GELU instruction or datapath claim. The generated contract currently
 uses multiplier 387 and shift 16; the tracked two-token slice has maximum
 dequantized GELU error `0.01185` against the captured PyTorch activation.
+The checked GELU bytes are then written to SoC RAM and consumed by one existing
+M=2, N=2, K=8 tile using the first eight FC2 input channels and two output
+channels. This FC2 result is a no-bias partial contribution; it does not imply
+that the remaining 504 hidden channels or the complete FC2 layer execute.
 
 ## Layout and Command Stream
 
@@ -152,4 +156,5 @@ a Python environment with PyTorch, torchvision, timm, Pillow, and SafeTensors.
 `tinyvit-smoke` checks the generated data through CV32E40X, CV-X-IF, and
 SAP-VPU, while `sim-subsystem-mlp2` checks the same data through the three-tile
 subsystem path. `tinyvit-fc1-k128-smoke` additionally checks all 16 K=128 INT32
-FC1 outputs and their CPU-executed bias/requantization/GELU INT8 results.
+FC1 outputs, their CPU-executed bias/requantization/GELU INT8 results, and four
+FC2 K=8 partial outputs produced from those runtime GELU bytes.
