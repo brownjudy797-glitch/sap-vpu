@@ -219,16 +219,16 @@ design:
 
 | MLP2 iterations | Tiles | VDOTs | RAM reads | RAM writes | Duration ps | Nets matched | Confidence | Total W | Dynamic W | Dynamic pJ/MLP2 | Dynamic pJ/tile | Dynamic pJ/VDOT |
 | ---: | ---: | ---: | ---: | ---: | ---: | ---: | --- | ---: | ---: | ---: | ---: | ---: |
-| 128 | 384 | 1536 | 1536 | 1536 | 167,290,637 | 6452/6461 (99.86%) | High | 0.081 | 0.013 | 16,990.455 | 5,663.485 | 1,415.871 |
+| 128 | 384 | 1536 | 1536 | 1536 | 167,290,637 | 6452/6461 (99.86%) | High | 0.082 | 0.013 | 16,990.455 | 5,663.485 | 1,415.871 |
 
-This checkpoint maps quantized `fc1/fc2` weight slices from timm TinyViT-5M
-through three autonomous read-compute-write tiles per fixture. The checkpoint
-SHA-256, model, layer, and exact tensor slices are recorded in the generated
-summary. Inputs are deterministic basis probes rather than captured model
-activations; ReLU/repacking, external RAM, CPU, interconnect, and board power
+This checkpoint maps real-image activations and quantized `fc1/fc2` weight
+slices from timm TinyViT-5M through three autonomous read-compute-write tiles
+per fixture. The checkpoint/image SHA-256 values, preprocessing, model, layer,
+and exact tensor slices are recorded in the fixture. Software-boundary
+requantization/ReLU/repacking, external RAM, CPU, interconnect, and board power
 are excluded. It is therefore not end-to-end TinyViT energy. The 0.001 W report
-resolution also prevents using small fixture-to-fixture differences as a power
-claim.
+resolution also prevents using the unchanged 0.013 W rounded dynamic result as
+a fixture-to-fixture power claim.
 
 Current local SAIF power-flow smoke on the 140 MHz checkpoint:
 

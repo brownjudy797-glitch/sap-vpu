@@ -1,0 +1,201 @@
+{
+  "fc1_weights": [
+    [
+      -36,
+      34,
+      -53,
+      119
+    ],
+    [
+      -31,
+      -44,
+      -13,
+      64
+    ],
+    [
+      127,
+      0,
+      14,
+      18
+    ],
+    [
+      56,
+      77,
+      -36,
+      -8
+    ]
+  ],
+  "fc2_weights": [
+    [
+      18,
+      26,
+      -74,
+      127
+    ],
+    [
+      0,
+      96,
+      40,
+      -95
+    ]
+  ],
+  "input_tokens": [
+    [
+      -43,
+      -83,
+      99,
+      -127
+    ],
+    [
+      -13,
+      -88,
+      -35,
+      63
+    ]
+  ],
+  "provenance": {
+    "checkpoint_sha256": "6887cbcb87b340515b477b1582bdada6a7cafff15720dd1a9c102b3aaa579c82",
+    "checkpoint_source_url": "https://huggingface.co/timm/tiny_vit_5m_224.dist_in22k_ft_in1k/resolve/main/model.safetensors",
+    "float_reference": {
+      "actual_full_fc1_preactivation": [
+        [
+          -2.4947659969329834,
+          -1.359513759613037,
+          -0.03544798493385315,
+          -0.22863703966140747
+        ],
+        [
+          0.05266517400741577,
+          -1.3761820793151855,
+          0.6411412954330444,
+          -0.30540797114372253
+        ]
+      ],
+      "actual_full_fc2_output_selected_channels": [
+        [
+          3.564411163330078,
+          -1.7041857242584229
+        ],
+        [
+          2.780738353729248,
+          -2.030628204345703
+        ]
+      ],
+      "actual_full_gelu_selected_channels": [
+        [
+          -0.015722086653113365,
+          -0.11826681345701218,
+          -0.017222799360752106,
+          -0.0936441421508789
+        ],
+        [
+          0.027438588440418243,
+          -0.11612597852945328,
+          0.4739859104156494,
+          -0.11606353521347046
+        ]
+      ],
+      "four_channel_gelu_with_selected_bias_fc2_partial": [
+        [
+          2.9237060546875,
+          -1.0633158683776855
+        ],
+        [
+          2.9255545139312744,
+          -1.0640097856521606
+        ]
+      ],
+      "four_channel_relu_no_bias_fc2_partial": [
+        [
+          0.0,
+          0.0
+        ],
+        [
+          0.012053249403834343,
+          0.029035037383437157
+        ]
+      ],
+      "integer_path_dequantized_fc2_partial": [
+        [
+          0.0,
+          0.0
+        ],
+        [
+          0.01206746231764555,
+          0.028940629214048386
+        ]
+      ],
+      "integer_vs_full_model_output_error": {
+        "max_abs": 3.564411163330078,
+        "mean_abs": 2.5242090225219727
+      },
+      "integer_vs_relu_partial_error": {
+        "max_abs": 9.440816938877106e-05,
+        "mean_abs": 2.715527079999447e-05
+      }
+    },
+    "hardware_mapping_semantics": "four-channel-partial-dot-power-of-two-requantization-relu-no-bias",
+    "image_sha256": "0ef0c3f7caa3ad4ec92dc8968f9ac0e81ede5b4805aae89648a4c7c4236768df",
+    "image_source_url": "https://huggingface.co/datasets/huggingface/documentation-images/resolve/main/beignets-task-guide.png",
+    "input_source": "real-image-model-activation",
+    "kind": "checkpoint",
+    "layer_id": "stages.1.blocks.0.mlp",
+    "model_id": "timm/tiny_vit_5m_224.dist_in22k_ft_in1k",
+    "model_semantics": {
+      "activation": "gelu-exact",
+      "fc1_bias": true,
+      "fc2_bias": true
+    },
+    "preprocessing": {
+      "crop_mode": "center",
+      "crop_pct": 0.95,
+      "input_size": [
+        3,
+        224,
+        224
+      ],
+      "interpolation": "bicubic",
+      "mean": [
+        0.485,
+        0.456,
+        0.406
+      ],
+      "std": [
+        0.229,
+        0.224,
+        0.225
+      ]
+    },
+    "software_versions": {
+      "pillow": "12.0.0",
+      "safetensors": "0.8.0",
+      "timm": "1.0.28",
+      "torch": "2.12.1+cpu",
+      "torchvision": "0.27.1+cpu"
+    },
+    "tensor_slices": {
+      "fc1_input": "stages.1.blocks.0.mlp.fc1_input[0,[0, 1],0:4]",
+      "fc1_weights": "stages.1.blocks.0.mlp.fc1.weight[0:4,0:4]",
+      "fc2_weights": "stages.1.blocks.0.mlp.fc2.weight[0:2,0:4]"
+    },
+    "token_indices": [
+      0,
+      1
+    ]
+  },
+  "quantization": {
+    "fc1_output_requant_shift": 7,
+    "fc1_weight_scale": 0.003931499606981052,
+    "fc1_weight_zero_point": 0,
+    "fc2_weight_scale": 0.003389810013958788,
+    "fc2_weight_zero_point": 0,
+    "hidden_scale": 0.0013078335845789185,
+    "input_scale": 0.002598868345651101,
+    "input_scope": "selected-token-and-channel-slice-max-abs",
+    "input_zero_point": 0,
+    "rounding": "nearest-ties-away-from-zero",
+    "scheme": "symmetric-int8",
+    "weight_scope": "selected-slice-max-abs"
+  },
+  "schema": "sap-vpu-tinyvit-mlp2-int8-v1"
+}

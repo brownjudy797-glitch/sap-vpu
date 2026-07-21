@@ -93,12 +93,14 @@ def self_test() -> None:
     for filename, expected in (
         ("tinyvit_mlp2_smoke.json", [[20, 16], [20, 14]]),
         ("tinyvit_mlp2_checkpoint.json", [[-2286, -240], [10391, -7315]]),
+        ("tinyvit_mlp2_activation.json", [[0, 0], [2722, 6528]]),
     ):
         fixture = validate_fixture(
             json.loads((root / "sw/baremetal/fixtures" / filename).read_text(encoding="utf-8"))
         )
         hidden_acc, _ = tiled_gemm(fixture["input_tokens"], transpose(fixture["fc1_weights"]))
-        hidden = [[requantize_int8(value, 1, 0, relu=True) for value in row] for row in hidden_acc]
+        shift = fixture["quantization"].get("fc1_output_requant_shift", 0)
+        hidden = [[requantize_int8(value, 1, shift, relu=True) for value in row] for row in hidden_acc]
         output, _ = tiled_gemm(hidden, transpose(fixture["fc2_weights"]))
         assert output == expected
 

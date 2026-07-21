@@ -56,12 +56,14 @@ The `tinyvit_mlp2` portion of the smoke no longer owns its packed words or its
 integer golden result in hand-written assembly. `make tinyvit-fixture` validates
 a JSON fixture and generates the assembler include, testbench golden include,
 and a metadata record under `TINYVIT_BUILD_DIR/fixture/`. The tracked
-`sw/baremetal/fixtures/tinyvit_mlp2_checkpoint.json` is now the default. It
-contains quantized `fc1/fc2` slices from timm TinyViT-5M checkpoint
-`6887cbcb...579c82`; `tinyvit_mlp2_smoke.json` remains the generator self-test.
+`sw/baremetal/fixtures/tinyvit_mlp2_activation.json` is now the default. It
+contains two real-image activation slices and quantized `fc1/fc2` slices from
+timm TinyViT-5M checkpoint `6887cbcb...579c82`. The earlier
+`tinyvit_mlp2_checkpoint.json` basis-probe fixture and
+`tinyvit_mlp2_smoke.json` synthetic fixture remain regressions.
 
 The generated SystemVerilog include also carries packed FC1/FC2 operands, FC1
-golden outputs, ReLU-packed hidden words, and FC2 golden outputs. The subsystem
+golden outputs, requantized ReLU hidden words, and FC2 golden outputs. The subsystem
 gate testbench uses these arrays to drive the same fixture through three
 autonomous tiles instead of duplicating test data.
 
@@ -77,15 +79,19 @@ make tinyvit-smoke \
 The accepted `sap-vpu-tinyvit-mlp2-int8-v1` schema deliberately has a small
 fixed contract: two tokens, four INT8 input channels, four INT8 first-projection
 rows, and two INT8 second-projection rows. It requires symmetric INT8 metadata,
-zero zero-points, positive scales, and provenance. A fixture marked
+zero zero-points, positive scales, and provenance. An optional FC1 right-shift
+requantization prevents hidden INT8 overflow; the real-activation fixture uses
+`shift=7`. A fixture marked
 `checkpoint` must carry a 64-character checkpoint SHA-256. The default fixture
-also records exact tensor slices and the checkpoint source URL.
+also records tensor slices, checkpoint/image URLs and hashes, preprocessing,
+and selected full-model FC1/GELU/FC2 float values.
 
-This interface proves integer data-path correctness for an exported projection
-weight slice. Its two inputs are deterministic INT8 basis probes, not activations
-captured from an image. It does not yet support bias, non-zero zero-points,
-GELU, arbitrary dimensions, or float-reference error measurement. Consequently,
-this checkpoint-derived fixture is not by itself a full TinyViT inference claim.
+This interface proves integer data-path correctness for a real activation and
+weight slice. The hardware mapping computes a four-channel partial contribution,
+then applies power-of-two requantization and ReLU without bias. The actual model
+uses all channels, bias, and exact GELU; these values are recorded as float
+references but are not executed by the VPU path. Consequently, this fixture is
+not a full TinyViT layer or inference claim.
 
 ## Evidence Covered
 
@@ -104,12 +110,12 @@ The current smoke covers the next paper-roadmap evidence hooks:
 - A structured `adaptive_sparse75_schedule` row that schedules one live INT4
   vector for every four logical vectors. It preserves 1,024 active products,
   records 3,072 software-scheduled skips, and issues 128 VDOTs instead of 512.
-- An INT8 `tinyvit_mlp2` projection with two tokens and a real data dependency:
-  4 input -> 4 register-packed hidden -> ReLU -> 2 output. It is a
-  MLP-shaped smoke, not a full residual block.
+- An INT8 `tinyvit_mlp2` projection with two image-derived tokens and a real data
+  dependency: 4 input -> 4 register-packed hidden -> requantization/ReLU -> 2
+  output. It is a partial MLP-shaped smoke, not a full residual block.
 - A three-tile subsystem mapping of the same MLP2 fixture: two FC1 tiles,
-  testbench-boundary ReLU/repack, and one FC2 tile, with 12 checked VDOTs, 12
-  OBI reads, and 12 OBI writes per inference.
+  testbench-boundary requantization/ReLU/repack, and one FC2 tile, with 12
+  checked VDOTs, 12 OBI reads, and 12 OBI writes per inference.
 - Three policy-level ablations: no sparse skip, no lane gating, and no
   precision gating.
 - Testbench assertion that the smoke performs 11392 operand/weight reads from
@@ -142,22 +148,26 @@ and 4,696 cycles. The 2.762x cycle ratio is therefore useful evidence that a
 structured workload schedule can reduce issued work and traffic; it is not a
 direct hardware-bitmap speedup or a final TinyViT claim.
 
-`tinyvit_mlp2` provides the first data-dependent projection pair rather than a
+`tinyvit_mlp2` provides the first image-activation projection pair rather than a
 repeat of an independent 2x2 macro-tile. Across 16 deterministic repeats it
-checks output 8,800, 192 active VDOTs, no hardware skips, and 32 operand plus
-96 shared-weight RAM reads. The current 1,942-cycle result is checkpoint-weight
-functional evidence only: it has no captured model activations, bias, GELU,
-residual path, quantization-error analysis, or full TinyViT dimensions.
+checks output 148,000, 192 active VDOTs, no hardware skips, and 32 operand plus
+96 shared-weight RAM reads. The current result is 2,277 cycles and 1,393
+instructions. The dequantized integer path differs from the matching
+four-channel ReLU/no-bias float partial by at most `9.44e-5`; its mean absolute
+error against the selected full-model FC2 output is `2.524`, which exposes the
+large and expected gap from omitted channels, bias, and GELU.
 
 The corresponding 140 MHz subsystem gate-SAIF run repeats the three-tile
 mapping 128 times, covering 384 tiles and 1536 VDOTs with 99.86% routed-net
-annotation. The checkpoint-weight run reports 0.013 W dynamic power and 16.990
-nJ per MLP2 fixture. It excludes the software-boundary ReLU/repacking, RAM
-array, CPU, full SoC, and board, so it remains subsystem activity evidence
-rather than inference energy. The difference from the earlier synthetic fixture
-is switching activity, not a performance or power-improvement claim.
+annotation. The real-activation run reports 0.013 W dynamic power and 16.990 nJ
+per MLP2 fixture. It excludes software-boundary requantization/ReLU/repacking,
+RAM array, CPU, full SoC, and board, so it remains subsystem activity evidence
+rather than inference energy. The report rounds to 0.001 W and is numerically
+unchanged from the basis-probe run at that resolution, so no power improvement
+is claimed.
 
 Use this record to justify that SAP-VPU now has a repeatable TinyViT-oriented
-kernel path and a controlled input-fixture boundary. The next evidence step is
-captured TinyViT layer activations with bias/GELU and float-error accounting,
-followed by larger dimensions before any full-model claim.
+kernel path, captured model activations, and an explicit float-reference
+boundary. The next evidence step is extending beyond four channels and
+executing bias/GELU at a defined software/hardware boundary before any
+full-layer or full-model claim.

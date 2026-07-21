@@ -216,8 +216,15 @@ module sap_vpu_subsystem_gate_tb;
   endfunction
 
   function automatic logic [7:0] relu_byte(input logic [31:0] value);
+    logic [31:0] requantized;
     begin
-      relu_byte = $signed(value) < 0 ? 8'h00 : value[7:0];
+      if ($signed(value) < 0) begin
+        relu_byte = 8'h00;
+      end else begin
+        requantized = (value + TINYVIT_MLP2_FC1_REQUANT_ROUNDING) >>
+                      TINYVIT_MLP2_FC1_REQUANT_SHIFT;
+        relu_byte = requantized[7:0];
+      end
     end
   endfunction
 

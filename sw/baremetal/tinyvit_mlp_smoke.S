@@ -33,6 +33,17 @@
 .Lrelu_\@:
   .endm
 
+  .macro requant_relu reg
+    bgez \reg, .Lrequant_relu_positive_\@
+    li \reg, 0
+    j .Lrequant_relu_done_\@
+.Lrequant_relu_positive_\@:
+    li t2, TINYVIT_MLP2_FC1_REQUANT_ROUNDING
+    add \reg, \reg, t2
+    srai \reg, \reg, TINYVIT_MLP2_FC1_REQUANT_SHIFT
+.Lrequant_relu_done_\@:
+  .endm
+
   .macro exit_with code
     li t0, EXIT_ADDR
     li t1, \code
@@ -1373,10 +1384,10 @@ _start:
   mv t1, s10
   sap_r 0x10, 0x0, 28, 5, 6
   mv a6, t3
-  relu a3
-  relu a4
-  relu a5
-  relu a6
+  requant_relu a3
+  requant_relu a4
+  requant_relu a5
+  requant_relu a6
   slli a4, a4, 8
   slli a5, a5, 16
   slli a6, a6, 24
@@ -1403,10 +1414,10 @@ _start:
   mv t1, s10
   sap_r 0x10, 0x0, 28, 5, 6
   mv a6, t3
-  relu a3
-  relu a4
-  relu a5
-  relu a6
+  requant_relu a3
+  requant_relu a4
+  requant_relu a5
+  requant_relu a6
   slli a4, a4, 8
   slli a5, a5, 16
   slli a6, a6, 24
