@@ -27,11 +27,12 @@ SKIP_POWER_REPORT="${SKIP_POWER_REPORT:-0}"
 POWER_ONLY="${POWER_ONLY:-0}"
 SAIF_FILE="${SAIF_FILE:-}"
 SAIF_INSTANCE="${SAIF_INSTANCE:-}"
+DESIGN_NAME="${DESIGN_NAME:-sap_vpu_core}"
 
 WORK_DIR="${WORK_DIR:-$ROOT_DIR/work/dc/tsmc28/vpu_core}"
 REPORT_DIR="${REPORT_DIR:-$ROOT_DIR/reports/dc/tsmc28/vpu_core}"
 NETLIST_DIR="${NETLIST_DIR:-$ROOT_DIR/netlist/dc/tsmc28/vpu_core}"
-DDC_FILE="${DDC_FILE:-$NETLIST_DIR/sap_vpu_core.ddc}"
+DDC_FILE="${DDC_FILE:-$NETLIST_DIR/${DESIGN_NAME}.ddc}"
 
 test -x "$DC_SHELL" || {
   echo "Design Compiler not executable: $DC_SHELL" >&2
@@ -59,7 +60,7 @@ mkdir -p "$WORK_DIR" "$REPORT_DIR" "$NETLIST_DIR"
   export SNPSLMD_LICENSE_FILE="${SNPSLMD_LICENSE_FILE:-$SNPS_LICENSE}"
 
   REPO_ROOT="$ROOT_DIR" \
-    DESIGN_NAME="sap_vpu_core" \
+    DESIGN_NAME="$DESIGN_NAME" \
     STD_CELL_DB="$TSMC28_DB" \
     TSMC28_CORNER="$TSMC28_CORNER" \
     WORK_DIR="$WORK_DIR" \

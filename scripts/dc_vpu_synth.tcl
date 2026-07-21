@@ -1,4 +1,4 @@
-# Standalone SAP-VPU core synthesis for Synopsys Design Compiler.
+# SAP-VPU core or subsystem synthesis for Synopsys Design Compiler.
 
 proc env_or_default {name default_value} {
   if {[info exists ::env($name)] && $::env($name) ne ""} {
@@ -63,6 +63,8 @@ define_design_lib WORK -path [file join $work_dir "dc_work"]
 set rtl_files [list \
   [file join $repo_root "rtl/sap_vpu_pkg.sv"] \
   [file join $repo_root "rtl/sap_vpu_core.sv"] \
+  [file join $repo_root "rtl/sap_vpu_tiled_gemm.sv"] \
+  [file join $repo_root "rtl/sap_vpu_subsystem.sv"] \
 ]
 
 puts "SAP-VPU DC synthesis"

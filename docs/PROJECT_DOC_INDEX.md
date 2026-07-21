@@ -16,3 +16,4 @@
 
 - [records/2026-07-01.md](records/2026-07-01.md) - Project bootstrap
 - [records/2026-07-06.md](records/2026-07-06.md) - Framework, TinyViT, FPGA, ASIC flow
+- [records/2026-07-21.md](records/2026-07-21.md) - Complete subsystem FPGA/ASIC synthesis checkpoint

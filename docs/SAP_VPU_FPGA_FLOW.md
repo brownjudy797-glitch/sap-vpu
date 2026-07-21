@@ -2,9 +2,10 @@
 
 ## Scope
 
-This flow captures the first reproducible FPGA evidence path for SAP-VPU. It
-currently targets the standalone `sap_vpu_core`, not the full CV32E40X SoC.
-Use it for VPU-core utilization, timing, and default-switching power evidence.
+This flow captures the reproducible FPGA evidence path for SAP-VPU. It supports
+the standalone `sap_vpu_core` and the complete `sap_vpu_subsystem`, but not the
+full CV32E40X SoC. Use it for VPU utilization, timing, and switching-power
+evidence within those boundaries.
 
 Do not cite these reports as board-validated full-system results. Full SoC and
 board smoke evidence should be added after this standalone core flow is stable.
@@ -16,6 +17,8 @@ Default Make variables:
 ```sh
 FPGA_PART=xc7a35tcsg324-1
 FPGA_CLOCK_MHZ=100
+FPGA_TOP=sap_vpu_core
+FPGA_OUT_OF_CONTEXT=0
 FPGA_BUILD_DIR=work/fpga/vpu_core
 ```
 
@@ -28,6 +31,18 @@ Run Vivado batch synthesis, placement, routing, and reports:
 
 ```sh
 make fpga-vpu-synth FPGA_PART=xc7a35tcsg324-1 FPGA_CLOCK_MHZ=100
+```
+
+Run the complete VPU subsystem as internal SoC IP. Out-of-context mode is
+required because the raw subsystem interface has 223 top-level I/O bits, more
+than the selected package's 210 user I/Os:
+
+```sh
+make fpga-vpu-synth \
+  FPGA_TOP=sap_vpu_subsystem \
+  FPGA_OUT_OF_CONTEXT=1 \
+  FPGA_CLOCK_MHZ=140 \
+  FPGA_BUILD_DIR=work/fpga/vpu_subsystem_140
 ```
 
 Run power from an existing routed checkpoint with VPU smoke SAIF activity:
@@ -129,9 +144,13 @@ The flow writes:
   is not evidence that the underlying policies have identical power.
 - Timing pass/fail is checked at the requested `FPGA_CLOCK_MHZ`; the Tcl exits
   nonzero on negative post-route worst slack.
+- Complete-subsystem results use Vivado out-of-context implementation because
+  `sap_vpu_subsystem` is internal SoC IP, not a package pin-level top. Vivado
+  warns that `HD.CLK_SRC` and `HD.PARTPIN_LOCS` are absent in this mode, so the
+  numbers support internal comparative PPA only, not board timing signoff.
 - Generated reports remain under ignored `work/` and must not be committed.
-- These are standalone VPU-core reports, not board-validated or full-SoC
-  reports.
+- These are standalone VPU-core or VPU-subsystem reports, not board-validated
+  or full-SoC reports.
 
 ## Local Checkpoint
 
@@ -153,6 +172,22 @@ generated for the same RTL and mapping style.
 
 Older local Windows runs at 150 MHz and 200 MHz used a DSP-mapped implementation
 and are not part of the current no-DSP sliced VPU-core table.
+
+Current same-mode out-of-context comparison for the complete subsystem:
+
+| Top | Clock MHz | Worst slack ns | LUT | FF | DSP | BRAM | Status |
+| --- | ---: | ---: | ---: | ---: | ---: | ---: | --- |
+| `sap_vpu_core` | 100 | 2.191 | 1817 | 729 | 0 | 0 | pass |
+| `sap_vpu_subsystem` | 100 | 1.816 | 2741 | 1332 | 0 | 0 | pass |
+| `sap_vpu_core` | 140 | 0.090 | 1817 | 742 | 0 | 0 | pass |
+| `sap_vpu_subsystem` | 140 | 0.091 | 2752 | 1332 | 0 | 0 | pass |
+
+At 140 MHz, adding the tiled scheduler, four-word register scratchpads, and OBI
+data mover costs 935 LUTs (+51.5%) and 590 FFs (+79.5%) relative to the core in
+the same OOC flow. The near-equal WNS is a comparative IP result; it is not a
+claim that full-SoC or board timing is unchanged. Vectorless power rounds to
+0.082 W for both 140 MHz runs and is therefore not used as evidence of equal
+power.
 
 Current local SAIF power-flow smoke on the 140 MHz checkpoint:
 
@@ -198,11 +233,12 @@ paper-facing result.
 
 ## Next FPGA Steps
 
-1. Re-run the 140 MHz checkpoint after any RTL datapath change.
-2. Broaden the runtime activity from this deterministic tile to a larger MLP
+1. Re-run both 140 MHz OOC checkpoints after any RTL datapath change.
+2. Add complete-subsystem activity capture for the read-compute-write path.
+3. Broaden the runtime activity from this deterministic tile to a larger MLP
    shape before treating dynamic-power differences below Vivado report
    resolution as evidence.
-3. Add a structured sparse scheduling path that eliminates whole inactive VDOT
+4. Add a structured sparse scheduling path that eliminates whole inactive VDOT
    operations before claiming sparse speedup from the TinyViT kernel.
-4. Add a board-level top and constraints only after the standalone VPU-core
-   report remains reproducible.
+5. Add a board-level top and constraints only after the subsystem report remains
+   reproducible.

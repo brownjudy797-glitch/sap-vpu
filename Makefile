@@ -62,6 +62,8 @@ SAIF_INSTANCE ?= sap_vpu_core_tb/dut
 TINYVIT_SAIF_INSTANCE ?= corev_min_soc_tinyvit_tb/dut/vpu_i/core_i
 FPGA_PART ?= xc7a35tcsg324-1
 FPGA_CLOCK_MHZ ?= 100
+FPGA_TOP ?= sap_vpu_core
+FPGA_OUT_OF_CONTEXT ?= 0
 FPGA_BUILD_DIR ?= $(ROOT_DIR)/work/fpga/vpu_core
 FPGA_SAIF_POWER_DIR ?= $(ROOT_DIR)/work/fpga/vpu_core_sliced_140_saif_power
 FPGA_SAIF_DCP ?= $(ROOT_DIR)/work/fpga/vpu_core_sliced_140/checkpoints/post_route.dcp
@@ -78,6 +80,7 @@ FPGA_POLICY_DCP ?= work\fpga\vpu_core_sliced_140\checkpoints\post_route.dcp
 FPGA_POLICY_NETLIST ?= work\fpga\vpu_core_sliced_140_funcsim\sap_vpu_core_funcsim.v
 FPGA_POLICY_CLOCK_MHZ ?= 140
 DC_CLOCK_PERIOD ?= 10.0
+DC_DESIGN_NAME ?= sap_vpu_core
 DC_WORK_DIR ?= $(ROOT_DIR)/work/dc/tsmc28/vpu_core
 DC_REPORT_DIR ?= $(ROOT_DIR)/reports/dc/tsmc28/vpu_core
 DC_NETLIST_DIR ?= $(ROOT_DIR)/netlist/dc/tsmc28/vpu_core
@@ -498,7 +501,7 @@ tinyvit-paper-table: tinyvit-smoke
 fpga-vpu-synth:
 	mkdir -p "$(FPGA_BUILD_DIR)"
 	cd "$(FPGA_BUILD_DIR)" && $(VIVADO) -mode batch -source "$(ROOT_DIR)/scripts/vivado_vpu_synth.tcl" \
-	  -tclargs "$(FPGA_PART)" "$(FPGA_CLOCK_MHZ)" "$(FPGA_BUILD_DIR)"
+	  -tclargs "$(FPGA_PART)" "$(FPGA_CLOCK_MHZ)" "$(FPGA_BUILD_DIR)" "$(FPGA_TOP)" "$(FPGA_OUT_OF_CONTEXT)"
 
 fpga-vpu-funcsim-netlist:
 	test -s "$(FPGA_FUNCSIM_DCP)"
@@ -586,12 +589,12 @@ dc-vpu-gate-saif-power: dc-vpu-gate-sim
 	! grep -q "PWR-452" "$(DC_GATE_POWER_WORK_DIR)/dc.log"
 
 dc-vpu-precheck:
-	PRECHECK_ONLY=1 CLOCK_PERIOD="$(DC_CLOCK_PERIOD)" \
+	PRECHECK_ONLY=1 DESIGN_NAME="$(DC_DESIGN_NAME)" CLOCK_PERIOD="$(DC_CLOCK_PERIOD)" \
 	  WORK_DIR="$(DC_WORK_DIR)" REPORT_DIR="$(DC_REPORT_DIR)" NETLIST_DIR="$(DC_NETLIST_DIR)" \
 	  scripts/run_dc_vpu_synth.sh
 
 dc-vpu-synth:
-	CLOCK_PERIOD="$(DC_CLOCK_PERIOD)" \
+	DESIGN_NAME="$(DC_DESIGN_NAME)" CLOCK_PERIOD="$(DC_CLOCK_PERIOD)" \
 	  WORK_DIR="$(DC_WORK_DIR)" REPORT_DIR="$(DC_REPORT_DIR)" NETLIST_DIR="$(DC_NETLIST_DIR)" \
 	  scripts/run_dc_vpu_synth.sh
 

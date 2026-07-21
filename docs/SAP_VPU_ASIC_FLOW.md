@@ -2,9 +2,10 @@
 
 ## Scope
 
-This flow captures a first Synopsys Design Compiler evidence path for the
-standalone `sap_vpu_core`. It is intended for rough VPU-core area, timing, and
-vectorless power estimates before the later FPGA and board work is complete.
+This flow captures a Synopsys Design Compiler evidence path for the standalone
+`sap_vpu_core` and a front-end/mapping path for the complete
+`sap_vpu_subsystem`. The accepted PPA checkpoint remains core-only until the
+complete subsystem maps successfully.
 
 Use only the local TSMC28 standard-cell `.db` files for this flow. Do not use
 open PDK or Nangate-style libraries for paper-facing ASIC numbers.
@@ -15,6 +16,7 @@ Default Make variables:
 
 ```sh
 DC_CLOCK_PERIOD=10.0
+DC_DESIGN_NAME=sap_vpu_core
 DC_WORK_DIR=work/dc/tsmc28/vpu_core
 DC_REPORT_DIR=reports/dc/tsmc28/vpu_core
 ```
@@ -64,6 +66,25 @@ Run DC synthesis:
 
 ```sh
 make dc-vpu-synth DC_CLOCK_PERIOD=10.0
+```
+
+Run the complete subsystem front-end precheck and synthesis in isolated output
+directories:
+
+```sh
+make dc-vpu-precheck \
+  DC_DESIGN_NAME=sap_vpu_subsystem \
+  DC_CLOCK_PERIOD=10.0 \
+  DC_WORK_DIR=work/dc/tsmc28/vpu_subsystem_10ns \
+  DC_REPORT_DIR=reports/dc/tsmc28/vpu_subsystem_10ns \
+  DC_NETLIST_DIR=netlist/dc/tsmc28/vpu_subsystem_10ns
+
+make dc-vpu-synth \
+  DC_DESIGN_NAME=sap_vpu_subsystem \
+  DC_CLOCK_PERIOD=10.0 \
+  DC_WORK_DIR=work/dc/tsmc28/vpu_subsystem_10ns \
+  DC_REPORT_DIR=reports/dc/tsmc28/vpu_subsystem_10ns \
+  DC_NETLIST_DIR=netlist/dc/tsmc28/vpu_subsystem_10ns
 ```
 
 Run power-only from an existing mapped DDC:
@@ -146,8 +167,11 @@ Generated reports and netlists remain ignored local artifacts.
 
 ## Evidence Boundary
 
-- The current target is the standalone VPU core, not the full CV32E40X SoC.
-- SRAMs are not modeled as foundry macros in this standalone core flow.
+- The accepted PPA target is the standalone VPU core, not the full CV32E40X
+  SoC. Complete-subsystem mapping is currently blocked as recorded below.
+- The subsystem's two 128-bit four-word scratchpads are inferred as flip-flops,
+  not foundry SRAM macros. Any later SRAM-macro result must state its separate
+  memory assumptions.
 - Power is vectorless DC power unless SAIF/VCD activity is explicitly provided.
 - Treat the numbers as early ASIC synthesis evidence, not final silicon PPA.
 - The legacy `vpu_core_sliced_10ns_nopower` Verilog contains
@@ -171,6 +195,27 @@ Generated reports and netlists remain ignored local artifacts.
   an internal DC L-2016.03-SP1 Pass 1 mapping failure under both the default
   and low-map configurations. It produced no mapped DDC, so no post-change ASIC
   PPA comparison is available from this installation.
+
+## Complete Subsystem Status
+
+On 2026-07-21, `sap_vpu_subsystem` passed analyze, elaborate, link,
+`check_design`, and `check_timing` at TSMC28 `tt0p9v85c`, 10 ns. This confirms
+that DC can read the complete RTL hierarchy and constraints.
+
+Mapping did not produce a valid DDC or PPA report:
+
+| Settings | Furthest completed stage | Result |
+| --- | --- | --- |
+| `COMPILE_ULTRA=0` | Pass 1 mapping start | DC internal fatal error |
+| `COMPILE_ULTRA=0 MAP_EFFORT=low EXACT_MAP=1 USE_DW=0 SKIP_POWER_REPORT=1` | Pass 1 mapping start | DC internal fatal error |
+| `COMPILE_ULTRA=0 MAP_EFFORT=low EXACT_MAP=0 USE_DW=0 SKIP_POWER_REPORT=1` | delay optimization, then design-rule fixing | DC internal fatal error while reloading the TSMC28 `.db` |
+
+The repeated `DB-1`/`LDB-4` library-view errors and crashes make this DC
+L-2016.03-SP1 installation unsuitable for complete-subsystem paper PPA. Do not
+derive area, timing, or power from partial logs. The bounded next solution is a
+newer compatible Design Compiler release or a validated regenerated TSMC28
+`.db`; only then should the 10 ns subsystem run and matched core comparison be
+repeated.
 
 ## Local Checkpoint
 
