@@ -186,7 +186,12 @@ def validate_pairs(raw: Any, inputs: list[list[int]]) -> dict[str, Any]:
             raise ValueError("representative dense golden does not match INT8 operands")
 
     raw_policies = fixture.get("policies")
-    policy_names = ("layer_global_l1_6p25", "layer_l1_budget_1pct")
+    policy_names = (
+        "layer_global_l1_6p25",
+        "layer_l1_budget_1pct",
+        "layer_global_l1_12p5",
+        "layer_l1_budget_5pct",
+    )
     if not isinstance(raw_policies, dict) or set(raw_policies) != set(policy_names):
         raise ValueError("fc2_k512_pairs.policies has an unexpected policy set")
     policies = {}
@@ -326,6 +331,8 @@ def write_svh(
     pair_policies = {
         "LAYER_GLOBAL_L1_6P25": pairs["policies"]["layer_global_l1_6p25"],
         "LAYER_L1_BUDGET_1PCT": pairs["policies"]["layer_l1_budget_1pct"],
+        "LAYER_GLOBAL_L1_12P5": pairs["policies"]["layer_global_l1_12p5"],
+        "LAYER_L1_BUDGET_5PCT": pairs["policies"]["layer_l1_budget_5pct"],
     }
     for name, policy in pair_policies.items():
         masks = [mask for pair_masks in policy["masks"] for mask in pair_masks]
@@ -333,6 +340,17 @@ def write_svh(
             f"localparam logic [3:0] TINYVIT_FC2_K512_PAIR_{name}_MASKS [0:{len(masks) - 1}] = '{{"
         )
         lines.append("  " + ", ".join(f"4'h{mask:x}" for mask in masks))
+        lines.append("};")
+        metadata = [
+            word
+            for pair_masks in policy["masks"]
+            for word in pack_stream_metadata(pair_masks)
+        ]
+        lines.append(
+            f"localparam logic [31:0] TINYVIT_FC2_K512_PAIR_{name}_STREAM_METADATA_WORDS "
+            f"[0:{len(metadata) - 1}] = '{{"
+        )
+        lines.append("  " + ", ".join(f"32'h{word:08x}" for word in metadata))
         lines.append("};")
     pair_expected = {
         "DENSE": pairs["dense_expected"],
@@ -391,6 +409,16 @@ def self_test() -> None:
         1985,
         1024,
     )
+    assert pair_policy_counts(pairs["policies"]["layer_global_l1_12p5"]["masks"]) == (
+        1740,
+        1886,
+        1024,
+    )
+    assert pair_policy_counts(pairs["policies"]["layer_l1_budget_5pct"]["masks"]) == (
+        1730,
+        1881,
+        1024,
+    )
     with tempfile.TemporaryDirectory() as directory:
         output = Path(directory) / "fixture.svh"
         write_svh(output, inputs, weights, expected, pairs)
@@ -403,6 +431,7 @@ def self_test() -> None:
         assert "TINYVIT_FC2_K512_PAIR_COUNT = 4" in generated
         assert "TINYVIT_FC2_K512_PAIR_WEIGHT_WORDS [0:1023]" in generated
         assert "TINYVIT_FC2_K512_PAIR_LAYER_GLOBAL_L1_6P25_MASKS [0:255]" in generated
+        assert "TINYVIT_FC2_K512_PAIR_LAYER_GLOBAL_L1_12P5_STREAM_METADATA_WORDS [0:63]" in generated
 
 
 def main() -> int:

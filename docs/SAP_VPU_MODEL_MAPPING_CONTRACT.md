@@ -183,6 +183,13 @@ descriptor and 16 packed-metadata reads for 517 total reads. Thus metadata-drive
 skip is functionally closed, while this low-sparsity case does not yet reduce
 total OBI reads relative to dense streaming.
 
+The selected full-layer policies are also materialized for output pairs
+`(0,1)`, `(42,43)`, `(84,85)`, and `(126,127)`. Dense, layer-global 12.5%, and
+L1-budget 5% execute `2048/1740/1730` VDOTs, `2064/1970/1965` total reads, and
+16 final writes per four-pair set. These exact-output RTL checks close the
+packed-metadata path at a sparsity where payload savings exceed metadata
+overhead; they do not extend coverage to all 128 outputs.
+
 This is the complete FC2 input dimension, not a complete TinyViT layer: only two
 tokens and two output channels are covered, FC1/GELU are supplied by the captured
 model activation, and FC2 bias is outside the integer dot-product boundary.

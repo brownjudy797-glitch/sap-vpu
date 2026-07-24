@@ -22,12 +22,17 @@ module sap_vpu_subsystem_gate_tb;
   localparam logic [31:0] FC2_K512_STREAM_DESC_BASE = 32'h0000_0f00;
   localparam logic [31:0] FC2_K512_STREAM_GLOBAL_DESC_BASE = 32'h0000_0f20;
   localparam logic [31:0] FC2_K512_STREAM_BUDGET_DESC_BASE = 32'h0000_0f40;
+  localparam logic [31:0] FC2_K512_STREAM_PAIR_GLOBAL_DESC_BASE = 32'h0000_0f60;
+  localparam logic [31:0] FC2_K512_STREAM_PAIR_BUDGET_DESC_BASE = 32'h0000_0f80;
+  localparam logic [31:0] FC2_K512_STREAM_PAIR_DENSE_DESC_BASE = 32'h0000_0fa0;
   localparam logic [31:0] FC2_K512_INPUT_BASE = 32'h0000_1000;
   localparam logic [31:0] FC2_K512_WEIGHT_BASE = 32'h0000_1800;
   localparam logic [31:0] FC2_K512_OUT_BASE = 32'h0000_2000;
   localparam logic [31:0] FC2_K512_PAIR_WEIGHT_BASE = 32'h0000_2400;
   localparam logic [31:0] FC2_K512_STREAM_GLOBAL_META_BASE = 32'h0000_3400;
   localparam logic [31:0] FC2_K512_STREAM_BUDGET_META_BASE = 32'h0000_3440;
+  localparam logic [31:0] FC2_K512_STREAM_PAIR_GLOBAL_META_BASE = 32'h0000_3500;
+  localparam logic [31:0] FC2_K512_STREAM_PAIR_BUDGET_META_BASE = 32'h0000_3600;
   localparam int unsigned POLICY_MLP2_DENSE = 0;
   localparam int unsigned POLICY_FC2_DENSE = 1;
   localparam int unsigned POLICY_FC2_GLOBAL = 2;
@@ -41,6 +46,9 @@ module sap_vpu_subsystem_gate_tb;
   localparam int unsigned POLICY_FC2_K512_STREAM_DENSE = 10;
   localparam int unsigned POLICY_FC2_K512_STREAM_GLOBAL = 11;
   localparam int unsigned POLICY_FC2_K512_STREAM_BUDGET = 12;
+  localparam int unsigned POLICY_FC2_K512_STREAM_PAIR_GLOBAL = 13;
+  localparam int unsigned POLICY_FC2_K512_STREAM_PAIR_BUDGET = 14;
+  localparam int unsigned POLICY_FC2_K512_STREAM_PAIR_DENSE = 15;
 
   logic        clk_i;
   logic        rst_ni;
@@ -82,6 +90,7 @@ module sap_vpu_subsystem_gate_tb;
   int unsigned expected_reads;
   int unsigned expected_writes;
   int unsigned expected_saved_reads;
+  int unsigned stream_pair_index;
 
   sap_vpu_subsystem dut (
     .clk_i(clk_i),
@@ -188,6 +197,47 @@ module sap_vpu_subsystem_gate_tb;
               FC2_K512_STREAM_BUDGET_DESC_BASE + 12: dma_rdata_i <= 32'h0000_0140;
               default: dma_rdata_i <= FC2_K512_STREAM_BUDGET_META_BASE;
             endcase
+          end else if (dma_addr_o >= FC2_K512_STREAM_PAIR_GLOBAL_DESC_BASE &&
+                       dma_addr_o < FC2_K512_STREAM_PAIR_GLOBAL_DESC_BASE + 20) begin
+            case (dma_addr_o)
+              FC2_K512_STREAM_PAIR_GLOBAL_DESC_BASE + 0:
+                dma_rdata_i <= FC2_K512_INPUT_BASE;
+              FC2_K512_STREAM_PAIR_GLOBAL_DESC_BASE + 4:
+                dma_rdata_i <= FC2_K512_PAIR_WEIGHT_BASE + (stream_pair_index * 1024);
+              FC2_K512_STREAM_PAIR_GLOBAL_DESC_BASE + 8:
+                dma_rdata_i <= FC2_K512_OUT_BASE;
+              FC2_K512_STREAM_PAIR_GLOBAL_DESC_BASE + 12:
+                dma_rdata_i <= 32'h0000_0140;
+              default:
+                dma_rdata_i <= FC2_K512_STREAM_PAIR_GLOBAL_META_BASE +
+                               (stream_pair_index * 64);
+            endcase
+          end else if (dma_addr_o >= FC2_K512_STREAM_PAIR_BUDGET_DESC_BASE &&
+                       dma_addr_o < FC2_K512_STREAM_PAIR_BUDGET_DESC_BASE + 20) begin
+            case (dma_addr_o)
+              FC2_K512_STREAM_PAIR_BUDGET_DESC_BASE + 0:
+                dma_rdata_i <= FC2_K512_INPUT_BASE;
+              FC2_K512_STREAM_PAIR_BUDGET_DESC_BASE + 4:
+                dma_rdata_i <= FC2_K512_PAIR_WEIGHT_BASE + (stream_pair_index * 1024);
+              FC2_K512_STREAM_PAIR_BUDGET_DESC_BASE + 8:
+                dma_rdata_i <= FC2_K512_OUT_BASE;
+              FC2_K512_STREAM_PAIR_BUDGET_DESC_BASE + 12:
+                dma_rdata_i <= 32'h0000_0140;
+              default:
+                dma_rdata_i <= FC2_K512_STREAM_PAIR_BUDGET_META_BASE +
+                               (stream_pair_index * 64);
+            endcase
+          end else if (dma_addr_o >= FC2_K512_STREAM_PAIR_DENSE_DESC_BASE &&
+                       dma_addr_o < FC2_K512_STREAM_PAIR_DENSE_DESC_BASE + 16) begin
+            case (dma_addr_o)
+              FC2_K512_STREAM_PAIR_DENSE_DESC_BASE + 0:
+                dma_rdata_i <= FC2_K512_INPUT_BASE;
+              FC2_K512_STREAM_PAIR_DENSE_DESC_BASE + 4:
+                dma_rdata_i <= FC2_K512_PAIR_WEIGHT_BASE + (stream_pair_index * 1024);
+              FC2_K512_STREAM_PAIR_DENSE_DESC_BASE + 8:
+                dma_rdata_i <= FC2_K512_OUT_BASE;
+              default: dma_rdata_i <= 32'd64;
+            endcase
           end else if (dma_addr_o >= FC2_K512_STREAM_GLOBAL_META_BASE &&
                        dma_addr_o < FC2_K512_STREAM_GLOBAL_META_BASE + 64) begin
             dma_rdata_i <= TINYVIT_FC2_K512_GLOBAL_L1_6P25_STREAM_METADATA_WORDS[
@@ -197,6 +247,16 @@ module sap_vpu_subsystem_gate_tb;
                        dma_addr_o < FC2_K512_STREAM_BUDGET_META_BASE + 64) begin
             dma_rdata_i <= TINYVIT_FC2_K512_L1_BUDGET_2PCT_STREAM_METADATA_WORDS[
               (dma_addr_o - FC2_K512_STREAM_BUDGET_META_BASE) >> 2
+            ];
+          end else if (dma_addr_o >= FC2_K512_STREAM_PAIR_GLOBAL_META_BASE &&
+                       dma_addr_o < FC2_K512_STREAM_PAIR_GLOBAL_META_BASE + 256) begin
+            dma_rdata_i <= TINYVIT_FC2_K512_PAIR_LAYER_GLOBAL_L1_12P5_STREAM_METADATA_WORDS[
+              (dma_addr_o - FC2_K512_STREAM_PAIR_GLOBAL_META_BASE) >> 2
+            ];
+          end else if (dma_addr_o >= FC2_K512_STREAM_PAIR_BUDGET_META_BASE &&
+                       dma_addr_o < FC2_K512_STREAM_PAIR_BUDGET_META_BASE + 256) begin
+            dma_rdata_i <= TINYVIT_FC2_K512_PAIR_LAYER_L1_BUDGET_5PCT_STREAM_METADATA_WORDS[
+              (dma_addr_o - FC2_K512_STREAM_PAIR_BUDGET_META_BASE) >> 2
             ];
           end else if (dma_addr_o >= FC2_K128_INPUT_BASE &&
                        dma_addr_o < FC2_K128_INPUT_BASE + 256) begin
@@ -370,6 +430,36 @@ module sap_vpu_subsystem_gate_tb;
     end
   endtask
 
+  task automatic run_fc2_k512_pair_stream(
+    input int unsigned iteration,
+    input int unsigned policy
+  );
+    logic [3:0] id;
+    logic [31:0] descriptor_base;
+    begin
+      case (policy)
+        POLICY_FC2_K512_STREAM_PAIR_GLOBAL:
+          descriptor_base = FC2_K512_STREAM_PAIR_GLOBAL_DESC_BASE;
+        POLICY_FC2_K512_STREAM_PAIR_BUDGET:
+          descriptor_base = FC2_K512_STREAM_PAIR_BUDGET_DESC_BASE;
+        default: descriptor_base = FC2_K512_STREAM_PAIR_DENSE_DESC_BASE;
+      endcase
+      for (int unsigned pair = 0; pair < TINYVIT_FC2_K512_PAIR_COUNT; pair++) begin
+        stream_pair_index = pair;
+        id = 4'((iteration * TINYVIT_FC2_K512_PAIR_COUNT) + pair);
+        send_cmd(id, SAP_OP_VTSTREAM, descriptor_base, 32'h0);
+        expect_rsp(id, 32'd64);
+        expect_tile(
+          FC2_K512_OUT_BASE,
+          fc2_k512_pair_policy_expected(policy, pair, 0),
+          fc2_k512_pair_policy_expected(policy, pair, 1),
+          fc2_k512_pair_policy_expected(policy, pair, 2),
+          fc2_k512_pair_policy_expected(policy, pair, 3)
+        );
+      end
+    end
+  endtask
+
   task automatic run_tile_descriptors(
     input int unsigned index,
     input logic [31:0] lhs_base,
@@ -490,6 +580,12 @@ module sap_vpu_subsystem_gate_tb;
         POLICY_FC2_K512_PAIR_BUDGET:
           fc2_k512_pair_policy_mask =
             TINYVIT_FC2_K512_PAIR_LAYER_L1_BUDGET_1PCT_MASKS[index];
+        POLICY_FC2_K512_STREAM_PAIR_GLOBAL:
+          fc2_k512_pair_policy_mask =
+            TINYVIT_FC2_K512_PAIR_LAYER_GLOBAL_L1_12P5_MASKS[index];
+        POLICY_FC2_K512_STREAM_PAIR_BUDGET:
+          fc2_k512_pair_policy_mask =
+            TINYVIT_FC2_K512_PAIR_LAYER_L1_BUDGET_5PCT_MASKS[index];
         default: fc2_k512_pair_policy_mask = 4'hf;
       endcase
     end
@@ -539,6 +635,12 @@ module sap_vpu_subsystem_gate_tb;
         POLICY_FC2_K512_PAIR_BUDGET:
           fc2_k512_pair_policy_expected =
             TINYVIT_FC2_K512_PAIR_LAYER_L1_BUDGET_1PCT_EXPECTED[expected_index];
+        POLICY_FC2_K512_STREAM_PAIR_GLOBAL:
+          fc2_k512_pair_policy_expected =
+            TINYVIT_FC2_K512_PAIR_LAYER_GLOBAL_L1_12P5_EXPECTED[expected_index];
+        POLICY_FC2_K512_STREAM_PAIR_BUDGET:
+          fc2_k512_pair_policy_expected =
+            TINYVIT_FC2_K512_PAIR_LAYER_L1_BUDGET_5PCT_EXPECTED[expected_index];
         default:
           fc2_k512_pair_policy_expected =
             TINYVIT_FC2_K512_PAIR_DENSE_EXPECTED[expected_index];
@@ -836,6 +938,42 @@ module sap_vpu_subsystem_gate_tb;
           512 - fc2_k512_stream_input_reads(policy_id) - fc2_k512_active_groups(policy_id)
         );
       end
+      "fc2_k512_stream_pairs_dense": begin
+        policy_id = POLICY_FC2_K512_STREAM_PAIR_DENSE;
+        expected_vdots = iterations * fc2_k512_pair_weight_reads(policy_id) * 2;
+        expected_reads = iterations * (
+          fc2_k512_pair_input_reads(policy_id) + fc2_k512_pair_weight_reads(policy_id) +
+          (TINYVIT_FC2_K512_PAIR_COUNT * 4)
+        );
+        expected_writes = iterations * TINYVIT_FC2_K512_PAIR_COUNT * 4;
+        expected_saved_reads = 0;
+      end
+      "fc2_k512_stream_pairs_global_l1_12p5": begin
+        policy_id = POLICY_FC2_K512_STREAM_PAIR_GLOBAL;
+        expected_vdots = iterations * fc2_k512_pair_weight_reads(policy_id) * 2;
+        expected_reads = iterations * (
+          fc2_k512_pair_input_reads(policy_id) + fc2_k512_pair_weight_reads(policy_id) +
+          (TINYVIT_FC2_K512_PAIR_COUNT * 21)
+        );
+        expected_writes = iterations * TINYVIT_FC2_K512_PAIR_COUNT * 4;
+        expected_saved_reads = iterations * (
+          2048 - fc2_k512_pair_input_reads(policy_id) -
+          fc2_k512_pair_weight_reads(policy_id)
+        );
+      end
+      "fc2_k512_stream_pairs_l1_budget_5pct": begin
+        policy_id = POLICY_FC2_K512_STREAM_PAIR_BUDGET;
+        expected_vdots = iterations * fc2_k512_pair_weight_reads(policy_id) * 2;
+        expected_reads = iterations * (
+          fc2_k512_pair_input_reads(policy_id) + fc2_k512_pair_weight_reads(policy_id) +
+          (TINYVIT_FC2_K512_PAIR_COUNT * 21)
+        );
+        expected_writes = iterations * TINYVIT_FC2_K512_PAIR_COUNT * 4;
+        expected_saved_reads = iterations * (
+          2048 - fc2_k512_pair_input_reads(policy_id) -
+          fc2_k512_pair_weight_reads(policy_id)
+        );
+      end
       default: $fatal(1, "unsupported policy: %s", activity_policy);
     endcase
 
@@ -849,6 +987,8 @@ module sap_vpu_subsystem_gate_tb;
     for (int unsigned i = 0; i < iterations; i++) begin
       if (policy_id == POLICY_MLP2_DENSE) begin
         run_mlp2(i);
+      end else if (policy_id >= POLICY_FC2_K512_STREAM_PAIR_GLOBAL) begin
+        run_fc2_k512_pair_stream(i, policy_id);
       end else if (policy_id >= POLICY_FC2_K512_STREAM_DENSE) begin
         run_fc2_k512_stream(i, policy_id);
       end else if (policy_id >= POLICY_FC2_K512_PAIR_DENSE) begin

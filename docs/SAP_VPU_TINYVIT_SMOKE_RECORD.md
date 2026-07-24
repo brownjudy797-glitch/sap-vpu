@@ -308,11 +308,26 @@ outputs internally, and matches each policy's exact golden.
 Final-result writes fall by 98.44%, and sparse VDOTs fall by 6.25%. Metadata
 overhead offsets the 16 saved payload reads, so no total-read reduction is
 claimed at this sparsity. A two-iteration sparse reset check passes at 960 VDOTs,
-1034 reads, and eight writes. New FPGA PPA and gate-SAIF results remain pending.
+1034 reads, and eight writes.
+
+The selected 12.5%-13.40% policies are now materialized for four representative
+output pairs and compared against a dense stream using the same descriptors and
+final-only writeback:
+
+| Policy | VDOTs | Total reads | Writes | VDOT reduction | Read reduction |
+| --- | ---: | ---: | ---: | ---: | ---: |
+| Dense stream | 2048 | 2064 | 16 | 0% | 0% |
+| Layer-global L1 12.5% | 1740 | 1970 | 16 | 15.04% | 4.55% |
+| Layer L1 budget 5% | 1730 | 1965 | 16 | 15.53% | 4.80% |
+
+Updated Artix-7 OOC implementation passes 140 MHz at +0.021 ns WNS with 3067
+LUTs and 1656 FFs. Matched gate-SAIF reports 10.58%/10.94% lower dynamic energy
+per four-pair set for the global/budget policies; all rows report 0.015 W after
+Vivado rounding, so no average-power reduction is claimed.
 
 Use this record to justify that SAP-VPU now has a repeatable TinyViT-oriented
 kernel path, captured model activations, a full-K FC1 output slice, checked host
 aggregation, autonomous K512 accumulation, and an explicit software/hardware
-boundary for bias/GELU. The next evidence step is the selected 12.5%-13.4%
-stream policy range followed by updated FPGA PPA, while labeled full-model
-accuracy remains required before a final policy claim.
+boundary for bias/GELU. The selected stream policy and FPGA evidence are now
+closed for four representative output pairs; labeled full-model accuracy remains
+required before a final policy claim.

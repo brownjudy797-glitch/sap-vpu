@@ -244,6 +244,12 @@ def build_fixture(checkpoint: Path, image: Path, image_url: str) -> dict[str, An
         "layer_l1_budget_1pct": layer_policy_masks(
             fc2_k512_full_weight_values, "layer_l1_budget_1"
         ),
+        "layer_global_l1_12p5": layer_policy_masks(
+            fc2_k512_full_weight_values, "layer_global_l1_12.5"
+        ),
+        "layer_l1_budget_5pct": layer_policy_masks(
+            fc2_k512_full_weight_values, "layer_l1_budget_5"
+        ),
     }
     fc2_k512_pair_weights = [
         [fc2_k512_full_weight_values[output] for output in pair]

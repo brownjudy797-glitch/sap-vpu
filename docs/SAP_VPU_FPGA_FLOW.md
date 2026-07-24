@@ -89,6 +89,17 @@ Each policy executes two four-pair sets, again totaling 512 tiles. The output
 pairs are `(0,1)`, `(42,43)`, `(84,85)`, and `(126,127)`; sparse input metadata
 also suppresses a K4 token read when neither output uses that group.
 
+Run the selected policies through the autonomous stream path:
+
+```sh
+make fpga-vpu-subsystem-k512-stream-policy-power-matrix
+```
+
+This uses the same four pairs and 512-tile capture size, but each pair is one
+`VTSTREAM` command with final-only writeback. The compared policies are dense,
+12.5% layer-global L1, and the 5% L1-budget policy that produces 13.40% full-
+layer group sparsity in the host study.
+
 Run power from an existing routed checkpoint with VPU smoke SAIF activity:
 
 ```sh
@@ -249,13 +260,14 @@ Current matched-RTL out-of-context comparison at 140 MHz, plus the earlier
 | `sap_vpu_core` | 100 | 2.191 | 1817 | 729 | 0 | 0 | pass |
 | `sap_vpu_subsystem` | 100 | 1.816 | 2741 | 1332 | 0 | 0 | pass |
 | `sap_vpu_core` | 140 | 0.074 | 1862 | 788 | 0 | 0 | pass |
-| `sap_vpu_subsystem` | 140 | 0.025 | 2523 | 1303 | 0 | 0 | pass |
+| `sap_vpu_subsystem` pre-stream | 140 | 0.025 | 2523 | 1303 | 0 | 0 | pass |
+| `sap_vpu_subsystem` stream | 140 | 0.021 | 3067 | 1656 | 0 | 0 | pass |
 
-At 140 MHz, adding the tiled scheduler, four-word register scratchpads, and OBI
-data mover costs 661 LUTs (+35.5%) and 515 FFs (+65.4%) relative to the current
-core in the same OOC flow. Both builds use the `Explore` implementation
-directives. This is comparative IP evidence, not full-SoC or board timing
-signoff.
+The current stream subsystem adds 544 LUTs (+21.6%) and 353 FFs (+27.1%) over
+the pre-stream subsystem while retaining 140 MHz timing. It includes the
+64-block sequencer, packed-metadata cache, payload-read skip, accumulation, and
+final writeback. Both builds use `Explore`; these are OOC IP results, not full-
+SoC or board timing signoff.
 
 The earlier pre-group-skip MLP2 checkpoint remains a flow baseline:
 
@@ -273,7 +285,7 @@ resolution also prevents using the unchanged 0.013 W rounded dynamic result as
 a fixture-to-fixture power claim. It must not be mixed with the current sparse
 policy matrix below because the RTL checkpoint differs.
 
-Current K=128 FC2 gate-SAIF matrix on the July 24 group-skip RTL and matched
+Pre-stream K=128 FC2 gate-SAIF matrix on the July 24 group-skip RTL and matched
 140 MHz routed checkpoint:
 
 | Policy | Iterations | Tiles | VDOTs | RAM reads | RAM writes | Duration ps | Nets matched | Dynamic W | Dynamic pJ/workload | Energy reduction |
@@ -289,7 +301,7 @@ of VDOTs and 2.344% of RAM reads. Vivado rounds all three dynamic-power values
 to 0.014 W, so the supported claim is lower matched-workload latency and dynamic
 energy, not a separately resolved average-power reduction.
 
-Current full-input-dimension K=512 FC2 gate-SAIF matrix on the same routed
+Pre-stream full-input-dimension K=512 FC2 gate-SAIF matrix on the same routed
 checkpoint:
 
 | Policy | Iterations | Tiles | VDOTs | RAM reads | RAM writes | Duration ps | Nets matched | Dynamic W | Dynamic pJ/workload | Energy reduction |
@@ -304,7 +316,7 @@ are identical. The result proves full-K descriptor consumption and matched
 energy reduction; it is not a multi-image accuracy result or full-layer output
 coverage.
 
-Current representative-output-pair K=512 matrix on the same checkpoint. Each
+Pre-stream representative-output-pair K=512 matrix on the same checkpoint. Each
 row executes 512 tiles and annotates 6142/6200 nets (99.06%) with High
 confidence:
 
@@ -319,6 +331,24 @@ The global and budget policies reduce representative-slice VDOTs by 8.79% and
 percentage follows the matched capture-duration reduction; no resolved average-
 dynamic-power delta is claimed. These four output pairs are not a full-layer or
 end-to-end inference power measurement.
+
+Current autonomous-stream representative-pair matrix on the updated 140 MHz
+checkpoint. Every row executes two four-pair sets (512 tiles), maps 7167/7230
+nets (99.13%), and reports High confidence:
+
+| Policy | VDOTs | RAM reads | RAM writes | Duration ps | Dynamic W | Dynamic pJ/set | Reduction |
+| --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
+| Dense stream | 4096 | 4128 | 32 | 377,665,389 | 0.015 | 2,832,490.418 | baseline |
+| Global L1 12.5% | 3480 | 3940 | 32 | 337,698,757 | 0.015 | 2,532,740.678 | 10.58% |
+| L1 budget 5% (13.40% sparse) | 3460 | 3930 | 32 | 336,341,777 | 0.015 | 2,522,563.328 | 10.94% |
+
+The selected policies reduce VDOTs by 15.04%/15.53% and total reads, including
+descriptor and metadata traffic, by 4.55%/4.80%. Dense and sparse stream rows
+all write 16 final words per set, 98.44% fewer than the pre-stream partial-write
+path. Vivado rounds every dynamic value to 0.015 W, so the supported result is
+matched-workload latency and dynamic-energy reduction, not lower resolved
+average power. The four pairs and single modified FC2 layer remain the claim
+boundary.
 
 Current local SAIF power-flow smoke on the 140 MHz checkpoint:
 
@@ -365,10 +395,7 @@ paper-facing result.
 ## Next FPGA Steps
 
 1. Re-run both 140 MHz OOC checkpoints after any RTL datapath change.
-2. Materialize the 12.5% global and 13.4% L1-budget candidates as packed
-   `VTSTREAM` metadata. At 6.25%, metadata overhead makes total reads 517 versus
-   dense's 516 even though VDOTs fall from 512 to 480.
-3. Re-run representative gate-SAIF only after those candidate policies pass RTL;
-   the stream RTL has no new FPGA timing or power result yet.
-4. Add a board-level top and constraints only after the subsystem report remains
+2. Add a board-level top and constraints only after the subsystem report remains
    reproducible.
+3. Do not expand the stream engine until labeled accuracy or a broader model
+   suite shows that the selected policy generalizes beyond the current guardrail.
