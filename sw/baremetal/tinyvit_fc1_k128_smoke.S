@@ -7,6 +7,7 @@
   .equ WEIGHT_BASE,   0x00010200
   .equ FC2_OUT_BASE,  0x00010020
   .equ FC2_SUM_BASE,  0x00010030
+  .equ FC2_SPARSE_SUM_BASE, 0x00010040
   .equ FC2_INPUT_BASE, 0x00010a00
   .equ FC2_WEIGHT_BASE, 0x00010a20
   .equ EXIT_ADDR,     0x10000004
@@ -211,6 +212,72 @@ _start:
   li t4, 1040
   bne t3, t4, fail_mac_count
 
+  sap_r 0x1d, 0x0, 0, 0, 0      /* isolate structured sparse FC2 counters */
+  li s0, FC2_INPUT_BASE
+  li s1, FC2_WEIGHT_BASE
+  li s2, TINYVIT_FC2_K8_CHUNKS
+  li s3, 0
+  li s4, 0
+  li s5, 0
+  li s6, 0
+  li t0, WINDOW_ID_BASE
+  lw t0, 0(t0)
+  slli t0, t0, 3
+  la s7, tinyvit_fc2_sparse_descriptors
+  add s7, s7, t0
+.Lfc2_sparse_loop:
+  tile_dma_reg s0, TINYVIT_FC2_SPARSE_INPUT_DESCRIPTOR
+  mv t0, s1
+  lw t1, 0(s7)
+  sap_r 0x23, 0x0, 0, 5, 6
+  li t0, 0x212                   /* M=2, N=2, K=8 */
+  sap_r 0x21, 0x0, 0, 5, 0
+  tile_store FC2_OUT_BASE
+
+  li t0, FC2_OUT_BASE
+  lw a0, 0(t0)
+  lw a1, 4(t0)
+  lw a2, 8(t0)
+  lw a3, 12(t0)
+  add s3, s3, a0
+  add s4, s4, a1
+  add s5, s5, a2
+  add s6, s6, a3
+  addi s0, s0, 16
+  addi s1, s1, 16
+  addi s7, s7, 4
+  addi s2, s2, -1
+  bnez s2, .Lfc2_sparse_loop
+
+  li t0, WINDOW_ID_BASE
+  lw t1, 0(t0)
+  slli t1, t1, 4
+  la t0, tinyvit_fc2_sparse_expected
+  add t0, t0, t1
+  lw t1, 0(t0)
+  bne s3, t1, fail_sparse_fc2
+  lw t1, 4(t0)
+  bne s4, t1, fail_sparse_fc2
+  lw t1, 8(t0)
+  bne s5, t1, fail_sparse_fc2
+  lw t1, 12(t0)
+  bne s6, t1, fail_sparse_fc2
+
+  li t0, FC2_SPARSE_SUM_BASE
+  sw s3, 0(t0)
+  sw s4, 4(t0)
+  sw s5, 8(t0)
+  sw s6, 12(t0)
+
+  li t0, 2
+  sap_r 0x1a, 0x0, 28, 5, 0     /* VREADCNT MAC_ACTIVE */
+  li t4, TINYVIT_FC2_SPARSE_MAC_ACTIVE
+  bne t3, t4, fail_sparse_mac
+  li t0, 7
+  sap_r 0x1a, 0x0, 28, 5, 0     /* VREADCNT DMA_READ_SAVED */
+  li t4, TINYVIT_FC2_SPARSE_DMA_READ_SAVED
+  bne t3, t4, fail_sparse_dma
+
   exit_with 1
 
 fail_output:
@@ -223,3 +290,9 @@ fail_fc2:
   exit_with 47
 fail_window:
   exit_with 48
+fail_sparse_fc2:
+  exit_with 49
+fail_sparse_mac:
+  exit_with 50
+fail_sparse_dma:
+  exit_with 51

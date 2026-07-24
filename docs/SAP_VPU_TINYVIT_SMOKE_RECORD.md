@@ -220,6 +220,17 @@ independent run. The other 384 FC1 outputs and FC2 input channels, runtime
 window swapping, FC2 bias, and end-to-end model execution remain omitted. GELU
 is software evidence and is not included in the VPU hardware claim.
 
+The same K=128 executable also checks a structured sparse FC2 pass generated
+from the captured weights. Each K=8 chunk drops the lowest-L1 four-lane weight
+group, for exactly 25% group sparsity. The eight sparse window partials sum to
+`[[3232, -1604], [1366, -2088]]`; the dense sum remains
+`[[4190, -1917], [1797, -2253]]`. Each window issues 12 rather than 16 FC2
+VDOTs and avoids two of 16 FC2 payload reads, verified by `MAC_ACTIVE=12` and
+`DMA_READ_SAVED=2` after counter isolation. Against the selected original
+floating-point FC2 partial, the structured sparse result has maximum absolute
+error `0.21881` and mean absolute error `0.10305`. These are local two-token,
+two-output pruning errors and do not establish full-model accuracy.
+
 Use this record to justify that SAP-VPU now has a repeatable TinyViT-oriented
 kernel path, captured model activations, a full-K FC1 output slice, checked host
 aggregation, and an explicit software/hardware boundary for bias/GELU. The next

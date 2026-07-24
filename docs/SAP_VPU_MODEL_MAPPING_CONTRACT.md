@@ -183,3 +183,13 @@ results, and 32 accumulated FC2 window-partial outputs. It also checks the
 host-side sum of the eight final 2x2 partials against the full 128-channel fixture.
 Each activation and weight window is emitted separately as a sparse-addressed
 RAM initialization image.
+
+The tracked K=128 fixture has no naturally all-zero four-lane groups in its
+selected FC2 activations or weights. Its sparse run therefore uses an explicit,
+deterministic structured-pruning policy: for each K=8 chunk, drop the one of
+four FC2 weight groups with the smallest L1 norm, breaking ties by group index.
+The generated `VTDMA` descriptors carry the resulting 75%-valid weight masks;
+input masks remain fully valid. Per window this reduces FC2 from 16 to 12 VDOTs
+and suppresses two of 16 FC2 payload reads. This is a controlled 25% group
+pruning experiment, not evidence of natural model sparsity. Metadata is still
+embedded in the instruction descriptors rather than fetched from RAM.
