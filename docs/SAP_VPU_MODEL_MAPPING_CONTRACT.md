@@ -242,7 +242,7 @@ rather than fetched from RAM.
 
 `tinyvit-sparsity-study` extends the host-side numerical check to all 784
 stage-1 tokens from eight fixed, hash-checked PyTorch Hub sample images. Version
-4 evaluates the complete 512-input, 128-output FC2 matrix with one dataset-
+5 evaluates the complete 512-input, 128-output FC2 matrix with one dataset-
 calibrated INT8 scale set and sweeps full-layer lowest-L1, tile-local lowest-L1,
 and cumulative-L1-budget group policies. Equal-L1 groups use the same explicit
 flat-index tie-break as the RTL fixture. Counts follow the hardware's two-token,
@@ -250,3 +250,10 @@ two-output, K=8 tiling and distinguish weight-group VDOTs from reusable input
 payload reads. Detailed error/activity data is written under `work/tinyvit/`.
 This is a small policy-calibration set, not an ImageNet accuracy benchmark or a
 hardware simulation of every token and output.
+
+Version 5 also injects each emulated INT8 FC2 result, including the original
+float bias, back into the otherwise unmodified TinyViT and compares final logits
+with the float model. On eight unlabeled images, dense INT8, 12.5% global-L1,
+and 13.40% L1-budget-5% all retain 8/8 top-1 agreement; the two 25% policies
+retain only 6/8 and 7/8. This measures whole-network response to one modified
+FC2 layer, not labeled accuracy or a model in which every layer is sparse.

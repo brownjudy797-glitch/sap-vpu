@@ -260,6 +260,23 @@ candidate; 25% tile-local remains a stress ablation. None is a final model
 policy until end-to-end accuracy is measured. Version 4 orders equal-L1 groups
 by flat index so the policy is deterministic across PyTorch versions.
 
+The v5 study injects each target-FC2 INT8 result back into the remaining float
+TinyViT and compares the final 1000 logits against the unmodified model:
+
+| Policy | Group sparsity | Top-1 agreement | Mean top-5 overlap | Mean cosine | Logit NRMSE |
+| --- | ---: | ---: | ---: | ---: | ---: |
+| Dense INT8 | 0% | 8/8 | 0.975 | 0.999833 | 0.01858 |
+| L1 budget 1% | 3.99% | 8/8 | 0.975 | 0.999545 | 0.03073 |
+| Global L1 6.25% | 6.25% | 8/8 | 0.975 | 0.999208 | 0.04024 |
+| Global L1 12.5% | 12.5% | 8/8 | 0.975 | 0.998084 | 0.06300 |
+| L1 budget 5% | 13.40% | 8/8 | 0.975 | 0.998153 | 0.06184 |
+| Global L1 25% | 25% | 6/8 | 0.950 | 0.995230 | 0.09974 |
+| Tile-local L1 25% | 25% | 7/8 | 0.900 | 0.988794 | 0.15423 |
+
+The sample has no ground-truth labels, so this is prediction agreement rather
+than top-1 accuracy. It modifies only `stages.1.blocks.0.mlp.fc2`; 12.5%-13.4%
+is the next hardware-policy range, while 25% is retained as a stress ablation.
+
 The same full-layer masks are now checked in RTL for output pairs `(0,1)`,
 `(42,43)`, `(84,85)`, and `(126,127)`. Dense/global/budget runs respectively
 issue `2048/1868/1922` VDOTs and `2048/1956/1985` OBI reads, with 1024 writes in
@@ -277,5 +294,5 @@ comparison rather than a resolved average-power claim.
 Use this record to justify that SAP-VPU now has a repeatable TinyViT-oriented
 kernel path, captured model activations, a full-K FC1 output slice, checked host
 aggregation, and an explicit software/hardware boundary for bias/GELU. The next
-evidence step is end-to-end TinyViT logit/top-1 stability for the selected masks,
+evidence step is autonomous K=512 accumulation with one final output write,
 while full-model accuracy remains required before a final policy claim.

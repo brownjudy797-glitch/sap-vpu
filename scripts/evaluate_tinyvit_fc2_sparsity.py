@@ -14,6 +14,7 @@ from export_tinyvit_activation_fixture import (
     MODEL_ID,
     TIMM_MODEL,
     quantize_symmetric,
+    round_ties_away,
     sha256,
 )
 from prepare_tinyvit_fc2_k512 import layer_masks_to_valid_matrix, layer_policy_masks
@@ -67,6 +68,37 @@ def error_metrics(reference: object, estimate: object) -> dict[str, float]:
     }
 
 
+def logit_metrics(reference: object, estimate: object, image_paths: list[Path]) -> dict[str, object]:
+    import torch
+    import torch.nn.functional as functional
+
+    reference_top1 = reference.argmax(1)
+    estimate_top1 = estimate.argmax(1)
+    reference_top5 = reference.topk(5, dim=1).indices
+    estimate_top5 = estimate.topk(5, dim=1).indices
+    top5_overlap = [
+        len(set(reference_top5[index].tolist()) & set(estimate_top5[index].tolist())) / 5.0
+        for index in range(reference.shape[0])
+    ]
+    cosine = functional.cosine_similarity(reference, estimate, dim=1)
+    return {
+        "error": error_metrics(reference, estimate),
+        "top1_agreement": float((reference_top1 == estimate_top1).to(torch.float32).mean()),
+        "mean_top5_overlap": sum(top5_overlap) / len(top5_overlap),
+        "mean_cosine_similarity": float(cosine.mean()),
+        "minimum_cosine_similarity": float(cosine.min()),
+        "prediction_changes": [
+            {
+                "image": image_paths[index].name,
+                "float_top1": int(reference_top1[index]),
+                "emulated_top1": int(estimate_top1[index]),
+            }
+            for index in range(reference.shape[0])
+            if reference_top1[index] != estimate_top1[index]
+        ],
+    }
+
+
 def policy_group_valid(weights: object, policy: str) -> object:
     import torch
 
@@ -91,11 +123,30 @@ def self_test() -> None:
     assert int((~global_valid).sum()) == 2
     assert int((~tile_valid).sum()) == 2
     assert int(apply_group_valid(weights, global_valid).count_nonzero()) == 24
+    reference = torch.tensor(
+        [[6.0, 5.0, 4.0, 3.0, 2.0, 1.0], [1.0, 2.0, 3.0, 4.0, 5.0, 6.0]]
+    )
+    estimate = reference.clone()
+    estimate[1, 0] = 7.0
+    metrics = logit_metrics(reference, estimate, [Path("a.jpg"), Path("b.jpg")])
+    assert metrics["top1_agreement"] == 0.5
+    assert metrics["prediction_changes"][0]["image"] == "b.jpg"
 
 
-def capture_activations(model: object, transform: object, image_paths: list[Path]) -> tuple:
-    import torch
+def prepare_model_inputs(transform: object, image_paths: list[Path]) -> list[object]:
     from PIL import Image
+
+    model_inputs = []
+    for path in image_paths:
+        with Image.open(path) as image:
+            if image.mode == "P" and "transparency" in image.info:
+                image = image.convert("RGBA")
+            model_inputs.append(transform(image.convert("RGB")).unsqueeze(0))
+    return model_inputs
+
+
+def capture_activations(model: object, model_inputs: list[object]) -> tuple:
+    import torch
 
     mlp = model.stages[1].blocks[0].mlp
     captured: dict[str, object] = {}
@@ -104,19 +155,44 @@ def capture_activations(model: object, transform: object, image_paths: list[Path
     )
     gelu = []
     token_counts = []
+    logits = []
     try:
-        for path in image_paths:
-            with Image.open(path) as image:
-                if image.mode == "P" and "transparency" in image.info:
-                    image = image.convert("RGBA")
-                model_input = transform(image.convert("RGB")).unsqueeze(0)
+        for model_input in model_inputs:
             with torch.inference_mode():
-                model(model_input)
+                logits.append(model(model_input).detach())
             gelu.append(captured["gelu"][0, :, :FC2_INPUT_CHANNELS])
             token_counts.append(int(gelu[-1].shape[0]))
     finally:
         hook.remove()
-    return torch.cat(gelu), token_counts
+    return torch.cat(gelu), token_counts, torch.cat(logits)
+
+
+def run_quantized_fc2_logits(
+    model: object,
+    model_inputs: list[object],
+    weight_int8: object,
+    input_scale: float,
+    weight_scale: float,
+) -> object:
+    import torch
+
+    fc2 = model.stages[1].blocks[0].mlp.fc2
+    bias = fc2.bias.detach()
+
+    def emulate(_module: object, inputs: tuple[object, ...], _output: object) -> object:
+        input_int8 = round_ties_away(inputs[0] / input_scale).clamp(-127, 127).to(torch.int32)
+        output = (input_int8 @ weight_int8.T).to(torch.float32) * input_scale * weight_scale
+        return output + bias
+
+    hook = fc2.register_forward_hook(emulate)
+    logits = []
+    try:
+        for model_input in model_inputs:
+            with torch.inference_mode():
+                logits.append(model(model_input).detach())
+    finally:
+        hook.remove()
+    return torch.cat(logits)
 
 
 def evaluate(checkpoint: Path, image_paths: list[Path]) -> dict[str, object]:
@@ -133,7 +209,8 @@ def evaluate(checkpoint: Path, image_paths: list[Path]) -> dict[str, object]:
     model.eval()
     data_config = resolve_model_data_config(model)
     transform = create_transform(**data_config, is_training=False)
-    actual_gelu, token_counts = capture_activations(model, transform, image_paths)
+    model_inputs = prepare_model_inputs(transform, image_paths)
+    actual_gelu, token_counts, float_logits = capture_activations(model, model_inputs)
     mlp = model.stages[1].blocks[0].mlp
     if tuple(actual_gelu.shape[1:]) != (FC2_INPUT_CHANNELS,):
         raise ValueError(f"expected GELU width {FC2_INPUT_CHANNELS}, got {actual_gelu.shape[1]}")
@@ -152,6 +229,9 @@ def evaluate(checkpoint: Path, image_paths: list[Path]) -> dict[str, object]:
     reference = actual_gelu @ fc2_weight.T
     dense = gelu_int8 @ fc2_weight_int8.T
     dense_dequantized = dense.to(torch.float32) * output_scale
+    dense_logits = run_quantized_fc2_logits(
+        model, model_inputs, fc2_weight_int8, gelu_scale, fc2_weight_scale
+    )
 
     activation_nonzero = ~gelu_int8.reshape(-1, FC2_INPUT_CHANNELS // GROUP_LANES, GROUP_LANES).eq(0).all(2)
     total_tokens = int(gelu_int8.shape[0])
@@ -173,12 +253,16 @@ def evaluate(checkpoint: Path, image_paths: list[Path]) -> dict[str, object]:
     )
     policies = {}
     policy_estimates = {}
+    policy_logits = {}
     total_weight_l1 = int(fc2_weight_int8.abs().sum())
     for name in policy_names:
         structured_valid = policy_group_valid(fc2_weight_int8, name)
         sparse_weight = apply_group_valid(fc2_weight_int8, structured_valid)
         estimate = (gelu_int8 @ sparse_weight.T).to(torch.float32) * output_scale
         policy_estimates[name] = estimate
+        policy_logits[name] = run_quantized_fc2_logits(
+            model, model_inputs, sparse_weight, gelu_scale, fc2_weight_scale
+        )
         active_groups = int(structured_valid.sum())
         structured_vdots = total_tokens * active_groups
         combined_vdots = int(
@@ -225,7 +309,7 @@ def evaluate(checkpoint: Path, image_paths: list[Path]) -> dict[str, object]:
         offset += count
 
     return {
-        "schema": "sap-vpu-tinyvit-fc2-sparsity-study-v4",
+        "schema": "sap-vpu-tinyvit-fc2-sparsity-study-v5",
         "provenance": {
             "model_id": MODEL_ID,
             "layer_id": LAYER_ID,
@@ -264,6 +348,16 @@ def evaluate(checkpoint: Path, image_paths: list[Path]) -> dict[str, object]:
         "group_lanes": 4,
         "policies": policies,
         "images": per_image,
+        "end_to_end_stability": {
+            "boundary": "single-stages.1.blocks.0.mlp.fc2-int8-emulation-with-float-bias",
+            "reference": "unmodified-float-model-logits",
+            "float_top1": [int(value) for value in float_logits.argmax(1)],
+            "dense_int8": logit_metrics(float_logits, dense_logits, image_paths),
+            "policies": {
+                name: logit_metrics(float_logits, logits, image_paths)
+                for name, logits in policy_logits.items()
+            },
+        },
     }
 
 
@@ -299,6 +393,17 @@ def main() -> int:
             f"mean_abs={policy['error']['mean_abs']:.6f}, "
             f"nrmse={policy['error']['nrmse']:.6f}, "
             f"read_saved={policy['payload_reads_saved']}"
+        )
+    print(
+        "dense_int8 logits: "
+        f"top1={result['end_to_end_stability']['dense_int8']['top1_agreement']:.3f}, "
+        f"cosine={result['end_to_end_stability']['dense_int8']['mean_cosine_similarity']:.6f}"
+    )
+    for name, metrics in result["end_to_end_stability"]["policies"].items():
+        print(
+            f"{name} logits: top1={metrics['top1_agreement']:.3f}, "
+            f"top5={metrics['mean_top5_overlap']:.3f}, "
+            f"cosine={metrics['mean_cosine_similarity']:.6f}"
         )
     return 0
 

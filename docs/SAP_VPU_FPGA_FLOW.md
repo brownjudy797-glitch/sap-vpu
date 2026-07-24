@@ -365,10 +365,9 @@ paper-facing result.
 ## Next FPGA Steps
 
 1. Re-run both 140 MHz OOC checkpoints after any RTL datapath change.
-2. Replace the deterministic input probes with captured TinyViT layer
-   activations and account for bias, GELU, and quantization-boundary work.
-3. Extend the model mapping beyond fixed 2x4x4x2 dimensions.
-4. Add a structured sparse scheduling path that eliminates whole inactive VDOT
-   operations before claiming sparse speedup from the TinyViT kernel.
-5. Add a board-level top and constraints only after the subsystem report remains
+2. Add autonomous K=512 accumulation so each output tile writes one final result
+   instead of 64 K=8 partial results.
+3. Re-run representative gate-SAIF with the 12.5% global and 13.4% L1-budget
+   candidates selected by the v5 logit-stability study.
+4. Add a board-level top and constraints only after the subsystem report remains
    reproducible.
