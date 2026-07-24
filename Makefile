@@ -51,6 +51,8 @@ TINYVIT_CHECKPOINT_FIXTURE ?= $(ROOT_DIR)/sw/baremetal/fixtures/tinyvit_mlp2_che
 TINYVIT_IMAGE ?= $(ROOT_DIR)/work/models/tiny_vit_5m_224.dist_in22k_ft_in1k/input.png
 TINYVIT_ACTIVATION_FIXTURE ?= $(ROOT_DIR)/sw/baremetal/fixtures/tinyvit_mlp2_activation.json
 TINYVIT_MODEL_PYTHON ?= $(PYTHON)
+TINYVIT_EVAL_IMAGE_DIR ?= $(ROOT_DIR)/work/tinyvit_eval_images
+TINYVIT_SPARSITY_STUDY ?= $(TINYVIT_BUILD_DIR)/tinyvit_fc2_sparsity_study.json
 TINYVIT_FIXTURE_DIR ?= $(TINYVIT_BUILD_DIR)/fixture
 TINYVIT_FIXTURE_ASM := $(TINYVIT_FIXTURE_DIR)/tinyvit_mlp2_fixture.inc
 TINYVIT_FIXTURE_SVH := $(TINYVIT_FIXTURE_DIR)/tinyvit_mlp2_fixture_tb.svh
@@ -118,7 +120,7 @@ DC_GATE_POWER_REPORT_DIR ?= $(DC_GATE_SIM_DIR)/reports_power
 
 .DEFAULT_GOAL := help
 
-.PHONY: help plan-check corev-fetch corev-rtl-flist lint-adapter lint-core lint-tiled-gemm lint-subsystem lint lint-corev-soc sim-adapter sim-core sim-tiled-gemm sim-core-vcd sim-hello sim-vpu sim-tiled-gemm-soc sim-tiled-gemm-dma-soc sim-tinyvit-fc1-k128 sim-tinyvit sim-tinyvit-vcd sim-subsystem-mlp2 sim encoding-check legacy-summary hello-build hello-smoke vpu-build vpu-smoke tiled-gemm-soc-build tiled-gemm-soc-smoke tiled-gemm-dma-soc-build tiled-gemm-dma-soc-smoke tinyvit-fc1-k128-fixture tinyvit-fc1-k128-build tinyvit-fc1-k128-smoke tinyvit-checkpoint-fixture tinyvit-activation-fixture tinyvit-fixture tinyvit-fixture-check tiled-gemm-check tiled-gemm-rtl-check tinyvit-build tinyvit-smoke tinyvit-summary tinyvit-paper-table fpga-vpu-synth fpga-vpu-funcsim-netlist fpga-vpu-funcsim-vcd fpga-vpu-funcsim-saif fpga-vpu-funcsim-saif-power fpga-vpu-policy-power-matrix fpga-vpu-subsystem-saif-power fpga-vpu-saif-power fpga-vpu-summary dc-vpu-gate-netlist-check dc-vpu-gate-synth dc-vpu-gate-sim dc-vpu-gate-saif-power dc-vpu-precheck dc-vpu-synth dc-vpu-power dc-vpu-saif-power dc-vpu-tinyvit-saif-power dc-vpu-policy-power-matrix dc-vpu-summary
+.PHONY: help plan-check corev-fetch corev-rtl-flist lint-adapter lint-core lint-tiled-gemm lint-subsystem lint lint-corev-soc sim-adapter sim-core sim-tiled-gemm sim-core-vcd sim-hello sim-vpu sim-tiled-gemm-soc sim-tiled-gemm-dma-soc sim-tinyvit-fc1-k128 sim-tinyvit sim-tinyvit-vcd sim-subsystem-mlp2 sim encoding-check legacy-summary hello-build hello-smoke vpu-build vpu-smoke tiled-gemm-soc-build tiled-gemm-soc-smoke tiled-gemm-dma-soc-build tiled-gemm-dma-soc-smoke tinyvit-fc1-k128-fixture tinyvit-fc1-k128-build tinyvit-fc1-k128-smoke tinyvit-checkpoint-fixture tinyvit-activation-fixture tinyvit-sparsity-study tinyvit-fixture tinyvit-fixture-check tiled-gemm-check tiled-gemm-rtl-check tinyvit-build tinyvit-smoke tinyvit-summary tinyvit-paper-table fpga-vpu-synth fpga-vpu-funcsim-netlist fpga-vpu-funcsim-vcd fpga-vpu-funcsim-saif fpga-vpu-funcsim-saif-power fpga-vpu-policy-power-matrix fpga-vpu-subsystem-saif-power fpga-vpu-saif-power fpga-vpu-summary dc-vpu-gate-netlist-check dc-vpu-gate-synth dc-vpu-gate-sim dc-vpu-gate-saif-power dc-vpu-precheck dc-vpu-synth dc-vpu-power dc-vpu-saif-power dc-vpu-tinyvit-saif-power dc-vpu-policy-power-matrix dc-vpu-summary
 
 help:
 	@printf '%s\n' \
@@ -145,6 +147,7 @@ help:
 	  'make tinyvit-smoke' \
 	  'make tinyvit-checkpoint-fixture [TINYVIT_CHECKPOINT=/path/to/model.safetensors]' \
 	  'make tinyvit-activation-fixture [TINYVIT_MODEL_PYTHON=/path/to/python]' \
+	  'make tinyvit-sparsity-study TINYVIT_MODEL_PYTHON=/path/to/python' \
 	  'make tinyvit-fixture [TINYVIT_FIXTURE_JSON=/path/to/fixture.json]' \
 	  'make tinyvit-fixture-check' \
 	  'make tiled-gemm-check' \
@@ -204,6 +207,7 @@ plan-check:
 	test -x scripts/prepare_tinyvit_mlp2_fixture.py
 	test -x scripts/export_tinyvit_checkpoint_fixture.py
 	test -x scripts/export_tinyvit_activation_fixture.py
+	test -x scripts/evaluate_tinyvit_fc2_sparsity.py
 	test -x scripts/prepare_tinyvit_fc1_k128.py
 	test -x scripts/check_tinyvit_fc2_window_aggregate.py
 	test -x scripts/check_tiled_gemm_reference.py
@@ -556,6 +560,11 @@ tinyvit-checkpoint-fixture:
 tinyvit-activation-fixture:
 	$(TINYVIT_MODEL_PYTHON) scripts/export_tinyvit_activation_fixture.py \
 	  "$(TINYVIT_CHECKPOINT)" "$(TINYVIT_IMAGE)" "$(TINYVIT_ACTIVATION_FIXTURE)"
+
+tinyvit-sparsity-study:
+	$(TINYVIT_MODEL_PYTHON) scripts/evaluate_tinyvit_fc2_sparsity.py \
+	  "$(TINYVIT_CHECKPOINT)" "$(TINYVIT_EVAL_IMAGE_DIR)" "$(TINYVIT_SPARSITY_STUDY)"
+	test -s "$(TINYVIT_SPARSITY_STUDY)"
 
 tinyvit-fixture:
 	mkdir -p "$(TINYVIT_FIXTURE_DIR)"

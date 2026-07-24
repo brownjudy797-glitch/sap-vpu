@@ -231,6 +231,19 @@ floating-point FC2 partial, the structured sparse result has maximum absolute
 error `0.21881` and mean absolute error `0.10305`. These are local two-token,
 two-output pruning errors and do not establish full-model accuracy.
 
+The host-side `tinyvit-sparsity-study` broadens that numerical check to eight
+fixed, hash-checked PyTorch Hub sample images and all 784 stage-1 tokens per
+image, for 6,272 token samples. With one dataset-calibrated INT8 scale set, the
+dense 128-channel FC2 partial has mean/max absolute error `0.04825/0.26169`.
+The fixed 25% lowest-L1 weight-group policy reduces modeled VDOT count from
+401,408 to 301,056, but increases mean/max error to `0.16866/1.15533`.
+Structured weight metadata saves 50,176 of 401,408 modeled payload reads.
+Only 44 of 200,704 quantized activation groups are naturally all zero, so
+activation metadata would improve the modeled VDOT reduction only from 25% to
+25.016% on this sample. These results make the fixed 25% policy an ablation
+point rather than the default accuracy-preserving policy. The image set is a
+small engineering calibration set, not a formal vision accuracy dataset.
+
 Use this record to justify that SAP-VPU now has a repeatable TinyViT-oriented
 kernel path, captured model activations, a full-K FC1 output slice, checked host
 aggregation, and an explicit software/hardware boundary for bias/GELU. The next

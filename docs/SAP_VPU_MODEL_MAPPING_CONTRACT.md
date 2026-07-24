@@ -160,6 +160,7 @@ of synthesized subsystem power.
 make tinyvit-fixture-check
 make tinyvit-checkpoint-fixture
 make tinyvit-activation-fixture TINYVIT_MODEL_PYTHON=/path/to/python
+make tinyvit-sparsity-study TINYVIT_MODEL_PYTHON=/path/to/python
 make tiled-gemm-check
 make tiled-gemm-rtl-check
 make tiled-gemm-soc-smoke
@@ -193,3 +194,10 @@ input masks remain fully valid. Per window this reduces FC2 from 16 to 12 VDOTs
 and suppresses two of 16 FC2 payload reads. This is a controlled 25% group
 pruning experiment, not evidence of natural model sparsity. Metadata is still
 embedded in the instruction descriptors rather than fetched from RAM.
+
+`tinyvit-sparsity-study` extends the host-side numerical check to all 784
+stage-1 tokens from eight fixed, hash-checked PyTorch Hub sample images. It uses
+one dataset-calibrated INT8 scale set, applies the same lowest-L1 FC2 group
+policy, and writes detailed error/activity data under `work/tinyvit/`. This is a
+small policy-calibration set, not an ImageNet accuracy benchmark or a hardware
+simulation of every token.
