@@ -21,7 +21,7 @@ from export_tinyvit_activation_fixture import (
     round_ties_away,
     sha256,
 )
-from prepare_tinyvit_fc1_k128 import fc2_structured_group_masks
+from prepare_tinyvit_fc1_k128 import fc2_lowest_l1_group_masks, fc2_structured_group_masks
 
 
 IMAGE_SET = (
@@ -84,38 +84,6 @@ def apply_group_masks(weights: object, masks: list[int]) -> tuple[object, object
                     base = channel_group * 4
                     sparse[output, base : base + 4] = 0
     return sparse, valid
-
-
-def lowest_l1_masks(
-    weights: object, *, drop_count: int | None = None, l1_budget: float | None = None
-) -> list[int]:
-    if (drop_count is None) == (l1_budget is None):
-        raise ValueError("select exactly one lowest-L1 policy")
-    groups = []
-    values = weights.tolist()
-    for chunk in range(FC1_K128_OUTPUT_CHANNELS // 8):
-        for output in range(2):
-            for group in range(2):
-                base = chunk * 8 + group * 4
-                groups.append(
-                    (sum(abs(value) for value in values[output][base : base + 4]), chunk, output, group)
-                )
-    groups.sort()
-    if l1_budget is not None:
-        limit = sum(group[0] for group in groups) * l1_budget
-        selected = []
-        dropped_l1 = 0
-        for group in groups:
-            if dropped_l1 + group[0] > limit:
-                break
-            selected.append(group)
-            dropped_l1 += group[0]
-    else:
-        selected = groups[:drop_count]
-    masks = [0xF] * (FC1_K128_OUTPUT_CHANNELS // 8)
-    for _norm, chunk, output, group in selected:
-        masks[chunk] &= ~(1 << (output * 2 + group))
-    return masks
 
 
 def capture_activations(model: object, transform: object, image_paths: list[Path]) -> tuple:
@@ -210,15 +178,16 @@ def evaluate(checkpoint: Path, image_paths: list[Path]) -> dict[str, object]:
     token_pairs = sum((count + 1) // 2 for count in token_counts)
     dense_weight_reads = token_pairs * 2 * (FC1_K128_OUTPUT_CHANNELS // 4)
     dense_input_reads = total_tokens * (FC1_K128_OUTPUT_CHANNELS // 4)
+    weight_values = fc2_weight_int8.tolist()
 
     policy_masks = {
-        "global_l1_6p25": lowest_l1_masks(fc2_weight_int8, drop_count=4),
-        "global_l1_12p5": lowest_l1_masks(fc2_weight_int8, drop_count=8),
-        "global_l1_25": lowest_l1_masks(fc2_weight_int8, drop_count=16),
-        "per_k8_l1_25": fc2_structured_group_masks(fc2_weight_int8.tolist()),
-        "l1_budget_1pct": lowest_l1_masks(fc2_weight_int8, l1_budget=0.01),
-        "l1_budget_2pct": lowest_l1_masks(fc2_weight_int8, l1_budget=0.02),
-        "l1_budget_5pct": lowest_l1_masks(fc2_weight_int8, l1_budget=0.05),
+        "global_l1_6p25": fc2_lowest_l1_group_masks(weight_values, drop_count=4),
+        "global_l1_12p5": fc2_lowest_l1_group_masks(weight_values, drop_count=8),
+        "global_l1_25": fc2_lowest_l1_group_masks(weight_values, drop_count=16),
+        "per_k8_l1_25": fc2_structured_group_masks(weight_values),
+        "l1_budget_1pct": fc2_lowest_l1_group_masks(weight_values, l1_budget=0.01),
+        "l1_budget_2pct": fc2_lowest_l1_group_masks(weight_values, l1_budget=0.02),
+        "l1_budget_5pct": fc2_lowest_l1_group_masks(weight_values, l1_budget=0.05),
     }
     policies = {}
     policy_estimates = {}

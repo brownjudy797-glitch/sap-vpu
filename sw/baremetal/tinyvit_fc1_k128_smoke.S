@@ -7,7 +7,8 @@
   .equ WEIGHT_BASE,   0x00010200
   .equ FC2_OUT_BASE,  0x00010020
   .equ FC2_SUM_BASE,  0x00010030
-  .equ FC2_SPARSE_SUM_BASE, 0x00010040
+  .equ FC2_GLOBAL_SUM_BASE, 0x00010040
+  .equ FC2_BUDGET_SUM_BASE, 0x00010060
   .equ FC2_INPUT_BASE, 0x00010a00
   .equ FC2_WEIGHT_BASE, 0x00010a20
   .equ EXIT_ADDR,     0x10000004
@@ -212,7 +213,38 @@ _start:
   li t4, 1040
   bne t3, t4, fail_mac_count
 
-  sap_r 0x1d, 0x0, 0, 0, 0      /* isolate structured sparse FC2 counters */
+  li t0, WINDOW_ID_BASE
+  lw t0, 0(t0)
+  slli t1, t0, 3
+  la a4, tinyvit_fc2_global_l1_6p25_descriptors
+  add a4, a4, t1
+  slli t1, t0, 4
+  la a5, tinyvit_fc2_global_l1_6p25_expected
+  add a5, a5, t1
+  slli t1, t0, 1
+  la a7, tinyvit_fc2_global_l1_6p25_counts
+  add a7, a7, t1
+  li a6, FC2_GLOBAL_SUM_BASE
+  jal ra, run_sparse_fc2
+
+  li t0, WINDOW_ID_BASE
+  lw t0, 0(t0)
+  slli t1, t0, 3
+  la a4, tinyvit_fc2_l1_budget_2pct_descriptors
+  add a4, a4, t1
+  slli t1, t0, 4
+  la a5, tinyvit_fc2_l1_budget_2pct_expected
+  add a5, a5, t1
+  slli t1, t0, 1
+  la a7, tinyvit_fc2_l1_budget_2pct_counts
+  add a7, a7, t1
+  li a6, FC2_BUDGET_SUM_BASE
+  jal ra, run_sparse_fc2
+
+  exit_with 1
+
+run_sparse_fc2:
+  sap_r 0x1d, 0x0, 0, 0, 0      /* isolate one sparse FC2 policy */
   li s0, FC2_INPUT_BASE
   li s1, FC2_WEIGHT_BASE
   li s2, TINYVIT_FC2_K8_CHUNKS
@@ -220,15 +252,10 @@ _start:
   li s4, 0
   li s5, 0
   li s6, 0
-  li t0, WINDOW_ID_BASE
-  lw t0, 0(t0)
-  slli t0, t0, 3
-  la s7, tinyvit_fc2_sparse_descriptors
-  add s7, s7, t0
-.Lfc2_sparse_loop:
+.Lfc2_policy_loop:
   tile_dma_reg s0, TINYVIT_FC2_SPARSE_INPUT_DESCRIPTOR
   mv t0, s1
-  lw t1, 0(s7)
+  lw t1, 0(a4)
   sap_r 0x23, 0x0, 0, 5, 6
   li t0, 0x212                   /* M=2, N=2, K=8 */
   sap_r 0x21, 0x0, 0, 5, 0
@@ -245,40 +272,35 @@ _start:
   add s6, s6, a3
   addi s0, s0, 16
   addi s1, s1, 16
-  addi s7, s7, 4
+  addi a4, a4, 4
   addi s2, s2, -1
-  bnez s2, .Lfc2_sparse_loop
+  bnez s2, .Lfc2_policy_loop
 
-  li t0, WINDOW_ID_BASE
-  lw t1, 0(t0)
-  slli t1, t1, 4
-  la t0, tinyvit_fc2_sparse_expected
-  add t0, t0, t1
-  lw t1, 0(t0)
+  lw t1, 0(a5)
   bne s3, t1, fail_sparse_fc2
-  lw t1, 4(t0)
+  lw t1, 4(a5)
   bne s4, t1, fail_sparse_fc2
-  lw t1, 8(t0)
+  lw t1, 8(a5)
   bne s5, t1, fail_sparse_fc2
-  lw t1, 12(t0)
+  lw t1, 12(a5)
   bne s6, t1, fail_sparse_fc2
 
-  li t0, FC2_SPARSE_SUM_BASE
-  sw s3, 0(t0)
-  sw s4, 4(t0)
-  sw s5, 8(t0)
-  sw s6, 12(t0)
+  sw s3, 0(a6)
+  sw s4, 4(a6)
+  sw s5, 8(a6)
+  sw s6, 12(a6)
 
   li t0, 2
   sap_r 0x1a, 0x0, 28, 5, 0     /* VREADCNT MAC_ACTIVE */
-  li t4, TINYVIT_FC2_SPARSE_MAC_ACTIVE
+  lbu t4, 0(a7)
   bne t3, t4, fail_sparse_mac
+  sw t3, 16(a6)
   li t0, 7
   sap_r 0x1a, 0x0, 28, 5, 0     /* VREADCNT DMA_READ_SAVED */
-  li t4, TINYVIT_FC2_SPARSE_DMA_READ_SAVED
+  lbu t4, 1(a7)
   bne t3, t4, fail_sparse_dma
-
-  exit_with 1
+  sw t3, 20(a6)
+  ret
 
 fail_output:
   exit_with 41

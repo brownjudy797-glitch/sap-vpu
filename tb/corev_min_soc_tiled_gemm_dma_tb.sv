@@ -6,7 +6,8 @@ module corev_min_soc_tiled_gemm_dma_tb #(
 );
   localparam int unsigned TIMEOUT_CYCLES = 30000;
   localparam int unsigned FC2_SUM_RAM_WORD = 12;
-  localparam int unsigned FC2_SPARSE_SUM_RAM_WORD = 16;
+  localparam int unsigned FC2_GLOBAL_SUM_RAM_WORD = 16;
+  localparam int unsigned FC2_BUDGET_SUM_RAM_WORD = 24;
   localparam int unsigned WINDOW_ID_RAM_WORD = 60;
 
   logic clk;
@@ -54,8 +55,9 @@ module corev_min_soc_tiled_gemm_dma_tb #(
         $fatal(1, "Tiled GEMM DMA reads expected 24 got %0d", dma_read_transactions);
       end
       if (report_fc2_window) begin
-        if (dma_read_transactions != 1054) begin
-          $fatal(1, "TinyViT dense+sparse DMA reads expected 1054 got %0d", dma_read_transactions);
+        if (dma_read_transactions !=
+            1072 - dut.ram[FC2_GLOBAL_SUM_RAM_WORD + 5] - dut.ram[FC2_BUDGET_SUM_RAM_WORD + 5]) begin
+          $fatal(1, "TinyViT dense+policy DMA reads mismatch: got %0d", dma_read_transactions);
         end
         $display("TinyViT FC2 window %0d: %0d %0d %0d %0d",
                  dut.ram[WINDOW_ID_RAM_WORD],
@@ -63,12 +65,18 @@ module corev_min_soc_tiled_gemm_dma_tb #(
                  $signed(dut.ram[FC2_SUM_RAM_WORD + 1]),
                  $signed(dut.ram[FC2_SUM_RAM_WORD + 2]),
                  $signed(dut.ram[FC2_SUM_RAM_WORD + 3]));
-        $display("TinyViT FC2 sparse window %0d: %0d %0d %0d %0d",
+        $display("TinyViT FC2 global-l1-6p25 window %0d: %0d %0d %0d %0d",
                  dut.ram[WINDOW_ID_RAM_WORD],
-                 $signed(dut.ram[FC2_SPARSE_SUM_RAM_WORD]),
-                 $signed(dut.ram[FC2_SPARSE_SUM_RAM_WORD + 1]),
-                 $signed(dut.ram[FC2_SPARSE_SUM_RAM_WORD + 2]),
-                 $signed(dut.ram[FC2_SPARSE_SUM_RAM_WORD + 3]));
+                 $signed(dut.ram[FC2_GLOBAL_SUM_RAM_WORD]),
+                 $signed(dut.ram[FC2_GLOBAL_SUM_RAM_WORD + 1]),
+                 $signed(dut.ram[FC2_GLOBAL_SUM_RAM_WORD + 2]),
+                 $signed(dut.ram[FC2_GLOBAL_SUM_RAM_WORD + 3]));
+        $display("TinyViT FC2 l1-budget-2pct window %0d: %0d %0d %0d %0d",
+                 dut.ram[WINDOW_ID_RAM_WORD],
+                 $signed(dut.ram[FC2_BUDGET_SUM_RAM_WORD]),
+                 $signed(dut.ram[FC2_BUDGET_SUM_RAM_WORD + 1]),
+                 $signed(dut.ram[FC2_BUDGET_SUM_RAM_WORD + 2]),
+                 $signed(dut.ram[FC2_BUDGET_SUM_RAM_WORD + 3]));
       end
       $display("Tiled GEMM DMA SoC smoke exit code: %0d", exit_code);
       $finish;

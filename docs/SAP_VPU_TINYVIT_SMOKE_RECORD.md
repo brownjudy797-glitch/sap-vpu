@@ -220,16 +220,19 @@ independent run. The other 384 FC1 outputs and FC2 input channels, runtime
 window swapping, FC2 bias, and end-to-end model execution remain omitted. GELU
 is software evidence and is not included in the VPU hardware claim.
 
-The same K=128 executable also checks a structured sparse FC2 pass generated
-from the captured weights. Each K=8 chunk drops the lowest-L1 four-lane weight
-group, for exactly 25% group sparsity. The eight sparse window partials sum to
-`[[3232, -1604], [1366, -2088]]`; the dense sum remains
-`[[4190, -1917], [1797, -2253]]`. Each window issues 12 rather than 16 FC2
-VDOTs and avoids two of 16 FC2 payload reads, verified by `MAC_ACTIVE=12` and
-`DMA_READ_SAVED=2` after counter isolation. Against the selected original
-floating-point FC2 partial, the structured sparse result has maximum absolute
-error `0.21881` and mean absolute error `0.10305`. These are local two-token,
-two-output pruning errors and do not establish full-model accuracy.
+The same K=128 executable now checks both selected sparse policies through
+generated `VTDMA` descriptors. `global_l1_6p25` sums to
+`[[4236, -1983], [1702, -2016]]`; `l1_budget_2pct` sums to
+`[[4165, -1983], [1771, -2016]]`; the dense sum remains
+`[[4190, -1917], [1797, -2253]]`. Across the full 128-channel, two-token FC2
+partial, the global policy issues 120 instead of 128 VDOTs and suppresses four
+of 128 payload reads; the budget policy issues 122 VDOTs and suppresses three
+reads. Since dropped groups are unevenly distributed, each independent window
+checks its generated `MAC_ACTIVE` and `DMA_READ_SAVED` values. The testbench
+also checks the aggregate physical OBI read count. The executable is 3,908
+bytes in the 4 KiB ROM. Against the selected floating-point partial, the
+global/budget maximum absolute errors are `0.05415/0.03485`; these local results
+do not establish full-model accuracy.
 
 The host-side `tinyvit-sparsity-study` broadens that numerical check to eight
 fixed, hash-checked PyTorch Hub sample images and all 784 stage-1 tokens per
@@ -266,5 +269,5 @@ guardrail is measured; `per_k8_l1_25` remains a hardware stress ablation.
 Use this record to justify that SAP-VPU now has a repeatable TinyViT-oriented
 kernel path, captured model activations, a full-K FC1 output slice, checked host
 aggregation, and an explicit software/hardware boundary for bias/GELU. The next
-evidence step is measuring the same mapping over more tokens and images before
-any full-layer or full-model claim.
+evidence step is gate-activity comparison for the two hardware-checked policies,
+while full-model accuracy remains required before a final policy claim.

@@ -186,14 +186,16 @@ Each activation and weight window is emitted separately as a sparse-addressed
 RAM initialization image.
 
 The tracked K=128 fixture has no naturally all-zero four-lane groups in its
-selected FC2 activations or weights. Its sparse run therefore uses an explicit,
-deterministic structured-pruning policy: for each K=8 chunk, drop the one of
-four FC2 weight groups with the smallest L1 norm, breaking ties by group index.
-The generated `VTDMA` descriptors carry the resulting 75%-valid weight masks;
-input masks remain fully valid. Per window this reduces FC2 from 16 to 12 VDOTs
-and suppresses two of 16 FC2 payload reads. This is a controlled 25% group
-pruning experiment, not evidence of natural model sparsity. Metadata is still
-embedded in the instruction descriptors rather than fetched from RAM.
+selected FC2 activations or weights. Its current sparse run therefore checks
+two explicit weight policies selected by the multi-image study:
+`global_l1_6p25` drops the four globally lowest-L1 groups, while
+`l1_budget_2pct` drops the lowest groups whose combined L1 norm stays within 2%
+of total weight L1. Their generated `VTDMA` descriptors carry per-K8 masks;
+input masks remain fully valid. Skip counts vary by 16-channel window, so the
+generated count tables and bare-metal program check each window independently.
+The testbench also reconciles the physical OBI read total with both
+`DMA_READ_SAVED` results. Metadata remains embedded in instruction descriptors
+rather than fetched from RAM.
 
 `tinyvit-sparsity-study` extends the host-side numerical check to all 784
 stage-1 tokens from eight fixed, hash-checked PyTorch Hub sample images. It uses
