@@ -291,8 +291,25 @@ reductions. All rows match 6142/6200 routed nets with High confidence. Since
 Vivado reports 0.014 W dynamic for every row, this is a matched energy/latency
 comparison rather than a resolved average-power claim.
 
+## Autonomous K512 Accumulation
+
+`make sim-subsystem-k512-stream` runs the captured dense 2x512x2 FC2 slice from
+one `VTSTREAM` descriptor. The subsystem fetches and executes 64 K8 tiles,
+accumulates the four INT32 outputs internally, and matches the existing golden.
+
+| Path | VDOTs | OBI reads | OBI writes |
+| --- | ---: | ---: | ---: |
+| CPU/testbench-scheduled K8 partials | 512 | 512 | 256 |
+| Autonomous `VTSTREAM` | 512 | 516 | 4 |
+
+The four extra reads fetch the stream descriptor; final-result writes fall by
+98.44%. A two-iteration reset check also passes with 1024 VDOTs, 1032 reads, and
+eight writes. This is RTL functional and traffic evidence only; sparse metadata,
+new FPGA PPA, and gate-SAIF results remain pending.
+
 Use this record to justify that SAP-VPU now has a repeatable TinyViT-oriented
 kernel path, captured model activations, a full-K FC1 output slice, checked host
-aggregation, and an explicit software/hardware boundary for bias/GELU. The next
-evidence step is autonomous K=512 accumulation with one final output write,
-while full-model accuracy remains required before a final policy claim.
+aggregation, autonomous K512 accumulation, and an explicit software/hardware
+boundary for bias/GELU. The next evidence step is sparse stream metadata plus
+updated FPGA PPA, while labeled full-model accuracy remains required before a
+final policy claim.

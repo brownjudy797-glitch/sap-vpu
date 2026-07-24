@@ -105,7 +105,7 @@ tails whose unused packed lanes contain nonzero data.
 ## SoC Command Integration
 
 `rtl/sap_vpu_subsystem.sv` now arbitrates the scheduler and the original VPU
-core behind the existing CV-X-IF adapter. Five custom-0 operations expose the
+core behind the existing CV-X-IF adapter. Six custom-0 operations expose the
 bounded engine without changing CV32E40X:
 
 - `VTLOAD`: `rs1` carries one packed word; `rs2[0]` selects input or weight and
@@ -121,6 +121,11 @@ bounded engine without changing CV32E40X:
 - `VTSTORE`: `rs1` carries an aligned SoC RAM base address. It writes every
   row-major result through the single-outstanding OBI path and responds after
   the final write completes.
+- `VTSTREAM`: `rs1` points to an aligned four-word descriptor containing input,
+  weight, output base addresses, and a one-to-64 K8 block count. The first RTL
+  contract executes fixed M=2, N=2, K=8 tiles, accumulates four INT32 outputs
+  across all blocks, writes those four final values once, and then responds.
+  `rs2` is reserved and must be zero.
 
 `make tiled-gemm-soc-smoke` proves these operations through CV32E40X and
 CV-X-IF for a full 2x2x4 tile and a 1x1x3 tail using explicit `VTLOAD`
@@ -166,6 +171,13 @@ M=2, N=2, K=8 tiles and accumulates their writebacks in the testbench boundary.
 Dense execution issues 512 VDOTs, 512 OBI reads, and 256 writes. The selected
 6.25% structured masks issue 480 VDOTs and 496 reads while preserving the same
 write count. Both sparse policies check their own exact masked aggregate.
+
+`make sim-subsystem-k512-stream` moves the dense K-block loop and accumulation
+inside `sap_vpu_subsystem`. Its 64-block descriptor produces the same four INT32
+outputs with 512 VDOTs, 516 OBI reads including four descriptor words, and four
+final writes. The former CPU/testbench-scheduled path uses 512 reads and 256
+partial-result writes. Sparse metadata consumption is not yet part of
+`VTSTREAM`; the existing descriptor-driven sparse path remains the reference.
 
 This is the complete FC2 input dimension, not a complete TinyViT layer: only two
 tokens and two output channels are covered, FC1/GELU are supplied by the captured

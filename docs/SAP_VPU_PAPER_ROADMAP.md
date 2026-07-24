@@ -24,17 +24,18 @@ The paper must keep these boundaries explicit:
 | Minimal CORE-V SoC | CV32E40X wrapper with ROM, RAM, UART, exit MMIO, and OBI timing smoke. | `make hello-smoke` |
 | CV-X-IF attachment | `corev_min_soc` enables `X_EXT` and connects SAP-VPU through the flattened adapter. | `make lint-corev-soc`, `make hello-smoke` |
 | VPU instruction path | Bare-metal custom-0 smoke covers base, precision, sparse, lane, and counter ops. The core now returns an all-zero effective-bitmap VDOT without entering its multiply/reduction pipeline and exposes a group-skip counter. | `make sim-core`, `make vpu-smoke` |
-| Tiled GEMM path | A bounded M<=2, N<=2, K<=8 scheduler accumulates up to two packed VDOT blocks per output. `VTDMA` fetches up to four packed words from SoC RAM and `VTSTORE` writes row-major results back over a single-outstanding OBI path. Optional descriptor metadata marks invalid scratchpad groups, suppresses their OBI payload reads, and makes the scheduler bypass their VDOT issue. K=3/4/5/8 and a sparse K=8 case pass. | `make tiled-gemm-rtl-check`, `make tiled-gemm-soc-smoke`, `make tiled-gemm-dma-soc-smoke` |
+| Tiled GEMM path | A bounded M<=2, N<=2, K<=8 scheduler remains the compute tile. `VTDMA` and `VTSTORE` retain explicit tile control. `VTSTREAM` now consumes a four-word descriptor, autonomously executes up to 64 K8 tiles, accumulates four INT32 outputs, and writes only the final tile. Dense K=512 passes with 512 VDOTs, 516 reads, and four writes. Sparse metadata is not yet consumed by this stream path. | `make tiled-gemm-rtl-check`, `make tiled-gemm-dma-soc-smoke`, `make sim-subsystem-k512-stream` |
 | Paper workload | TinyViT policy smokes cover INT8/INT4/INT2, bitmap and software-scheduled sparsity, ablations, counters, reuse, and RAM traffic. The host policy study covers all 512 inputs and 128 outputs for 6,272 tokens from eight images. It now injects the target FC2's emulated INT8/sparse output into the remaining float network: 12.5% global and 13.40% L1-budget policies retain 8/8 top-1 agreement, while 25% policies do not. Four evenly spaced output pairs carry full-layer masks through exact K=512 subsystem RTL and gate-SAIF checks. Runtime window swapping, labeled ImageNet accuracy, all-layer sparsity, and end-to-end inference power remain outside the claim; GELU is not claimed as VPU hardware. | `make tinyvit-fc1-k128-smoke`, `make sim-subsystem-k512-pair-policies`, `make tinyvit-sparsity-study`, `docs/SAP_VPU_MODEL_MAPPING_CONTRACT.md` |
 | FPGA evidence | Current core and complete `sap_vpu_subsystem` pass matched-RTL Artix-7 OOC implementation at 140 MHz. The core uses 1862 LUTs/788 FFs with +0.074 ns WNS; the subsystem uses 2523 LUTs/1303 FFs with +0.025 ns WNS. Matched K=128 and K=512 FC2 gate-SAIF matrices annotate 6142/6200 routed nets. The four-output-pair K=512 sweep reduces VDOTs by 8.79%/6.15%, reads by 4.49%/3.08%, and reported dynamic energy per set by 5.92%/4.14% for global/budget policies. Vivado rounds all policy dynamic power to 0.014 W, so no average-power delta is claimed. External RAM, CPU, full SoC, and board power remain outside the claim. | `make fpga-vpu-synth`, `make fpga-vpu-subsystem-k512-pair-policy-power-matrix`, `docs/SAP_VPU_FPGA_FLOW.md` |
 | ASIC evidence | The accepted TSMC28 `tt0p9v85c`, 10 ns gate/SAIF checkpoint remains historical standalone-core evidence. A July 24 audit found no newer DC/PrimeTime or Library Compiler; Nangate Liberty cannot be compiled locally, and current core mapping also crashes DC L-2016.03-SP1 during Pass 1. No current core or subsystem ASIC PPA is claimed. | `docs/SAP_VPU_ASIC_FLOW.md` |
 
 The complete `sap_vpu_subsystem`, including the tiled scheduler, bounded
-scratchpads, and OBI read/write data mover, now has FPGA OOC area/timing
-evidence. ASIC front-end checks also pass, but complete mapping is blocked by
-the local DC/library combination. The current four-word scratchpads prove
-autonomous operand fetch, two-block K accumulation, and result writeback, but
-larger SRAM banks and double buffering remain later work.
+scratchpads, and OBI read/write data mover, has FPGA OOC evidence for the
+pre-stream RTL. ASIC front-end checks also pass, but complete mapping is blocked
+by the local DC/library combination. The current four-word scratchpads and
+stream sequencer prove autonomous operand fetch, 64-block K accumulation, and
+final result writeback without a larger local SRAM. Updated PPA and double
+buffering remain later work.
 Software bias/GELU execution, FC2 window partials, and their checked host-side
 sum are now covered for the K=128, 128-output slice. One executable runs against
 eight generated 16-channel model images while the simulated SoC RAM remains
@@ -76,9 +77,11 @@ custom instruction, TinyML, and edge-AI accelerator work.
 
 1. Move current core/subsystem ASIC mapping to a compatible DC plus validated
    timing-library installation before publishing any new ASIC area delta.
-2. Extend the tiled engine with autonomous K=512 streaming accumulation so one
-   FC2 output tile is written once instead of writing 64 K=8 partial tiles.
-3. Replace register scratchpads with explicit SRAM-macro assumptions only after
+2. Extend `VTSTREAM` with packed per-block sparse metadata so the autonomous path
+   also skips invalid operand reads and VDOTs.
+3. Re-run subsystem FPGA OOC and gate-SAIF on the stream RTL before claiming its
+   area, timing, or energy benefit.
+4. Replace register scratchpads with explicit SRAM-macro assumptions only after
    capacity and traffic experiments justify the change.
 
 ## TinyViT Kernel Plan

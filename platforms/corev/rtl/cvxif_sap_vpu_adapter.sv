@@ -125,6 +125,10 @@ module cvxif_sap_vpu_adapter #(
         decoded_op   = SAP_OP_VTSTORE;
         is_supported = 1'b1;
       end
+      {SAP_FUNCT7_VTSTREAM, 3'b000}: begin
+        decoded_op   = SAP_OP_VTSTREAM;
+        is_supported = 1'b1;
+      end
       default: begin
       end
     endcase

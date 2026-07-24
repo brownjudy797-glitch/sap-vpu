@@ -129,7 +129,7 @@ DC_GATE_POWER_REPORT_DIR ?= $(DC_GATE_SIM_DIR)/reports_power
 
 .DEFAULT_GOAL := help
 
-.PHONY: help plan-check corev-fetch corev-rtl-flist lint-adapter lint-core lint-tiled-gemm lint-subsystem lint lint-corev-soc sim-adapter sim-core sim-tiled-gemm sim-core-vcd sim-hello sim-vpu sim-tiled-gemm-soc sim-tiled-gemm-dma-soc sim-tinyvit-fc1-k128 sim-tinyvit sim-tinyvit-vcd sim-subsystem-mlp2 sim-subsystem-sparse-policies sim-subsystem-k512-policies sim-subsystem-k512-pair-policies sim encoding-check legacy-summary hello-build hello-smoke vpu-build vpu-smoke tiled-gemm-soc-build tiled-gemm-soc-smoke tiled-gemm-dma-soc-build tiled-gemm-dma-soc-smoke tinyvit-fc1-k128-fixture tinyvit-fc2-k512-fixture tinyvit-fc1-k128-build tinyvit-fc1-k128-smoke tinyvit-checkpoint-fixture tinyvit-activation-fixture tinyvit-sparsity-study tinyvit-fixture tinyvit-fixture-check tiled-gemm-check tiled-gemm-rtl-check tinyvit-build tinyvit-smoke tinyvit-summary tinyvit-paper-table fpga-vpu-synth fpga-vpu-funcsim-netlist fpga-vpu-funcsim-vcd fpga-vpu-funcsim-saif fpga-vpu-funcsim-saif-power fpga-vpu-policy-power-matrix fpga-vpu-subsystem-saif-power fpga-vpu-subsystem-policy-power-matrix fpga-vpu-subsystem-k512-policy-power-matrix fpga-vpu-subsystem-k512-pair-policy-power-matrix fpga-vpu-saif-power fpga-vpu-summary dc-vpu-gate-netlist-check dc-vpu-gate-synth dc-vpu-gate-sim dc-vpu-gate-saif-power dc-vpu-precheck dc-vpu-synth dc-vpu-power dc-vpu-saif-power dc-vpu-tinyvit-saif-power dc-vpu-policy-power-matrix dc-vpu-summary
+.PHONY: help plan-check corev-fetch corev-rtl-flist lint-adapter lint-core lint-tiled-gemm lint-subsystem lint lint-corev-soc sim-adapter sim-core sim-tiled-gemm sim-core-vcd sim-hello sim-vpu sim-tiled-gemm-soc sim-tiled-gemm-dma-soc sim-tinyvit-fc1-k128 sim-tinyvit sim-tinyvit-vcd sim-subsystem-mlp2 sim-subsystem-sparse-policies sim-subsystem-k512-policies sim-subsystem-k512-pair-policies sim-subsystem-k512-stream sim encoding-check legacy-summary hello-build hello-smoke vpu-build vpu-smoke tiled-gemm-soc-build tiled-gemm-soc-smoke tiled-gemm-dma-soc-build tiled-gemm-dma-soc-smoke tinyvit-fc1-k128-fixture tinyvit-fc2-k512-fixture tinyvit-fc1-k128-build tinyvit-fc1-k128-smoke tinyvit-checkpoint-fixture tinyvit-activation-fixture tinyvit-sparsity-study tinyvit-fixture tinyvit-fixture-check tiled-gemm-check tiled-gemm-rtl-check tinyvit-build tinyvit-smoke tinyvit-summary tinyvit-paper-table fpga-vpu-synth fpga-vpu-funcsim-netlist fpga-vpu-funcsim-vcd fpga-vpu-funcsim-saif fpga-vpu-funcsim-saif-power fpga-vpu-policy-power-matrix fpga-vpu-subsystem-saif-power fpga-vpu-subsystem-policy-power-matrix fpga-vpu-subsystem-k512-policy-power-matrix fpga-vpu-subsystem-k512-pair-policy-power-matrix fpga-vpu-saif-power fpga-vpu-summary dc-vpu-gate-netlist-check dc-vpu-gate-synth dc-vpu-gate-sim dc-vpu-gate-saif-power dc-vpu-precheck dc-vpu-synth dc-vpu-power dc-vpu-saif-power dc-vpu-tinyvit-saif-power dc-vpu-policy-power-matrix dc-vpu-summary
 
 help:
 	@printf '%s\n' \
@@ -148,6 +148,7 @@ help:
 	  'make sim-subsystem-sparse-policies' \
 	  'make sim-subsystem-k512-policies' \
 	  'make sim-subsystem-k512-pair-policies' \
+	  'make sim-subsystem-k512-stream' \
 	  'make encoding-check' \
 	  'make legacy-summary [LEGACY_RESULTS_DIR=../nutvpu/results]' \
 	  'make hello-build' \
@@ -629,6 +630,9 @@ sim-subsystem-k512-pair-policies: sim-subsystem-mlp2
 	"$(SIM_DIR)/subsystem_mlp2_obj/sap_vpu_subsystem_mlp2_tb" +iterations=1 +policy=fc2_k512_pairs_dense
 	"$(SIM_DIR)/subsystem_mlp2_obj/sap_vpu_subsystem_mlp2_tb" +iterations=1 +policy=fc2_k512_pairs_global_l1_6p25
 	"$(SIM_DIR)/subsystem_mlp2_obj/sap_vpu_subsystem_mlp2_tb" +iterations=1 +policy=fc2_k512_pairs_l1_budget_1pct
+
+sim-subsystem-k512-stream: sim-subsystem-mlp2
+	"$(SIM_DIR)/subsystem_mlp2_obj/sap_vpu_subsystem_mlp2_tb" +iterations=1 +policy=fc2_k512_stream_dense
 
 tiled-gemm-check:
 	$(PYTHON) scripts/check_tiled_gemm_reference.py

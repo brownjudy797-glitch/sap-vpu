@@ -365,9 +365,11 @@ paper-facing result.
 ## Next FPGA Steps
 
 1. Re-run both 140 MHz OOC checkpoints after any RTL datapath change.
-2. Add autonomous K=512 accumulation so each output tile writes one final result
-   instead of 64 K=8 partial results.
-3. Re-run representative gate-SAIF with the 12.5% global and 13.4% L1-budget
-   candidates selected by the v5 logit-stability study.
+2. Measure the new dense `VTSTREAM` K=512 path against the previous 64-command
+   path; RTL simulation reduced output writes from 256 to four but has no new
+   FPGA timing or power result yet.
+3. Add packed sparse metadata to `VTSTREAM`, then re-run representative gate-SAIF
+   with the 12.5% global and 13.4% L1-budget candidates selected by the v5
+   logit-stability study.
 4. Add a board-level top and constraints only after the subsystem report remains
    reproducible.

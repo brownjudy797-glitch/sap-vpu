@@ -22,6 +22,7 @@ EXPECTED = {
     "SAP_FUNCT7_VTREAD": "0x22",
     "SAP_FUNCT7_VTDMA": "0x23",
     "SAP_FUNCT7_VTSTORE": "0x24",
+    "SAP_FUNCT7_VTSTREAM": "0x25",
 }
 
 
