@@ -17,6 +17,7 @@ module corev_min_soc_tiled_gemm_dma_tb #(
   logic [31:0] exit_code;
   logic core_sleep;
   logic report_fc2_window;
+  int unsigned dma_read_transactions;
   string ram_init_file;
 
   corev_min_soc #(
@@ -36,12 +37,20 @@ module corev_min_soc_tiled_gemm_dma_tb #(
   always #5 clk = ~clk;
 
   always_ff @(posedge clk or negedge rst_n) begin
+    if (!rst_n) begin
+      dma_read_transactions <= 0;
+    end else if (dut.vpu_dma_req && dut.vpu_dma_gnt && !dut.vpu_dma_we) begin
+      dma_read_transactions <= dma_read_transactions + 1;
+    end
     if (rst_n && uart_tx_valid) begin
       $fatal(1, "Unexpected UART byte 0x%02x", uart_tx_data);
     end
     if (rst_n && exit_valid) begin
       if (exit_code !== 32'd1) begin
         $fatal(1, "Tiled GEMM DMA SoC smoke exit code expected 1 got %0d", exit_code);
+      end
+      if (!report_fc2_window && dma_read_transactions != 24) begin
+        $fatal(1, "Tiled GEMM DMA reads expected 24 got %0d", dma_read_transactions);
       end
       if (report_fc2_window) begin
         $display("TinyViT FC2 window %0d: %0d %0d %0d %0d",

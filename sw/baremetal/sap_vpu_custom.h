@@ -33,6 +33,7 @@
 #define SAP_CNT_SPARSE 0x4
 #define SAP_CNT_LANE 0x5
 #define SAP_CNT_GROUP_SKIPPED 0x6
+#define SAP_CNT_DMA_READ_SAVED 0x7
 
 #define SAP_R_TYPE(funct7, funct3, rd, rs1, rs2) \
   ((((uint32_t)(funct7) & 0x7fu) << 25) | \

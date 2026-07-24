@@ -45,6 +45,7 @@ package sap_vpu_pkg;
   localparam logic [2:0] SAP_CNT_SPARSE     = 3'd4;
   localparam logic [2:0] SAP_CNT_LANE       = 3'd5;
   localparam logic [2:0] SAP_CNT_GROUP_SKIPPED = 3'd6;
+  localparam logic [2:0] SAP_CNT_DMA_READ_SAVED = 3'd7;
 
   localparam int unsigned SAP_FRONT_MAX_LANES = 16;
 endpackage

@@ -12,6 +12,7 @@ module sap_vpu_tiled_gemm #(
   input  logic                   load_weight_i,
   input  logic [1:0]             load_index_i,
   input  logic [31:0]            load_data_i,
+  input  logic                   load_group_valid_i,
 
   input  logic                   start_valid_i,
   output logic                   start_ready_o,
@@ -47,6 +48,7 @@ module sap_vpu_tiled_gemm #(
     S_IDLE,
     S_SEND_PREC,
     S_WAIT_PREC,
+    S_CHECK_BLOCK,
     S_SEND_SPARSE,
     S_WAIT_SPARSE,
     S_SEND_LANE,
@@ -59,6 +61,8 @@ module sap_vpu_tiled_gemm #(
   state_t state_q;
   logic [31:0] lhs_spad_q [0:3];
   logic [31:0] rhs_spad_q [0:3];
+  logic        lhs_valid_q [0:3];
+  logic        rhs_valid_q [0:3];
   logic [2:0] m_size_q;
   logic [2:0] n_size_q;
   logic [3:0] k_size_q;
@@ -73,6 +77,7 @@ module sap_vpu_tiled_gemm #(
   logic [2:0] block_lanes;
   logic [1:0] lhs_spad_index;
   logic [1:0] rhs_spad_index;
+  logic       current_group_valid;
 
   assign load_ready_o    = (state_q == S_IDLE) && !start_valid_i;
   assign start_ready_o   = (state_q == S_IDLE);
@@ -87,6 +92,7 @@ module sap_vpu_tiled_gemm #(
   assign block_lanes     = (remaining_lanes >= 4) ? 3'd4 : remaining_lanes[2:0];
   assign lhs_spad_index  = (k_size_q > 4) ? {row_q[0], k_block_q} : {1'b0, row_q[0]};
   assign rhs_spad_index  = (k_size_q > 4) ? {column_q[0], k_block_q} : {1'b0, column_q[0]};
+  assign current_group_valid = lhs_valid_q[lhs_spad_index] && rhs_valid_q[rhs_spad_index];
 
   always_comb begin
     vpu_cmd_valid_o = 1'b0;
@@ -143,6 +149,8 @@ module sap_vpu_tiled_gemm #(
       for (int unsigned i = 0; i < 4; i++) begin
         lhs_spad_q[i] <= '0;
         rhs_spad_q[i] <= '0;
+        lhs_valid_q[i] <= 1'b0;
+        rhs_valid_q[i] <= 1'b0;
       end
     end else begin
       done_q <= 1'b0;
@@ -169,8 +177,10 @@ module sap_vpu_tiled_gemm #(
           end else if (load_valid_i && load_ready_o) begin
             if (load_weight_i) begin
               rhs_spad_q[load_index_i] <= load_data_i;
+              rhs_valid_q[load_index_i] <= load_group_valid_i;
             end else begin
               lhs_spad_q[load_index_i] <= load_data_i;
+              lhs_valid_q[load_index_i] <= load_group_valid_i;
             end
           end
         end
@@ -185,8 +195,18 @@ module sap_vpu_tiled_gemm #(
               done_q  <= 1'b1;
               state_q <= S_IDLE;
             end else begin
-              state_q <= S_SEND_SPARSE;
+              state_q <= S_CHECK_BLOCK;
             end
+          end
+        end
+        S_CHECK_BLOCK: begin
+          if (current_group_valid) begin
+            state_q <= S_SEND_SPARSE;
+          end else if (!k_block_q && (k_size_q > 4)) begin
+            k_block_q <= 1'b1;
+          end else begin
+            result_q <= accumulator_q;
+            state_q  <= S_RESULT;
           end
         end
         S_SEND_SPARSE: begin
@@ -229,7 +249,7 @@ module sap_vpu_tiled_gemm #(
             end else if (!k_block_q && (k_size_q > 4)) begin
               accumulator_q <= $signed(vpu_rsp_data_i[31:0]);
               k_block_q     <= 1'b1;
-              state_q       <= S_SEND_SPARSE;
+              state_q       <= S_CHECK_BLOCK;
             end else begin
               result_q <= accumulator_q + $signed(vpu_rsp_data_i[31:0]);
               state_q  <= S_RESULT;
@@ -242,13 +262,13 @@ module sap_vpu_tiled_gemm #(
               column_q <= column_q + 1'b1;
               k_block_q <= 1'b0;
               accumulator_q <= '0;
-              state_q  <= S_SEND_SPARSE;
+              state_q  <= S_CHECK_BLOCK;
             end else if ((row_q + 1) < m_size_q) begin
               row_q    <= row_q + 1'b1;
               column_q <= '0;
               k_block_q <= 1'b0;
               accumulator_q <= '0;
-              state_q  <= S_SEND_SPARSE;
+              state_q  <= S_CHECK_BLOCK;
             end else begin
               done_q  <= 1'b1;
               state_q <= S_IDLE;

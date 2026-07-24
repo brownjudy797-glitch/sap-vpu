@@ -111,8 +111,11 @@ bounded engine without changing CV32E40X:
 - `VTLOAD`: `rs1` carries one packed word; `rs2[0]` selects input or weight and
   `rs2[2:1]` selects scratchpad index 0 through 3.
 - `VTDMA`: `rs1` carries an aligned SoC RAM base address; `rs2[0]` selects input
-  or weight and `rs2[3:1]` requests one through four consecutive packed words. The
-  instruction responds only after the read-only OBI transfer completes.
+  or weight and `rs2[3:1]` requests one through four consecutive packed words.
+  Legacy descriptors leave `rs2[8]` clear and read every word. With `rs2[8]`
+  set, `rs2[7:4]` is a per-word valid mask: invalid words mark the corresponding
+  scratchpad group invalid without issuing an OBI payload read. The instruction
+  responds after all requested positions have been read or skipped.
 - `VTSTART`: `rs1[2:0]`, `rs1[5:3]`, and `rs1[9:6]` carry M, N, and K.
 - `VTREAD`: waits for and writes back the next row-major output value.
 - `VTSTORE`: `rs1` carries an aligned SoC RAM base address. It writes every
@@ -123,9 +126,15 @@ bounded engine without changing CV32E40X:
 CV-X-IF for a full 2x2x4 tile and a 1x1x3 tail using explicit `VTLOAD`
 instructions. `make tiled-gemm-dma-soc-smoke` proves the alternate
 `RAM -> OBI -> scratchpad -> GEMM -> OBI -> RAM` path for K=3/4/5/8 cases.
+Its sparse K=8 case supplies two four-bit group masks, skips two of eight
+candidate OBI reads, executes four non-empty VDOTs, and checks the resulting
+2x2 tile. The scheduler consumes scratchpad validity and bypasses invalid
+K-blocks before issuing VPU configuration or VDOT commands.
 The current data mover has one outstanding transaction, fills the bounded
 four-word operand and weight scratchpads, and writes row-major results. Larger
-SRAM banks and double buffering remain outside this slice.
+SRAM banks and double buffering remain outside this slice. Metadata currently
+arrives in the VTDMA descriptor; fetching a metadata stream from memory remains
+outside this contract.
 
 ## Subsystem MLP2 Activity Mapping
 

@@ -42,6 +42,7 @@ module sap_vpu_tiled_gemm_tb;
     .load_weight_i(load_weight),
     .load_index_i(load_index),
     .load_data_i(load_data),
+    .load_group_valid_i(1'b1),
     .start_valid_i(start_valid),
     .start_ready_o(start_ready),
     .start_m_i(start_m),

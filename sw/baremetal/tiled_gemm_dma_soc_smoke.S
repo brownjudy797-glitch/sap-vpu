@@ -27,6 +27,13 @@
     sap_r 0x24, 0x0, 0, 5, 0
   .endm
 
+  .macro read_counter selector, expected, fail_label
+    li t0, \selector
+    sap_r 0x1a, 0x0, 28, 5, 0
+    li t4, \expected
+    bne t3, t4, \fail_label
+  .endm
+
   .macro exit_with code
     li t0, EXIT_ADDR
     li t1, \code
@@ -121,6 +128,37 @@ _start:
   li t4, 35
   bne t3, t4, fail_k5
 
+  sap_r 0x1d, 0x0, 0, 0, 0      /* clear core and DMA counters */
+  li t0, 0x01010101
+  sw t0, 0(s0)
+  sw t0, 4(s0)
+  sw t0, 8(s0)
+  sw t0, 12(s0)
+  sw t0, 0(s1)
+  sw t0, 4(s1)
+  sw t0, 8(s1)
+  sw t0, 12(s1)
+  tile_dma RAM_BASE, 0x1b8       /* input, mask 1011, four words */
+  tile_dma RHS_BASE, 0x1d9       /* weight, mask 1101, four words */
+  li t0, 0x212                   /* M=2, N=2, K=8 */
+  sap_r 0x21, 0x0, 0, 5, 0
+  tile_store OUT_BASE
+  li t0, OUT_BASE
+  lw t3, 0(t0)
+  li t4, 4
+  bne t3, t4, fail_sparse_00
+  lw t3, 4(t0)
+  li t4, 8
+  bne t3, t4, fail_sparse_01
+  lw t3, 8(t0)
+  bnez t3, fail_sparse_10
+  lw t3, 12(t0)
+  li t4, 4
+  bne t3, t4, fail_sparse_11
+  read_counter 1, 14, fail_sparse_inst
+  read_counter 2, 4, fail_sparse_mac
+  read_counter 7, 2, fail_sparse_dma
+
   exit_with 1
 
 fail_full_00:
@@ -143,3 +181,17 @@ fail_k8_11:
   exit_with 39
 fail_k5:
   exit_with 40
+fail_sparse_00:
+  exit_with 41
+fail_sparse_01:
+  exit_with 42
+fail_sparse_10:
+  exit_with 43
+fail_sparse_11:
+  exit_with 44
+fail_sparse_inst:
+  exit_with 45
+fail_sparse_mac:
+  exit_with 46
+fail_sparse_dma:
+  exit_with 47
