@@ -25,9 +25,9 @@ The paper must keep these boundaries explicit:
 | CV-X-IF attachment | `corev_min_soc` enables `X_EXT` and connects SAP-VPU through the flattened adapter. | `make lint-corev-soc`, `make hello-smoke` |
 | VPU instruction path | Bare-metal custom-0 smoke covers base, precision, sparse, lane, and counter ops. The core now returns an all-zero effective-bitmap VDOT without entering its multiply/reduction pipeline and exposes a group-skip counter. | `make sim-core`, `make vpu-smoke` |
 | Tiled GEMM path | A bounded M<=2, N<=2, K<=8 scheduler accumulates up to two packed VDOT blocks per output. `VTDMA` fetches up to four packed words from SoC RAM and `VTSTORE` writes row-major results back over a single-outstanding OBI path. Optional descriptor metadata marks invalid scratchpad groups, suppresses their OBI payload reads, and makes the scheduler bypass their VDOT issue. K=3/4/5/8 and a sparse K=8 case pass. | `make tiled-gemm-rtl-check`, `make tiled-gemm-soc-smoke`, `make tiled-gemm-dma-soc-smoke` |
-| Paper workload | TinyViT policy smokes cover INT8/INT4/INT2, bitmap and software-scheduled sparsity, ablations, counters, reuse, and RAM traffic. The default fixture combines real-image activations and `fc1/fc2` slices from the same timm TinyViT-5M checkpoint. The original 2x4x4x2 MLP2 path remains a partial two-layer smoke. A separate system smoke executes two tokens across all 128 FC1 input channels and 128 output channels using eight independently host-loaded 16-channel windows. It checks exact INT32 accumulation, performs CV32E40X bias/Q16/GELU postprocessing, writes runtime GELU bytes to RAM, and verifies dense plus `global_l1_6p25` and `l1_budget_2pct` FC2 sums. Generated per-window count tables check variable VDOT/read skips, and the testbench reconciles physical OBI reads. A host-side pilot covers 6,272 tokens from eight images; fixed 25% sparsity remains only an error/activity ablation. The remaining 384 hidden channels, runtime window swapping, and end-to-end inference remain outside the claim; GELU is not claimed as VPU hardware. | `make tinyvit-paper-table`, `make tinyvit-fc1-k128-smoke`, `make tinyvit-sparsity-study`, `docs/SAP_VPU_TINYVIT_SMOKE_RECORD.md` |
-| FPGA evidence | Current core and complete `sap_vpu_subsystem` pass matched-RTL Artix-7 OOC implementation at 140 MHz. The core uses 1862 LUTs/788 FFs with +0.074 ns WNS; the subsystem uses 2523 LUTs/1303 FFs with +0.025 ns WNS. A matched K=128 FC2 gate-SAIF matrix annotates 6142/6200 routed nets: `global_l1_6p25` cuts VDOTs by 6.25%, reads by 3.125%, and dynamic energy/workload by 4.20%; `l1_budget_2pct` cuts VDOTs by 4.6875%, reads by 2.344%, and energy by 3.15%. Vivado rounds all policy dynamic-power values to 0.014 W, so no average-power delta is claimed. External RAM, CPU, full SoC, and board power remain outside the claim. | `make fpga-vpu-synth`, `make fpga-vpu-subsystem-policy-power-matrix`, `docs/SAP_VPU_FPGA_FLOW.md` |
-| ASIC evidence | The accepted TSMC28 `tt0p9v85c`, 10 ns gate/SAIF checkpoint remains standalone-core evidence. The complete subsystem passes DC analyze/elaborate/link/checks, but DC L-2016.03-SP1 crashes during mapping under three bounded settings, so no complete-subsystem ASIC PPA is claimed. | `make dc-vpu-precheck`, `docs/SAP_VPU_ASIC_FLOW.md` |
+| Paper workload | TinyViT policy smokes cover INT8/INT4/INT2, bitmap and software-scheduled sparsity, ablations, counters, reuse, and RAM traffic. The default fixture combines real-image activations and `fc1/fc2` slices from the same timm TinyViT-5M checkpoint. The original 2x4x4x2 MLP2 path remains a partial two-layer smoke. A system smoke executes two tokens across 128 FC1 input/output channels using eight host-loaded windows and CPU bias/Q16/GELU postprocessing. A separate subsystem path now consumes captured GELU activations across the complete 512-channel FC2 input dimension for two tokens and two outputs, checking dense and two sparse exact aggregates plus transaction counts. A host-side K=128 pilot covers 6,272 tokens from eight images. Full output dimensions, runtime window swapping, and end-to-end inference remain outside the claim; GELU is not claimed as VPU hardware. | `make tinyvit-fc1-k128-smoke`, `make sim-subsystem-k512-policies`, `make tinyvit-sparsity-study`, `docs/SAP_VPU_MODEL_MAPPING_CONTRACT.md` |
+| FPGA evidence | Current core and complete `sap_vpu_subsystem` pass matched-RTL Artix-7 OOC implementation at 140 MHz. The core uses 1862 LUTs/788 FFs with +0.074 ns WNS; the subsystem uses 2523 LUTs/1303 FFs with +0.025 ns WNS. Matched K=128 and K=512 FC2 gate-SAIF matrices annotate 6142/6200 routed nets. On K=512, 6.25% group sparsity cuts VDOTs by 6.25%, reads by 3.125%, and dynamic energy/workload from 723.107 nJ to 692.711 nJ (4.20%). Both selected sparse policies produce the same mask for this fixture. Vivado rounds policy dynamic power to 0.014 W, so no average-power delta is claimed. External RAM, CPU, full SoC, and board power remain outside the claim. | `make fpga-vpu-synth`, `make fpga-vpu-subsystem-k512-policy-power-matrix`, `docs/SAP_VPU_FPGA_FLOW.md` |
+| ASIC evidence | The accepted TSMC28 `tt0p9v85c`, 10 ns gate/SAIF checkpoint remains historical standalone-core evidence. A July 24 audit found no newer DC/PrimeTime or Library Compiler; Nangate Liberty cannot be compiled locally, and current core mapping also crashes DC L-2016.03-SP1 during Pass 1. No current core or subsystem ASIC PPA is claimed. | `docs/SAP_VPU_ASIC_FLOW.md` |
 
 The complete `sap_vpu_subsystem`, including the tiled scheduler, bounded
 scratchpads, and OBI read/write data mover, now has FPGA OOC area/timing
@@ -39,10 +39,10 @@ Software bias/GELU execution, FC2 window partials, and their checked host-side
 sum are now covered for the K=128, 128-output slice. One executable runs against
 eight generated 16-channel model images while the simulated SoC RAM remains
 4 KiB. This proves bounded host-loaded window reuse and host aggregation, not
-runtime window swapping or an external-memory loader. Full output dimensions
-and accumulation across all 512 FC2 input channels remain subsequent
-paper-evidence steps. A matched subsystem dynamic-energy reduction is now
-measured for the K=128 FC2 slice, but it is not end-to-end model energy.
+runtime window swapping or an external-memory loader. The separate gate path now
+accumulates all 512 FC2 input channels from captured GELU values and measures a
+matched subsystem dynamic-energy reduction, but full output dimensions and
+end-to-end model energy remain subsequent work.
 
 ## Contribution Spine
 
@@ -73,10 +73,10 @@ custom instruction, TinyML, and edge-AI accelerator work.
 
 ## Next Engineering Sequence
 
-1. Move complete-subsystem ASIC mapping to a compatible DC/library installation
-   before publishing an ASIC area delta.
-2. Extend the matched kernel evidence from K=128 to the full 512-channel FC2
-   accumulation or an equivalently justified multi-window experiment.
+1. Move current core/subsystem ASIC mapping to a compatible DC plus validated
+   timing-library installation before publishing any new ASIC area delta.
+2. Extend the K=512 policy/error study from two outputs and one image to a
+   representative multi-image, multi-output sample.
 3. Replace register scratchpads with explicit SRAM-macro assumptions only after
    capacity and traffic experiments justify the change.
 

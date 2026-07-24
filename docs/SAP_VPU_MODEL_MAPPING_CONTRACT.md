@@ -154,6 +154,23 @@ outputs. `make fpga-vpu-subsystem-saif-power` repeats this mapping for the
 gate-level activity window. The testbench-side ReLU/repacking work is not part
 of synthesized subsystem power.
 
+## Full-K FC2 Activity Mapping
+
+The tracked activation fixture also contains a `fc2_k512` slice with two real
+model GELU token vectors and the complete 512-channel FC2 weight rows for two
+outputs. Inputs and weights use separate symmetric INT8 scales; the generated
+2x2 INT32 golden is recomputed from the stored matrices before simulation.
+
+`make sim-subsystem-k512-policies` maps each 2x512x2 workload as 64 consecutive
+M=2, N=2, K=8 tiles and accumulates their writebacks in the testbench boundary.
+Dense execution issues 512 VDOTs, 512 OBI reads, and 256 writes. The selected
+6.25% structured masks issue 480 VDOTs and 496 reads while preserving the same
+write count. Both sparse policies check their own exact masked aggregate.
+
+This is the complete FC2 input dimension, not a complete TinyViT layer: only two
+tokens and two output channels are covered, FC1/GELU are supplied by the captured
+model activation, and FC2 bias is outside the integer dot-product boundary.
+
 ## Reproduction
 
 ```sh
@@ -169,6 +186,8 @@ make tinyvit-fixture
 make tinyvit-smoke
 make tinyvit-fc1-k128-smoke
 make sim-subsystem-mlp2
+make sim-subsystem-k512-policies
+make fpga-vpu-subsystem-k512-policy-power-matrix
 ```
 
 `tinyvit-checkpoint-fixture` requires the downloaded checkpoint at

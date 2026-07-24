@@ -5,7 +5,8 @@ param(
   [string]$PostRouteDcp = 'work\fpga\vpu_subsystem_140\checkpoints\post_route.dcp',
   [double]$ClockMhz = 140.0,
   [int]$Iterations = 128,
-  [ValidateSet('mlp2_dense', 'fc2_dense', 'fc2_global_l1_6p25', 'fc2_l1_budget_2pct')]
+  [ValidateSet('mlp2_dense', 'fc2_dense', 'fc2_global_l1_6p25', 'fc2_l1_budget_2pct',
+               'fc2_k512_dense', 'fc2_k512_global_l1_6p25', 'fc2_k512_l1_budget_2pct')]
   [string]$Policy = 'mlp2_dense'
 )
 
@@ -36,6 +37,7 @@ $xsimDir = Join-Path $OutDir 'xsim'
 $powerDir = Join-Path $OutDir 'power'
 $fixtureDir = 'work\tinyvit\fixture'
 $fc2FixtureDir = 'work\tinyvit_fc1_k128'
+$fc2K512FixtureDir = 'work\tinyvit_fc2_k512'
 $fixtureMetadataRel = Join-Path $fixtureDir 'tinyvit_mlp2_fixture_metadata.json'
 $vcdRel = Join-Path $OutDir 'sap_vpu_subsystem_gate.vcd'
 $saifRel = Join-Path $OutDir 'sap_vpu_subsystem_gate.saif'
@@ -48,6 +50,7 @@ foreach ($path in @(
   (Join-Path $repo $PostRouteDcp),
   (Join-Path $repo (Join-Path $fixtureDir 'tinyvit_mlp2_fixture_tb.svh')),
   (Join-Path $repo (Join-Path $fc2FixtureDir 'tinyvit_fc2_k128_policy_tb.svh')),
+  (Join-Path $repo (Join-Path $fc2K512FixtureDir 'tinyvit_fc2_k512_policy_tb.svh')),
   (Join-Path $repo $fixtureMetadataRel),
   (Join-Path $repo 'rtl\sap_vpu_pkg.sv'),
   (Join-Path $repo 'tb\sap_vpu_subsystem_gate_tb.sv'),
@@ -88,7 +91,7 @@ if (!(Test-Path -LiteralPath $netlistPath) -or (Get-Item -LiteralPath $netlistPa
 }
 
 Invoke-VivadoCmd (
-  'pushd "{0}" && xvlog -sv -i "!root!\{2}" -i "!root!\{3}" "!root!\rtl\sap_vpu_pkg.sv" "!root!\tb\sap_vpu_subsystem_gate_tb.sv" "!root!\{1}" && xelab -debug typical -L unisims_ver sap_vpu_subsystem_gate_tb glbl -s sap_vpu_subsystem_gate_tb_snapshot && popd' -f $xsimDir, $netlistRel, $fixtureDir, $fc2FixtureDir
+  'pushd "{0}" && xvlog -sv -i "!root!\{2}" -i "!root!\{3}" -i "!root!\{4}" "!root!\rtl\sap_vpu_pkg.sv" "!root!\tb\sap_vpu_subsystem_gate_tb.sv" "!root!\{1}" && xelab -debug typical -L unisims_ver sap_vpu_subsystem_gate_tb glbl -s sap_vpu_subsystem_gate_tb_snapshot && popd' -f $xsimDir, $netlistRel, $fixtureDir, $fc2FixtureDir, $fc2K512FixtureDir
 ) (Join-Path $OutDir 'compile.log')
 
 Invoke-VivadoCmd (
@@ -184,6 +187,27 @@ switch ($Policy) {
     $vdotsPerIteration = 122
     $readsPerIteration = 125
     $writesPerIteration = 64
+  }
+  'fc2_k512_dense' {
+    $workload = 'tinyvit_fc2_2x512x2'
+    $tilesPerIteration = 64
+    $vdotsPerIteration = 512
+    $readsPerIteration = 512
+    $writesPerIteration = 256
+  }
+  'fc2_k512_global_l1_6p25' {
+    $workload = 'tinyvit_fc2_2x512x2'
+    $tilesPerIteration = 64
+    $vdotsPerIteration = 480
+    $readsPerIteration = 496
+    $writesPerIteration = 256
+  }
+  'fc2_k512_l1_budget_2pct' {
+    $workload = 'tinyvit_fc2_2x512x2'
+    $tilesPerIteration = 64
+    $vdotsPerIteration = 480
+    $readsPerIteration = 496
+    $writesPerIteration = 256
   }
 }
 $tiles = $Iterations * $tilesPerIteration

@@ -5,6 +5,7 @@ module sap_vpu_subsystem_gate_tb;
 
 `include "tinyvit_mlp2_fixture_tb.svh"
 `include "tinyvit_fc2_k128_policy_tb.svh"
+`include "tinyvit_fc2_k512_policy_tb.svh"
 
   localparam realtime DEFAULT_CLK_HALF_PERIOD_NS = 3.5715;
   localparam int unsigned DEFAULT_ITERATIONS = 128;
@@ -18,10 +19,16 @@ module sap_vpu_subsystem_gate_tb;
   localparam logic [31:0] FC2_K128_INPUT_BASE = 32'h0000_0800;
   localparam logic [31:0] FC2_K128_WEIGHT_BASE = 32'h0000_0900;
   localparam logic [31:0] FC2_K128_OUT_BASE = 32'h0000_0a00;
+  localparam logic [31:0] FC2_K512_INPUT_BASE = 32'h0000_1000;
+  localparam logic [31:0] FC2_K512_WEIGHT_BASE = 32'h0000_1800;
+  localparam logic [31:0] FC2_K512_OUT_BASE = 32'h0000_2000;
   localparam int unsigned POLICY_MLP2_DENSE = 0;
   localparam int unsigned POLICY_FC2_DENSE = 1;
   localparam int unsigned POLICY_FC2_GLOBAL = 2;
   localparam int unsigned POLICY_FC2_BUDGET = 3;
+  localparam int unsigned POLICY_FC2_K512_DENSE = 4;
+  localparam int unsigned POLICY_FC2_K512_GLOBAL = 5;
+  localparam int unsigned POLICY_FC2_K512_BUDGET = 6;
 
   logic        clk_i;
   logic        rst_ni;
@@ -50,6 +57,7 @@ module sap_vpu_subsystem_gate_tb;
   logic [31:0] fc1_output_1 [0:3];
   logic [31:0] fc2_output [0:3];
   logic [31:0] fc2_k128_output [0:3];
+  logic [31:0] fc2_k512_output [0:3];
   logic [31:0] hidden_words [0:1];
   int unsigned read_transactions;
   int unsigned write_transactions;
@@ -103,6 +111,7 @@ module sap_vpu_subsystem_gate_tb;
         fc1_output_1[i] <= '0;
         fc2_output[i]   <= '0;
         fc2_k128_output[i] <= '0;
+        fc2_k512_output[i] <= '0;
       end
     end else begin
       dma_rvalid_i <= 1'b0;
@@ -131,6 +140,10 @@ module sap_vpu_subsystem_gate_tb;
               FC2_K128_OUT_BASE + 4:  fc2_k128_output[1] <= dma_wdata_o;
               FC2_K128_OUT_BASE + 8:  fc2_k128_output[2] <= dma_wdata_o;
               FC2_K128_OUT_BASE + 12: fc2_k128_output[3] <= dma_wdata_o;
+              FC2_K512_OUT_BASE + 0:  fc2_k512_output[0] <= dma_wdata_o;
+              FC2_K512_OUT_BASE + 4:  fc2_k512_output[1] <= dma_wdata_o;
+              FC2_K512_OUT_BASE + 8:  fc2_k512_output[2] <= dma_wdata_o;
+              FC2_K512_OUT_BASE + 12: fc2_k512_output[3] <= dma_wdata_o;
               default:            dma_err_i <= 1'b1;
             endcase
           end
@@ -141,6 +154,12 @@ module sap_vpu_subsystem_gate_tb;
           end else if (dma_addr_o >= FC2_K128_WEIGHT_BASE &&
                        dma_addr_o < FC2_K128_WEIGHT_BASE + 256) begin
             dma_rdata_i <= TINYVIT_FC2_K128_WEIGHT_WORDS[(dma_addr_o - FC2_K128_WEIGHT_BASE) >> 2];
+          end else if (dma_addr_o >= FC2_K512_INPUT_BASE &&
+                       dma_addr_o < FC2_K512_INPUT_BASE + 1024) begin
+            dma_rdata_i <= TINYVIT_FC2_K512_INPUT_WORDS[(dma_addr_o - FC2_K512_INPUT_BASE) >> 2];
+          end else if (dma_addr_o >= FC2_K512_WEIGHT_BASE &&
+                       dma_addr_o < FC2_K512_WEIGHT_BASE + 1024) begin
+            dma_rdata_i <= TINYVIT_FC2_K512_WEIGHT_WORDS[(dma_addr_o - FC2_K512_WEIGHT_BASE) >> 2];
           end else begin
             case (dma_addr_o)
               TOKEN_BASE + 0:      dma_rdata_i <= TINYVIT_MLP2_WORDS[0];
@@ -237,6 +256,7 @@ module sap_vpu_subsystem_gate_tb;
         FC1_OUT1_BASE: output_word = fc1_output_1[index];
         FC2_OUT_BASE:  output_word = fc2_output[index];
         FC2_K128_OUT_BASE: output_word = fc2_k128_output[index];
+        FC2_K512_OUT_BASE: output_word = fc2_k512_output[index];
         default:       output_word = 'x;
       endcase
     end
@@ -330,6 +350,51 @@ module sap_vpu_subsystem_gate_tb;
     end
   endfunction
 
+  function automatic logic [3:0] fc2_k512_policy_mask(
+    input int unsigned policy,
+    input int unsigned chunk
+  );
+    begin
+      case (policy)
+        POLICY_FC2_K512_GLOBAL:
+          fc2_k512_policy_mask = TINYVIT_FC2_K512_GLOBAL_L1_6P25_MASKS[chunk];
+        POLICY_FC2_K512_BUDGET:
+          fc2_k512_policy_mask = TINYVIT_FC2_K512_L1_BUDGET_2PCT_MASKS[chunk];
+        default: fc2_k512_policy_mask = 4'hf;
+      endcase
+    end
+  endfunction
+
+  function automatic logic [31:0] fc2_k512_policy_expected(
+    input int unsigned policy,
+    input int unsigned index
+  );
+    begin
+      case (policy)
+        POLICY_FC2_K512_GLOBAL:
+          fc2_k512_policy_expected = TINYVIT_FC2_K512_GLOBAL_L1_6P25_EXPECTED[index];
+        POLICY_FC2_K512_BUDGET:
+          fc2_k512_policy_expected = TINYVIT_FC2_K512_L1_BUDGET_2PCT_EXPECTED[index];
+        default: fc2_k512_policy_expected = TINYVIT_FC2_K512_DENSE_EXPECTED[index];
+      endcase
+    end
+  endfunction
+
+  function automatic int unsigned fc2_k512_active_groups(input int unsigned policy);
+    int unsigned groups;
+    logic [3:0] mask;
+    begin
+      groups = 0;
+      for (int unsigned chunk = 0; chunk < 64; chunk++) begin
+        mask = fc2_k512_policy_mask(policy, chunk);
+        for (int unsigned group = 0; group < 4; group++) begin
+          groups += mask[group] ? 1 : 0;
+        end
+      end
+      return groups;
+    end
+  endfunction
+
   task automatic run_fc2_k128(
     input int unsigned iteration,
     input int unsigned policy
@@ -359,6 +424,40 @@ module sap_vpu_subsystem_gate_tb;
       for (int output_index = 0; output_index < 4; output_index++) begin
         if (sums[output_index] !== $signed(fc2_policy_expected(policy, output_index))) begin
           gate_fail("K=128 FC2 aggregate mismatch");
+        end
+      end
+    end
+  endtask
+
+  task automatic run_fc2_k512(
+    input int unsigned iteration,
+    input int unsigned policy
+  );
+    logic signed [31:0] sums [0:3];
+    logic [3:0] mask;
+    logic [31:0] lhs_descriptor;
+    logic [31:0] rhs_descriptor;
+    begin
+      for (int output_index = 0; output_index < 4; output_index++) begin
+        sums[output_index] = '0;
+      end
+      for (int unsigned chunk = 0; chunk < 64; chunk++) begin
+        mask = fc2_k512_policy_mask(policy, chunk);
+        lhs_descriptor = policy == POLICY_FC2_K512_DENSE ? 32'd8 : 32'h0000_01f8;
+        rhs_descriptor = policy == POLICY_FC2_K512_DENSE ? 32'd9 : {23'd0, 1'b1, mask, 4'h9};
+        run_tile_descriptors(
+          (iteration * 64) + chunk,
+          FC2_K512_INPUT_BASE + (chunk * 16), lhs_descriptor,
+          FC2_K512_WEIGHT_BASE + (chunk * 16), rhs_descriptor,
+          FC2_K512_OUT_BASE
+        );
+        for (int output_index = 0; output_index < 4; output_index++) begin
+          sums[output_index] += $signed(fc2_k512_output[output_index]);
+        end
+      end
+      for (int output_index = 0; output_index < 4; output_index++) begin
+        if (sums[output_index] !== $signed(fc2_k512_policy_expected(policy, output_index))) begin
+          gate_fail("K=512 FC2 aggregate mismatch");
         end
       end
     end
@@ -435,6 +534,24 @@ module sap_vpu_subsystem_gate_tb;
         expected_reads = iterations * 125;
         expected_writes = iterations * 64;
       end
+      "fc2_k512_dense": begin
+        policy_id = POLICY_FC2_K512_DENSE;
+        expected_vdots = iterations * 512;
+        expected_reads = iterations * 512;
+        expected_writes = iterations * 256;
+      end
+      "fc2_k512_global_l1_6p25": begin
+        policy_id = POLICY_FC2_K512_GLOBAL;
+        expected_vdots = iterations * fc2_k512_active_groups(policy_id) * 2;
+        expected_reads = iterations * (256 + fc2_k512_active_groups(policy_id));
+        expected_writes = iterations * 256;
+      end
+      "fc2_k512_l1_budget_2pct": begin
+        policy_id = POLICY_FC2_K512_BUDGET;
+        expected_vdots = iterations * fc2_k512_active_groups(policy_id) * 2;
+        expected_reads = iterations * (256 + fc2_k512_active_groups(policy_id));
+        expected_writes = iterations * 256;
+      end
       default: $fatal(1, "unsupported policy: %s", activity_policy);
     endcase
 
@@ -448,6 +565,8 @@ module sap_vpu_subsystem_gate_tb;
     for (int unsigned i = 0; i < iterations; i++) begin
       if (policy_id == POLICY_MLP2_DENSE) begin
         run_mlp2(i);
+      end else if (policy_id >= POLICY_FC2_K512_DENSE) begin
+        run_fc2_k512(i, policy_id);
       end else begin
         run_fc2_k128(i, policy_id);
       end

@@ -23,6 +23,8 @@ DEFAULT_IMAGE_URL = (
 TOKEN_INDICES = (0, 1)
 FC1_K128_OUTPUT_CHANNELS = 128
 FC1_GELU_REQUANT_SHIFT = 16
+FC2_K512_INPUT_CHANNELS = 512
+FC2_K512_OUTPUT_CHANNELS = 2
 
 
 def sha256(path: Path) -> str:
@@ -202,6 +204,22 @@ def build_fixture(checkpoint: Path, image: Path, image_url: str) -> dict[str, An
     )
     fc2_float_partial = fc1_k128_actual_gelu @ fc2_partial_weight.T
 
+    fc2_k512_input = captured["fc2_input"][
+        0, list(TOKEN_INDICES), :FC2_K512_INPUT_CHANNELS
+    ]
+    fc2_k512_weight = mlp.fc2.weight[
+        :FC2_K512_OUTPUT_CHANNELS, :FC2_K512_INPUT_CHANNELS
+    ].detach()
+    fc2_k512_input_int8, fc2_k512_input_scale = quantize_symmetric(fc2_k512_input)
+    fc2_k512_weight_int8, fc2_k512_weight_scale = quantize_symmetric(fc2_k512_weight)
+    fc2_k512_accumulator = fc2_k512_input_int8 @ fc2_k512_weight_int8.T
+    fc2_k512_dequantized = (
+        fc2_k512_accumulator.to(torch.float32)
+        * fc2_k512_input_scale
+        * fc2_k512_weight_scale
+    )
+    fc2_k512_float_no_bias = fc2_k512_input @ fc2_k512_weight.T
+
     return {
         "schema": "sap-vpu-tinyvit-mlp2-int8-v1",
         "provenance": {
@@ -239,6 +257,13 @@ def build_fixture(checkpoint: Path, image: Path, image_url: str) -> dict[str, An
                 ),
                 "fc2_partial_weights": (
                     f"{LAYER_ID}.fc2.weight[0:2,0:{FC1_K128_OUTPUT_CHANNELS}]"
+                ),
+                "fc2_k512_input": (
+                    f"{LAYER_ID}.fc2_input[0,{list(TOKEN_INDICES)},0:{FC2_K512_INPUT_CHANNELS}]"
+                ),
+                "fc2_k512_weights": (
+                    f"{LAYER_ID}.fc2.weight[0:{FC2_K512_OUTPUT_CHANNELS},"
+                    f"0:{FC2_K512_INPUT_CHANNELS}]"
                 ),
             },
             "model_semantics": {
@@ -349,6 +374,38 @@ def build_fixture(checkpoint: Path, image: Path, image_url: str) -> dict[str, An
                 ),
                 "integer_vs_full_model_error": error_metrics(
                     fc1_k128_actual, fc1_k128_dequantized
+                ),
+            },
+        },
+        "fc2_k512": {
+            "schema": "sap-vpu-tinyvit-fc2-k512-int8-v1",
+            "shape": {
+                "tokens": len(TOKEN_INDICES),
+                "input_channels": FC2_K512_INPUT_CHANNELS,
+                "output_channels": FC2_K512_OUTPUT_CHANNELS,
+            },
+            "chunk_k": 8,
+            "input_tokens": as_list(fc2_k512_input_int8),
+            "weights": as_list(fc2_k512_weight_int8),
+            "expected_integer_output": as_list(fc2_k512_accumulator),
+            "quantization": {
+                "scheme": "symmetric-int8",
+                "input_scale": fc2_k512_input_scale,
+                "weight_scale": fc2_k512_weight_scale,
+                "input_zero_point": 0,
+                "weight_zero_point": 0,
+                "rounding": "nearest-ties-away-from-zero",
+            },
+            "float_reference": {
+                "selected_outputs_no_bias": as_list(fc2_k512_float_no_bias),
+                "actual_outputs_with_bias": as_list(
+                    captured["fc2_output"][
+                        0, list(TOKEN_INDICES), :FC2_K512_OUTPUT_CHANNELS
+                    ]
+                ),
+                "integer_path_dequantized": as_list(fc2_k512_dequantized),
+                "integer_vs_no_bias_error": error_metrics(
+                    fc2_k512_float_no_bias, fc2_k512_dequantized
                 ),
             },
         },

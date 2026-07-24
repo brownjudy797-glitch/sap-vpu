@@ -204,8 +204,9 @@ def fc2_lowest_l1_group_masks(
 ) -> list[int]:
     if (drop_count is None) == (l1_budget is None):
         raise ValueError("select exactly one lowest-L1 policy")
+    channels = len(weights[0])
     groups = []
-    for chunk in range(OUTPUT_CHANNELS // CHUNK_K):
+    for chunk in range(channels // CHUNK_K):
         for output in range(FC2_OUTPUT_CHANNELS):
             for group in range(CHUNK_K // 4):
                 base = chunk * CHUNK_K + group * 4
@@ -224,7 +225,7 @@ def fc2_lowest_l1_group_masks(
             dropped_l1 += group[0]
     else:
         selected = groups[:drop_count]
-    masks = [(1 << FC2_GROUPS_PER_CHUNK) - 1] * (OUTPUT_CHANNELS // CHUNK_K)
+    masks = [(1 << FC2_GROUPS_PER_CHUNK) - 1] * (channels // CHUNK_K)
     for _norm, chunk, output, group in selected:
         masks[chunk] &= ~(1 << (output * (CHUNK_K // 4) + group))
     return masks
@@ -246,7 +247,7 @@ def fc2_masked_window_outputs(
             ]
             for token in range(TOKENS)
         ]
-        for base in range(0, OUTPUT_CHANNELS, WINDOW_OUTPUT_CHANNELS)
+        for base in range(0, len(weights[0]), WINDOW_OUTPUT_CHANNELS)
     ]
 
 

@@ -68,6 +68,17 @@ The matrix runs `fc2_dense`, `fc2_global_l1_6p25`, and
 `fc2_l1_budget_2pct`. Each policy executes 32 identical 2x128x2 workloads;
 only descriptor metadata and the resulting group skips differ.
 
+Run the full-input-dimension K=512 FC2 matrix with the same netlist and routed
+checkpoint:
+
+```sh
+make fpga-vpu-subsystem-k512-policy-power-matrix
+```
+
+This target uses eight 2x512x2 workloads per policy, keeping the activity window
+at 512 tiles. Its operands are quantized real TinyViT GELU activations and the
+complete 512-channel FC2 weight rows for two selected outputs.
+
 Run power from an existing routed checkpoint with VPU smoke SAIF activity:
 
 ```sh
@@ -142,6 +153,7 @@ The flow writes:
 - `work/fpga/vpu_subsystem_140_saif_power/fpga_vpu_subsystem_power.csv`
 - `work/fpga/vpu_subsystem_140_saif_power/power/reports/post_route_saif_power.rpt`
 - `work/fpga/vpu_subsystem_140_policy_power/<policy>/fpga_vpu_subsystem_power.csv`
+- `work/fpga/vpu_subsystem_140_k512_policy_power/<policy>/fpga_vpu_subsystem_power.csv`
 - `work/fpga/vpu_core/checkpoints/post_synth.dcp`
 - `work/fpga/vpu_core/checkpoints/post_route.dcp`
 
@@ -188,6 +200,9 @@ The flow writes:
   for all policies. It changes descriptor metadata only. Compare dynamic energy
   per workload; per-VDOT energy increases when fixed scheduler overhead is
   divided by fewer issued VDOTs.
+- The K=512 matrix covers the complete FC2 input dimension but only two tokens
+  and two output channels. It starts from captured model GELU values, so FC1,
+  GELU generation, output bias, CPU, and external memory energy are excluded.
 - The runner requires a passing RAM read/write/result check, at least 99% routed
   net annotation, High confidence, and no Vivado clock/reset activity warning.
 - Generated reports remain under ignored `work/` and must not be committed.
@@ -262,6 +277,21 @@ VDOT/read/write counts before power analysis. Global 6.25% group sparsity remove
 of VDOTs and 2.344% of RAM reads. Vivado rounds all three dynamic-power values
 to 0.014 W, so the supported claim is lower matched-workload latency and dynamic
 energy, not a separately resolved average-power reduction.
+
+Current full-input-dimension K=512 FC2 gate-SAIF matrix on the same routed
+checkpoint:
+
+| Policy | Iterations | Tiles | VDOTs | RAM reads | RAM writes | Duration ps | Nets matched | Dynamic W | Dynamic pJ/workload | Energy reduction |
+| --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
+| `fc2_k512_dense` | 8 | 512 | 4096 | 4096 | 2048 | 413,203,981 | 6142/6200 (99.06%) | 0.014 | 723,106.967 | baseline |
+| `fc2_k512_global_l1_6p25` | 8 | 512 | 3840 | 3968 | 2048 | 395,834,637 | 6142/6200 (99.06%) | 0.014 | 692,710.615 | 4.20% |
+| `fc2_k512_l1_budget_2pct` | 8 | 512 | 3840 | 3968 | 2048 | 395,834,637 | 6142/6200 (99.06%) | 0.014 | 692,710.615 | 4.20% |
+
+For this fixture, the 2% L1-budget rule selects the same 16 of 256 groups as
+the global 6.25% rule, so their masks, outputs, transaction counts, and activity
+are identical. The result proves full-K descriptor consumption and matched
+energy reduction; it is not a multi-image accuracy result or full-layer output
+coverage.
 
 Current local SAIF power-flow smoke on the 140 MHz checkpoint:
 

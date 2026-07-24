@@ -217,6 +217,21 @@ newer compatible Design Compiler release or a validated regenerated TSMC28
 `.db`; only then should the 10 ns subsystem run and matched core comparison be
 repeated.
 
+### 2026-07-24 Toolchain Audit
+
+The installed Synopsys set contains only DC `L-2016.03-SP1`, PrimeTime
+`M-2016.12-SP1`, and VCS/VCS-MX `O-2018.09-SP2`. No newer compiler or Library
+Compiler is installed. DC rejects the Nangate45 Liberty input with `LCSH-3`, so
+that library cannot be converted into a timing `.db` locally.
+
+A controlled current-core run using TSMC28 `tt0p9v85c`, 10 ns,
+`COMPILE_ULTRA=0`, `USE_DW=0`, and power reporting disabled still emitted
+`DB-1`/`LDB-4` while loading the library and then crashed in Pass 1 mapping.
+Therefore the problem is not limited to subsystem size. Further retries on this
+installation are stopped; a compatible DC/Library Compiler installation or a
+validated regenerated `.db` is required before current-RTL ASIC evidence can
+resume.
+
 ## Local Checkpoint
 
 Current local TSMC28 `tt0p9v85c`, 10 ns, standalone `sap_vpu_core` evidence:

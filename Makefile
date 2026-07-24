@@ -65,6 +65,8 @@ TINYVIT_FC1_K128_HEX := $(TINYVIT_FC1_K128_BUILD_DIR)/sap_vpu_tinyvit_fc1_k128.h
 TINYVIT_FC1_K128_ASM := $(TINYVIT_FC1_K128_BUILD_DIR)/tinyvit_fc1_k128_fixture.inc
 TINYVIT_FC1_K128_SVH := $(TINYVIT_FC1_K128_BUILD_DIR)/tinyvit_fc2_k128_policy_tb.svh
 TINYVIT_FC1_K128_WINDOWS := 0 1 2 3 4 5 6 7
+TINYVIT_FC2_K512_BUILD_DIR ?= $(ROOT_DIR)/work/tinyvit_fc2_k512
+TINYVIT_FC2_K512_SVH := $(TINYVIT_FC2_K512_BUILD_DIR)/tinyvit_fc2_k512_policy_tb.svh
 VPU_CORE_ACTIVITY_DIR ?= $(ROOT_DIR)/work/activity/vpu_core
 VPU_CORE_VCD ?= $(VPU_CORE_ACTIVITY_DIR)/sap_vpu_core_tb.vcd
 VPU_CORE_SAIF ?= $(VPU_CORE_ACTIVITY_DIR)/sap_vpu_core.saif
@@ -100,6 +102,8 @@ FPGA_SUBSYSTEM_CLOCK_MHZ ?= 140
 FPGA_SUBSYSTEM_ITERATIONS ?= 128
 FPGA_SUBSYSTEM_POLICY_POWER_DIR ?= work\fpga\vpu_subsystem_140_policy_power
 FPGA_SUBSYSTEM_POLICY_ITERATIONS ?= 32
+FPGA_SUBSYSTEM_K512_POLICY_POWER_DIR ?= work\fpga\vpu_subsystem_140_k512_policy_power
+FPGA_SUBSYSTEM_K512_POLICY_ITERATIONS ?= 8
 DC_CLOCK_PERIOD ?= 10.0
 DC_DESIGN_NAME ?= sap_vpu_core
 DC_WORK_DIR ?= $(ROOT_DIR)/work/dc/tsmc28/vpu_core
@@ -123,7 +127,7 @@ DC_GATE_POWER_REPORT_DIR ?= $(DC_GATE_SIM_DIR)/reports_power
 
 .DEFAULT_GOAL := help
 
-.PHONY: help plan-check corev-fetch corev-rtl-flist lint-adapter lint-core lint-tiled-gemm lint-subsystem lint lint-corev-soc sim-adapter sim-core sim-tiled-gemm sim-core-vcd sim-hello sim-vpu sim-tiled-gemm-soc sim-tiled-gemm-dma-soc sim-tinyvit-fc1-k128 sim-tinyvit sim-tinyvit-vcd sim-subsystem-mlp2 sim-subsystem-sparse-policies sim encoding-check legacy-summary hello-build hello-smoke vpu-build vpu-smoke tiled-gemm-soc-build tiled-gemm-soc-smoke tiled-gemm-dma-soc-build tiled-gemm-dma-soc-smoke tinyvit-fc1-k128-fixture tinyvit-fc1-k128-build tinyvit-fc1-k128-smoke tinyvit-checkpoint-fixture tinyvit-activation-fixture tinyvit-sparsity-study tinyvit-fixture tinyvit-fixture-check tiled-gemm-check tiled-gemm-rtl-check tinyvit-build tinyvit-smoke tinyvit-summary tinyvit-paper-table fpga-vpu-synth fpga-vpu-funcsim-netlist fpga-vpu-funcsim-vcd fpga-vpu-funcsim-saif fpga-vpu-funcsim-saif-power fpga-vpu-policy-power-matrix fpga-vpu-subsystem-saif-power fpga-vpu-subsystem-policy-power-matrix fpga-vpu-saif-power fpga-vpu-summary dc-vpu-gate-netlist-check dc-vpu-gate-synth dc-vpu-gate-sim dc-vpu-gate-saif-power dc-vpu-precheck dc-vpu-synth dc-vpu-power dc-vpu-saif-power dc-vpu-tinyvit-saif-power dc-vpu-policy-power-matrix dc-vpu-summary
+.PHONY: help plan-check corev-fetch corev-rtl-flist lint-adapter lint-core lint-tiled-gemm lint-subsystem lint lint-corev-soc sim-adapter sim-core sim-tiled-gemm sim-core-vcd sim-hello sim-vpu sim-tiled-gemm-soc sim-tiled-gemm-dma-soc sim-tinyvit-fc1-k128 sim-tinyvit sim-tinyvit-vcd sim-subsystem-mlp2 sim-subsystem-sparse-policies sim-subsystem-k512-policies sim encoding-check legacy-summary hello-build hello-smoke vpu-build vpu-smoke tiled-gemm-soc-build tiled-gemm-soc-smoke tiled-gemm-dma-soc-build tiled-gemm-dma-soc-smoke tinyvit-fc1-k128-fixture tinyvit-fc2-k512-fixture tinyvit-fc1-k128-build tinyvit-fc1-k128-smoke tinyvit-checkpoint-fixture tinyvit-activation-fixture tinyvit-sparsity-study tinyvit-fixture tinyvit-fixture-check tiled-gemm-check tiled-gemm-rtl-check tinyvit-build tinyvit-smoke tinyvit-summary tinyvit-paper-table fpga-vpu-synth fpga-vpu-funcsim-netlist fpga-vpu-funcsim-vcd fpga-vpu-funcsim-saif fpga-vpu-funcsim-saif-power fpga-vpu-policy-power-matrix fpga-vpu-subsystem-saif-power fpga-vpu-subsystem-policy-power-matrix fpga-vpu-subsystem-k512-policy-power-matrix fpga-vpu-saif-power fpga-vpu-summary dc-vpu-gate-netlist-check dc-vpu-gate-synth dc-vpu-gate-sim dc-vpu-gate-saif-power dc-vpu-precheck dc-vpu-synth dc-vpu-power dc-vpu-saif-power dc-vpu-tinyvit-saif-power dc-vpu-policy-power-matrix dc-vpu-summary
 
 help:
 	@printf '%s\n' \
@@ -140,6 +144,7 @@ help:
 	  'make sim-tinyvit-vcd' \
 	  'make sim-subsystem-mlp2' \
 	  'make sim-subsystem-sparse-policies' \
+	  'make sim-subsystem-k512-policies' \
 	  'make encoding-check' \
 	  'make legacy-summary [LEGACY_RESULTS_DIR=../nutvpu/results]' \
 	  'make hello-build' \
@@ -164,6 +169,7 @@ help:
 	  'make fpga-vpu-policy-power-matrix' \
 	  'make fpga-vpu-subsystem-saif-power' \
 	  'make fpga-vpu-subsystem-policy-power-matrix' \
+	  'make fpga-vpu-subsystem-k512-policy-power-matrix' \
 	  'make fpga-vpu-saif-power [FPGA_SAIF_DCP=work/fpga/vpu_core_sliced_140/checkpoints/post_route.dcp]' \
 	  'make fpga-vpu-summary' \
 	  'make dc-vpu-gate-netlist-check [DC_NETLIST_DIR=netlist/dc/tsmc28/vpu_core]' \
@@ -214,6 +220,7 @@ plan-check:
 	test -x scripts/export_tinyvit_activation_fixture.py
 	test -x scripts/evaluate_tinyvit_fc2_sparsity.py
 	test -x scripts/prepare_tinyvit_fc1_k128.py
+	test -x scripts/prepare_tinyvit_fc2_k512.py
 	test -x scripts/check_tinyvit_fc2_window_aggregate.py
 	test -x scripts/check_tiled_gemm_reference.py
 	test -f docs/SAP_VPU_MODEL_MAPPING_CONTRACT.md
@@ -544,6 +551,11 @@ tinyvit-fc1-k128-fixture:
 	    --window "$${window}"; \
 	done
 
+tinyvit-fc2-k512-fixture:
+	mkdir -p "$(TINYVIT_FC2_K512_BUILD_DIR)"
+	$(PYTHON) scripts/prepare_tinyvit_fc2_k512.py "$(TINYVIT_FIXTURE_JSON)" \
+	  --svh "$(TINYVIT_FC2_K512_SVH)"
+
 tinyvit-fc1-k128-build: tinyvit-fc1-k128-fixture
 	$(RISCV_AS) -I "$(TINYVIT_FC1_K128_BUILD_DIR)" -march=rv32imc -mabi=ilp32 \
 	  -o "$(TINYVIT_FC1_K128_BUILD_DIR)/tinyvit_fc1_k128_smoke.o" sw/baremetal/tinyvit_fc1_k128_smoke.S
@@ -583,12 +595,13 @@ tinyvit-fixture:
 tinyvit-fixture-check:
 	$(PYTHON) scripts/prepare_tinyvit_mlp2_fixture.py --self-test
 	$(PYTHON) scripts/prepare_tinyvit_fc1_k128.py --self-test
+	$(PYTHON) scripts/prepare_tinyvit_fc2_k512.py --self-test
 	$(PYTHON) scripts/export_tinyvit_checkpoint_fixture.py --self-test
 
-sim-subsystem-mlp2: tinyvit-fixture tinyvit-fc1-k128-fixture
+sim-subsystem-mlp2: tinyvit-fixture tinyvit-fc1-k128-fixture tinyvit-fc2-k512-fixture
 	mkdir -p "$(SIM_DIR)/subsystem_mlp2_obj"
 	$(VERILATOR) --binary --timing -sv --top-module sap_vpu_subsystem_gate_tb -Wno-fatal \
-	  -I"$(TINYVIT_FIXTURE_DIR)" -I"$(TINYVIT_FC1_K128_BUILD_DIR)" \
+	  -I"$(TINYVIT_FIXTURE_DIR)" -I"$(TINYVIT_FC1_K128_BUILD_DIR)" -I"$(TINYVIT_FC2_K512_BUILD_DIR)" \
 	  $(SAP_VPU_SOC_RTL) tb/sap_vpu_subsystem_gate_tb.sv \
 	  --Mdir "$(SIM_DIR)/subsystem_mlp2_obj" \
 	  -MAKEFLAGS "CXX=clang++-12" \
@@ -601,6 +614,11 @@ sim-subsystem-sparse-policies: sim-subsystem-mlp2
 	"$(SIM_DIR)/subsystem_mlp2_obj/sap_vpu_subsystem_mlp2_tb" +iterations=1 +policy=fc2_dense
 	"$(SIM_DIR)/subsystem_mlp2_obj/sap_vpu_subsystem_mlp2_tb" +iterations=1 +policy=fc2_global_l1_6p25
 	"$(SIM_DIR)/subsystem_mlp2_obj/sap_vpu_subsystem_mlp2_tb" +iterations=1 +policy=fc2_l1_budget_2pct
+
+sim-subsystem-k512-policies: sim-subsystem-mlp2
+	"$(SIM_DIR)/subsystem_mlp2_obj/sap_vpu_subsystem_mlp2_tb" +iterations=1 +policy=fc2_k512_dense
+	"$(SIM_DIR)/subsystem_mlp2_obj/sap_vpu_subsystem_mlp2_tb" +iterations=1 +policy=fc2_k512_global_l1_6p25
+	"$(SIM_DIR)/subsystem_mlp2_obj/sap_vpu_subsystem_mlp2_tb" +iterations=1 +policy=fc2_k512_l1_budget_2pct
 
 tiled-gemm-check:
 	$(PYTHON) scripts/check_tiled_gemm_reference.py
@@ -664,7 +682,7 @@ fpga-vpu-policy-power-matrix:
 	  -Netlist '$(FPGA_POLICY_NETLIST)' \
 	  -ClockMhz '$(FPGA_POLICY_CLOCK_MHZ)'
 
-fpga-vpu-subsystem-saif-power: tinyvit-fixture tinyvit-fc1-k128-fixture
+fpga-vpu-subsystem-saif-power: tinyvit-fixture tinyvit-fc1-k128-fixture tinyvit-fc2-k512-fixture
 	$(POWERSHELL) -NoProfile -ExecutionPolicy Bypass \
 	  -File scripts/run_fpga_vpu_subsystem_power.ps1 \
 	  -VivadoRoot '$(VIVADO_ROOT_WINDOWS)' \
@@ -674,7 +692,7 @@ fpga-vpu-subsystem-saif-power: tinyvit-fixture tinyvit-fc1-k128-fixture
 	  -ClockMhz '$(FPGA_SUBSYSTEM_CLOCK_MHZ)' \
 	  -Iterations '$(FPGA_SUBSYSTEM_ITERATIONS)'
 
-fpga-vpu-subsystem-policy-power-matrix: tinyvit-fixture tinyvit-fc1-k128-fixture
+fpga-vpu-subsystem-policy-power-matrix: tinyvit-fixture tinyvit-fc1-k128-fixture tinyvit-fc2-k512-fixture
 	set -e; for policy in fc2_dense fc2_global_l1_6p25 fc2_l1_budget_2pct; do \
 	  $(POWERSHELL) -NoProfile -ExecutionPolicy Bypass \
 	    -File scripts/run_fpga_vpu_subsystem_power.ps1 \
@@ -684,6 +702,19 @@ fpga-vpu-subsystem-policy-power-matrix: tinyvit-fixture tinyvit-fc1-k128-fixture
 	    -PostRouteDcp '$(FPGA_SUBSYSTEM_POST_ROUTE_DCP)' \
 	    -ClockMhz '$(FPGA_SUBSYSTEM_CLOCK_MHZ)' \
 	    -Iterations '$(FPGA_SUBSYSTEM_POLICY_ITERATIONS)' \
+	    -Policy $$policy; \
+	done
+
+fpga-vpu-subsystem-k512-policy-power-matrix: tinyvit-fixture tinyvit-fc1-k128-fixture tinyvit-fc2-k512-fixture
+	set -e; for policy in fc2_k512_dense fc2_k512_global_l1_6p25 fc2_k512_l1_budget_2pct; do \
+	  $(POWERSHELL) -NoProfile -ExecutionPolicy Bypass \
+	    -File scripts/run_fpga_vpu_subsystem_power.ps1 \
+	    -VivadoRoot '$(VIVADO_ROOT_WINDOWS)' \
+	    -OutDir '$(FPGA_SUBSYSTEM_K512_POLICY_POWER_DIR)'/$$policy \
+	    -PostSynthDcp '$(FPGA_SUBSYSTEM_POST_SYNTH_DCP)' \
+	    -PostRouteDcp '$(FPGA_SUBSYSTEM_POST_ROUTE_DCP)' \
+	    -ClockMhz '$(FPGA_SUBSYSTEM_CLOCK_MHZ)' \
+	    -Iterations '$(FPGA_SUBSYSTEM_K512_POLICY_ITERATIONS)' \
 	    -Policy $$policy; \
 	done
 
