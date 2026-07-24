@@ -197,7 +197,8 @@ embedded in the instruction descriptors rather than fetched from RAM.
 
 `tinyvit-sparsity-study` extends the host-side numerical check to all 784
 stage-1 tokens from eight fixed, hash-checked PyTorch Hub sample images. It uses
-one dataset-calibrated INT8 scale set, applies the same lowest-L1 FC2 group
-policy, and writes detailed error/activity data under `work/tinyvit/`. This is a
-small policy-calibration set, not an ImageNet accuracy benchmark or a hardware
+one dataset-calibrated INT8 scale set and sweeps globally ranked lowest-L1,
+per-K8 lowest-L1, and cumulative-L1-budget FC2 group masks. Detailed
+error/activity data is written under `work/tinyvit/`. This is a small
+policy-calibration set, not an ImageNet accuracy benchmark or a hardware
 simulation of every token.

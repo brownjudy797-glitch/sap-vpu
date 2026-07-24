@@ -72,10 +72,9 @@ custom instruction, TinyML, and edge-AI accelerator work.
 
 ## Next Engineering Sequence
 
-1. On the same multi-image calibration set, compare a lower structured
-   sparsity rate and an importance-threshold policy against the fixed 25%
-   ablation. Select a paper policy only after defining an error guardrail.
-2. Repeat FPGA and ASIC ablations for the selected sparse policy. Move
+1. Map `global_l1_6p25` and `l1_budget_2pct` into generated VTDMA descriptors
+   and hardware smoke. Keep `per_k8_l1_25` only as the stress ablation.
+2. Repeat FPGA and ASIC ablations for both candidate sparse policies. Move
    complete-subsystem ASIC mapping to a compatible DC/library installation
    before publishing an ASIC area delta.
 3. Replace register scratchpads with explicit SRAM-macro assumptions only after

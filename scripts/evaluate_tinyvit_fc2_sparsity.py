@@ -57,11 +57,14 @@ def error_metrics(reference: object, estimate: object) -> dict[str, float]:
     import torch
 
     difference = (reference - estimate).abs().flatten()
+    rmse = torch.sqrt(torch.mean(difference * difference))
+    reference_rms = torch.sqrt(torch.mean(reference.flatten() ** 2))
     return {
         "max_abs": float(difference.max()),
         "mean_abs": float(difference.mean()),
         "p95_abs": float(torch.quantile(difference, 0.95)),
-        "rmse": float(torch.sqrt(torch.mean(difference * difference))),
+        "rmse": float(rmse),
+        "nrmse": float(rmse / reference_rms),
     }
 
 
@@ -81,6 +84,38 @@ def apply_group_masks(weights: object, masks: list[int]) -> tuple[object, object
                     base = channel_group * 4
                     sparse[output, base : base + 4] = 0
     return sparse, valid
+
+
+def lowest_l1_masks(
+    weights: object, *, drop_count: int | None = None, l1_budget: float | None = None
+) -> list[int]:
+    if (drop_count is None) == (l1_budget is None):
+        raise ValueError("select exactly one lowest-L1 policy")
+    groups = []
+    values = weights.tolist()
+    for chunk in range(FC1_K128_OUTPUT_CHANNELS // 8):
+        for output in range(2):
+            for group in range(2):
+                base = chunk * 8 + group * 4
+                groups.append(
+                    (sum(abs(value) for value in values[output][base : base + 4]), chunk, output, group)
+                )
+    groups.sort()
+    if l1_budget is not None:
+        limit = sum(group[0] for group in groups) * l1_budget
+        selected = []
+        dropped_l1 = 0
+        for group in groups:
+            if dropped_l1 + group[0] > limit:
+                break
+            selected.append(group)
+            dropped_l1 += group[0]
+    else:
+        selected = groups[:drop_count]
+    masks = [0xF] * (FC1_K128_OUTPUT_CHANNELS // 8)
+    for _norm, chunk, output, group in selected:
+        masks[chunk] &= ~(1 << (output * 2 + group))
+    return masks
 
 
 def capture_activations(model: object, transform: object, image_paths: list[Path]) -> tuple:
@@ -164,24 +199,53 @@ def evaluate(checkpoint: Path, image_paths: list[Path]) -> dict[str, object]:
 
     fc2_weight = mlp.fc2.weight[:2, :FC1_K128_OUTPUT_CHANNELS].detach()
     fc2_weight_int8, fc2_weight_scale = quantize_symmetric(fc2_weight)
-    dense = gelu_int8 @ fc2_weight_int8.T
-    masks = fc2_structured_group_masks(fc2_weight_int8.tolist())
-    sparse_weight, structured_valid = apply_group_masks(fc2_weight_int8, masks)
-    sparse = gelu_int8 @ sparse_weight.T
     output_scale = gelu_scale * fc2_weight_scale
     reference = actual_gelu @ fc2_weight.T
+    dense = gelu_int8 @ fc2_weight_int8.T
     dense_dequantized = dense.to(torch.float32) * output_scale
-    sparse_dequantized = sparse.to(torch.float32) * output_scale
 
     activation_nonzero = ~gelu_int8.reshape(-1, FC1_K128_OUTPUT_CHANNELS // 4, 4).eq(0).all(2)
     total_tokens = int(gelu_int8.shape[0])
     dense_vdots = total_tokens * 2 * (FC1_K128_OUTPUT_CHANNELS // 4)
-    structured_vdots = total_tokens * int(structured_valid.sum())
-    combined_vdots = int((activation_nonzero[:, None, :] & structured_valid[None, :, :]).sum())
     token_pairs = sum((count + 1) // 2 for count in token_counts)
     dense_weight_reads = token_pairs * 2 * (FC1_K128_OUTPUT_CHANNELS // 4)
-    structured_weight_reads = token_pairs * int(structured_valid.sum())
     dense_input_reads = total_tokens * (FC1_K128_OUTPUT_CHANNELS // 4)
+
+    policy_masks = {
+        "global_l1_6p25": lowest_l1_masks(fc2_weight_int8, drop_count=4),
+        "global_l1_12p5": lowest_l1_masks(fc2_weight_int8, drop_count=8),
+        "global_l1_25": lowest_l1_masks(fc2_weight_int8, drop_count=16),
+        "per_k8_l1_25": fc2_structured_group_masks(fc2_weight_int8.tolist()),
+        "l1_budget_1pct": lowest_l1_masks(fc2_weight_int8, l1_budget=0.01),
+        "l1_budget_2pct": lowest_l1_masks(fc2_weight_int8, l1_budget=0.02),
+        "l1_budget_5pct": lowest_l1_masks(fc2_weight_int8, l1_budget=0.05),
+    }
+    policies = {}
+    policy_estimates = {}
+    total_weight_l1 = int(fc2_weight_int8.abs().sum())
+    for name, masks in policy_masks.items():
+        sparse_weight, structured_valid = apply_group_masks(fc2_weight_int8, masks)
+        estimate = (gelu_int8 @ sparse_weight.T).to(torch.float32) * output_scale
+        policy_estimates[name] = estimate
+        active_groups = int(structured_valid.sum())
+        structured_vdots = total_tokens * active_groups
+        combined_vdots = int(
+            (activation_nonzero[:, None, :] & structured_valid[None, :, :]).sum()
+        )
+        structured_weight_reads = token_pairs * active_groups
+        policies[name] = {
+            "group_masks": [f"0x{mask:x}" for mask in masks],
+            "weight_group_sparsity": 1.0 - active_groups / 64,
+            "dropped_weight_l1_ratio": 1.0 - float(sparse_weight.abs().sum()) / total_weight_l1,
+            "error": error_metrics(reference, estimate),
+            "pruning_delta": error_metrics(dense_dequantized, estimate),
+            "vdots": structured_vdots,
+            "vdot_reduction": 1.0 - structured_vdots / dense_vdots,
+            "combined_zero_activation_vdots": combined_vdots,
+            "combined_vdot_reduction": 1.0 - combined_vdots / dense_vdots,
+            "payload_reads": dense_input_reads + structured_weight_reads,
+            "payload_reads_saved": dense_weight_reads - structured_weight_reads,
+        }
 
     per_image = []
     offset = 0
@@ -192,16 +256,19 @@ def evaluate(checkpoint: Path, image_paths: list[Path]) -> dict[str, object]:
                 "name": path.name,
                 "sha256": sha256(path),
                 "tokens": count,
-                "dense_error": error_metrics(reference[image_slice], dense_dequantized[image_slice]),
-                "structured_sparse_error": error_metrics(
-                    reference[image_slice], sparse_dequantized[image_slice]
-                ),
+                "error": {
+                    "dense": error_metrics(reference[image_slice], dense_dequantized[image_slice]),
+                    **{
+                        name: error_metrics(reference[image_slice], estimate[image_slice])
+                        for name, estimate in policy_estimates.items()
+                    },
+                },
             }
         )
         offset += count
 
     return {
-        "schema": "sap-vpu-tinyvit-fc2-sparsity-study-v1",
+        "schema": "sap-vpu-tinyvit-fc2-sparsity-study-v2",
         "provenance": {
             "model_id": MODEL_ID,
             "layer_id": LAYER_ID,
@@ -231,30 +298,18 @@ def evaluate(checkpoint: Path, image_paths: list[Path]) -> dict[str, object]:
             "requant_multiplier": requant_multiplier,
             "requant_shift": FC1_GELU_REQUANT_SHIFT,
         },
-        "policy": {
-            "name": "lowest-l1-weight-group-per-k8",
-            "weight_group_sparsity": 0.25,
-            "group_lanes": 4,
-            "group_masks": [f"0x{mask:x}" for mask in masks],
-        },
-        "error": {
-            "dense": error_metrics(reference, dense_dequantized),
-            "structured_sparse": error_metrics(reference, sparse_dequantized),
-            "pruning_delta": error_metrics(dense_dequantized, sparse_dequantized),
-        },
-        "activity": {
+        "baseline": {
+            "error": error_metrics(reference, dense_dequantized),
             "dense_vdots": dense_vdots,
-            "structured_sparse_vdots": structured_vdots,
-            "structured_sparse_vdot_reduction": 1.0 - structured_vdots / dense_vdots,
+            "dense_payload_reads": dense_input_reads + dense_weight_reads,
+        },
+        "activation_sparsity": {
             "natural_zero_activation_groups": int((~activation_nonzero).sum()),
             "activation_groups": int(activation_nonzero.numel()),
-            "combined_sparse_vdots": combined_vdots,
-            "combined_sparse_vdot_reduction": 1.0 - combined_vdots / dense_vdots,
-            "dense_payload_reads": dense_input_reads + dense_weight_reads,
-            "structured_sparse_payload_reads": dense_input_reads + structured_weight_reads,
-            "structured_sparse_reads_saved": dense_weight_reads - structured_weight_reads,
             "potential_activation_reads_saved": int((~activation_nonzero).sum()),
         },
+        "group_lanes": 4,
+        "policies": policies,
         "images": per_image,
     }
 
@@ -276,9 +331,14 @@ def main() -> int:
         f"TinyViT sparsity study: {result['shape']['images']} images, "
         f"{result['shape']['token_samples']} tokens"
     )
-    print(f"dense error: {result['error']['dense']}")
-    print(f"structured sparse error: {result['error']['structured_sparse']}")
-    print(f"activity: {result['activity']}")
+    print(f"dense error: {result['baseline']['error']}")
+    for name, policy in result["policies"].items():
+        print(
+            f"{name}: sparsity={policy['weight_group_sparsity']:.4f}, "
+            f"mean_abs={policy['error']['mean_abs']:.6f}, "
+            f"nrmse={policy['error']['nrmse']:.6f}, "
+            f"read_saved={policy['payload_reads_saved']}"
+        )
     return 0
 
 

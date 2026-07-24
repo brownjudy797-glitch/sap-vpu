@@ -244,6 +244,25 @@ activation metadata would improve the modeled VDOT reduction only from 25% to
 point rather than the default accuracy-preserving policy. The image set is a
 small engineering calibration set, not a formal vision accuracy dataset.
 
+The follow-up mask sweep holds the images, activations, scales, and INT8
+weights constant. NRMSE is normalized by the RMS of the matching floating-point
+128-channel FC2 partial:
+
+| Policy | Group sparsity | Mean abs. error | NRMSE | Payload reads saved |
+| --- | ---: | ---: | ---: | ---: |
+| Dense INT8 | 0% | 0.04825 | 0.09155 | 0 |
+| L1 budget 2% | 4.69% | 0.05541 | 0.10614 | 9,408 |
+| Global L1 6.25% | 6.25% | 0.05973 | 0.11530 | 12,544 |
+| Global L1 12.5% | 12.5% | 0.08182 | 0.15741 | 25,088 |
+| Global L1 25% | 25% | 0.13776 | 0.26976 | 50,176 |
+| Per-K8 L1 25% | 25% | 0.16866 | 0.33187 | 50,176 |
+
+Global ranking is consistently better than forcing one dropped group in every
+K=8 chunk. `global_l1_6p25` is therefore the throughput-oriented hardware
+candidate, while `l1_budget_2pct` is the conservative candidate. Neither is a
+final paper policy until full-model accuracy or a stronger layer-level
+guardrail is measured; `per_k8_l1_25` remains a hardware stress ablation.
+
 Use this record to justify that SAP-VPU now has a repeatable TinyViT-oriented
 kernel path, captured model activations, a full-K FC1 output slice, checked host
 aggregation, and an explicit software/hardware boundary for bias/GELU. The next
