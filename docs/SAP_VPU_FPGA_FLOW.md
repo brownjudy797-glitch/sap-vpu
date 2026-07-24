@@ -79,6 +79,16 @@ This target uses eight 2x512x2 workloads per policy, keeping the activity window
 at 512 tiles. Its operands are quantized real TinyViT GELU activations and the
 complete 512-channel FC2 weight rows for two selected outputs.
 
+Run the four representative full-layer output pairs with matched activity:
+
+```sh
+make fpga-vpu-subsystem-k512-pair-policy-power-matrix
+```
+
+Each policy executes two four-pair sets, again totaling 512 tiles. The output
+pairs are `(0,1)`, `(42,43)`, `(84,85)`, and `(126,127)`; sparse input metadata
+also suppresses a K4 token read when neither output uses that group.
+
 Run power from an existing routed checkpoint with VPU smoke SAIF activity:
 
 ```sh
@@ -154,6 +164,7 @@ The flow writes:
 - `work/fpga/vpu_subsystem_140_saif_power/power/reports/post_route_saif_power.rpt`
 - `work/fpga/vpu_subsystem_140_policy_power/<policy>/fpga_vpu_subsystem_power.csv`
 - `work/fpga/vpu_subsystem_140_k512_policy_power/<policy>/fpga_vpu_subsystem_power.csv`
+- `work/fpga/vpu_subsystem_140_k512_pair_policy_power/<policy>/fpga_vpu_subsystem_power.csv`
 - `work/fpga/vpu_core/checkpoints/post_synth.dcp`
 - `work/fpga/vpu_core/checkpoints/post_route.dcp`
 
@@ -292,6 +303,22 @@ the global 6.25% rule, so their masks, outputs, transaction counts, and activity
 are identical. The result proves full-K descriptor consumption and matched
 energy reduction; it is not a multi-image accuracy result or full-layer output
 coverage.
+
+Current representative-output-pair K=512 matrix on the same checkpoint. Each
+row executes 512 tiles and annotates 6142/6200 nets (99.06%) with High
+confidence:
+
+| Policy | Sets | VDOTs | RAM reads | RAM writes | Duration ps | Dynamic W | Dynamic pJ/four-pair set | Reduction |
+| --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
+| `fc2_k512_pairs_dense` | 2 | 4096 | 4096 | 2048 | 413,203,981 | 0.014 | 2,892,427.867 | baseline |
+| `fc2_k512_pairs_global_l1_6p25` | 2 | 3736 | 3912 | 2048 | 388,749,773 | 0.014 | 2,721,248.411 | 5.92% |
+| `fc2_k512_pairs_l1_budget_1pct` | 2 | 3844 | 3970 | 2048 | 396,106,033 | 0.014 | 2,772,742.231 | 4.14% |
+
+The global and budget policies reduce representative-slice VDOTs by 8.79% and
+6.15%, respectively. Vivado rounds all dynamic values to 0.014 W, so the energy
+percentage follows the matched capture-duration reduction; no resolved average-
+dynamic-power delta is claimed. These four output pairs are not a full-layer or
+end-to-end inference power measurement.
 
 Current local SAIF power-flow smoke on the 140 MHz checkpoint:
 

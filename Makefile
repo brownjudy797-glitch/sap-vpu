@@ -104,6 +104,8 @@ FPGA_SUBSYSTEM_POLICY_POWER_DIR ?= work\fpga\vpu_subsystem_140_policy_power
 FPGA_SUBSYSTEM_POLICY_ITERATIONS ?= 32
 FPGA_SUBSYSTEM_K512_POLICY_POWER_DIR ?= work\fpga\vpu_subsystem_140_k512_policy_power
 FPGA_SUBSYSTEM_K512_POLICY_ITERATIONS ?= 8
+FPGA_SUBSYSTEM_K512_PAIR_POLICY_POWER_DIR ?= work\fpga\vpu_subsystem_140_k512_pair_policy_power
+FPGA_SUBSYSTEM_K512_PAIR_POLICY_ITERATIONS ?= 2
 DC_CLOCK_PERIOD ?= 10.0
 DC_DESIGN_NAME ?= sap_vpu_core
 DC_WORK_DIR ?= $(ROOT_DIR)/work/dc/tsmc28/vpu_core
@@ -127,7 +129,7 @@ DC_GATE_POWER_REPORT_DIR ?= $(DC_GATE_SIM_DIR)/reports_power
 
 .DEFAULT_GOAL := help
 
-.PHONY: help plan-check corev-fetch corev-rtl-flist lint-adapter lint-core lint-tiled-gemm lint-subsystem lint lint-corev-soc sim-adapter sim-core sim-tiled-gemm sim-core-vcd sim-hello sim-vpu sim-tiled-gemm-soc sim-tiled-gemm-dma-soc sim-tinyvit-fc1-k128 sim-tinyvit sim-tinyvit-vcd sim-subsystem-mlp2 sim-subsystem-sparse-policies sim-subsystem-k512-policies sim-subsystem-k512-pair-policies sim encoding-check legacy-summary hello-build hello-smoke vpu-build vpu-smoke tiled-gemm-soc-build tiled-gemm-soc-smoke tiled-gemm-dma-soc-build tiled-gemm-dma-soc-smoke tinyvit-fc1-k128-fixture tinyvit-fc2-k512-fixture tinyvit-fc1-k128-build tinyvit-fc1-k128-smoke tinyvit-checkpoint-fixture tinyvit-activation-fixture tinyvit-sparsity-study tinyvit-fixture tinyvit-fixture-check tiled-gemm-check tiled-gemm-rtl-check tinyvit-build tinyvit-smoke tinyvit-summary tinyvit-paper-table fpga-vpu-synth fpga-vpu-funcsim-netlist fpga-vpu-funcsim-vcd fpga-vpu-funcsim-saif fpga-vpu-funcsim-saif-power fpga-vpu-policy-power-matrix fpga-vpu-subsystem-saif-power fpga-vpu-subsystem-policy-power-matrix fpga-vpu-subsystem-k512-policy-power-matrix fpga-vpu-saif-power fpga-vpu-summary dc-vpu-gate-netlist-check dc-vpu-gate-synth dc-vpu-gate-sim dc-vpu-gate-saif-power dc-vpu-precheck dc-vpu-synth dc-vpu-power dc-vpu-saif-power dc-vpu-tinyvit-saif-power dc-vpu-policy-power-matrix dc-vpu-summary
+.PHONY: help plan-check corev-fetch corev-rtl-flist lint-adapter lint-core lint-tiled-gemm lint-subsystem lint lint-corev-soc sim-adapter sim-core sim-tiled-gemm sim-core-vcd sim-hello sim-vpu sim-tiled-gemm-soc sim-tiled-gemm-dma-soc sim-tinyvit-fc1-k128 sim-tinyvit sim-tinyvit-vcd sim-subsystem-mlp2 sim-subsystem-sparse-policies sim-subsystem-k512-policies sim-subsystem-k512-pair-policies sim encoding-check legacy-summary hello-build hello-smoke vpu-build vpu-smoke tiled-gemm-soc-build tiled-gemm-soc-smoke tiled-gemm-dma-soc-build tiled-gemm-dma-soc-smoke tinyvit-fc1-k128-fixture tinyvit-fc2-k512-fixture tinyvit-fc1-k128-build tinyvit-fc1-k128-smoke tinyvit-checkpoint-fixture tinyvit-activation-fixture tinyvit-sparsity-study tinyvit-fixture tinyvit-fixture-check tiled-gemm-check tiled-gemm-rtl-check tinyvit-build tinyvit-smoke tinyvit-summary tinyvit-paper-table fpga-vpu-synth fpga-vpu-funcsim-netlist fpga-vpu-funcsim-vcd fpga-vpu-funcsim-saif fpga-vpu-funcsim-saif-power fpga-vpu-policy-power-matrix fpga-vpu-subsystem-saif-power fpga-vpu-subsystem-policy-power-matrix fpga-vpu-subsystem-k512-policy-power-matrix fpga-vpu-subsystem-k512-pair-policy-power-matrix fpga-vpu-saif-power fpga-vpu-summary dc-vpu-gate-netlist-check dc-vpu-gate-synth dc-vpu-gate-sim dc-vpu-gate-saif-power dc-vpu-precheck dc-vpu-synth dc-vpu-power dc-vpu-saif-power dc-vpu-tinyvit-saif-power dc-vpu-policy-power-matrix dc-vpu-summary
 
 help:
 	@printf '%s\n' \
@@ -171,6 +173,7 @@ help:
 	  'make fpga-vpu-subsystem-saif-power' \
 	  'make fpga-vpu-subsystem-policy-power-matrix' \
 	  'make fpga-vpu-subsystem-k512-policy-power-matrix' \
+	  'make fpga-vpu-subsystem-k512-pair-policy-power-matrix' \
 	  'make fpga-vpu-saif-power [FPGA_SAIF_DCP=work/fpga/vpu_core_sliced_140/checkpoints/post_route.dcp]' \
 	  'make fpga-vpu-summary' \
 	  'make dc-vpu-gate-netlist-check [DC_NETLIST_DIR=netlist/dc/tsmc28/vpu_core]' \
@@ -722,6 +725,19 @@ fpga-vpu-subsystem-k512-policy-power-matrix: tinyvit-fixture tinyvit-fc1-k128-fi
 	    -PostRouteDcp '$(FPGA_SUBSYSTEM_POST_ROUTE_DCP)' \
 	    -ClockMhz '$(FPGA_SUBSYSTEM_CLOCK_MHZ)' \
 	    -Iterations '$(FPGA_SUBSYSTEM_K512_POLICY_ITERATIONS)' \
+	    -Policy $$policy; \
+	done
+
+fpga-vpu-subsystem-k512-pair-policy-power-matrix: tinyvit-fixture tinyvit-fc1-k128-fixture tinyvit-fc2-k512-fixture
+	set -e; for policy in fc2_k512_pairs_dense fc2_k512_pairs_global_l1_6p25 fc2_k512_pairs_l1_budget_1pct; do \
+	  $(POWERSHELL) -NoProfile -ExecutionPolicy Bypass \
+	    -File scripts/run_fpga_vpu_subsystem_power.ps1 \
+	    -VivadoRoot '$(VIVADO_ROOT_WINDOWS)' \
+	    -OutDir '$(FPGA_SUBSYSTEM_K512_PAIR_POLICY_POWER_DIR)'/$$policy \
+	    -PostSynthDcp '$(FPGA_SUBSYSTEM_POST_SYNTH_DCP)' \
+	    -PostRouteDcp '$(FPGA_SUBSYSTEM_POST_ROUTE_DCP)' \
+	    -ClockMhz '$(FPGA_SUBSYSTEM_CLOCK_MHZ)' \
+	    -Iterations '$(FPGA_SUBSYSTEM_K512_PAIR_POLICY_ITERATIONS)' \
 	    -Policy $$policy; \
 	done
 

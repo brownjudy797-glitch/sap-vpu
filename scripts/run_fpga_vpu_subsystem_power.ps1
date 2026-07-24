@@ -6,7 +6,9 @@ param(
   [double]$ClockMhz = 140.0,
   [int]$Iterations = 128,
   [ValidateSet('mlp2_dense', 'fc2_dense', 'fc2_global_l1_6p25', 'fc2_l1_budget_2pct',
-               'fc2_k512_dense', 'fc2_k512_global_l1_6p25', 'fc2_k512_l1_budget_2pct')]
+               'fc2_k512_dense', 'fc2_k512_global_l1_6p25', 'fc2_k512_l1_budget_2pct',
+               'fc2_k512_pairs_dense', 'fc2_k512_pairs_global_l1_6p25',
+               'fc2_k512_pairs_l1_budget_1pct')]
   [string]$Policy = 'mlp2_dense'
 )
 
@@ -208,6 +210,27 @@ switch ($Policy) {
     $vdotsPerIteration = 480
     $readsPerIteration = 496
     $writesPerIteration = 256
+  }
+  'fc2_k512_pairs_dense' {
+    $workload = 'tinyvit_fc2_4pairs_2x512x2'
+    $tilesPerIteration = 256
+    $vdotsPerIteration = 2048
+    $readsPerIteration = 2048
+    $writesPerIteration = 1024
+  }
+  'fc2_k512_pairs_global_l1_6p25' {
+    $workload = 'tinyvit_fc2_4pairs_2x512x2'
+    $tilesPerIteration = 256
+    $vdotsPerIteration = 1868
+    $readsPerIteration = 1956
+    $writesPerIteration = 1024
+  }
+  'fc2_k512_pairs_l1_budget_1pct' {
+    $workload = 'tinyvit_fc2_4pairs_2x512x2'
+    $tilesPerIteration = 256
+    $vdotsPerIteration = 1922
+    $readsPerIteration = 1985
+    $writesPerIteration = 1024
   }
 }
 $tiles = $Iterations * $tilesPerIteration

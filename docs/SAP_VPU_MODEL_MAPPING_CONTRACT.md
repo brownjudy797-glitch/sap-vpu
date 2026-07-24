@@ -188,6 +188,11 @@ input group when neither output uses that K4 group.
 These four pairs validate mask transport, output variation, and memory skip.
 Their reductions are not a full-layer RTL or power estimate.
 
+`make fpga-vpu-subsystem-k512-pair-policy-power-matrix` repeats two four-pair
+sets per policy on the matched 140 MHz gate netlist. Dense/global/budget dynamic
+energy per set is `2892.428/2721.248/2772.742` nJ, a `5.92%/4.14%` reduction
+for the sparse policies. The gate result retains the four-pair boundary.
+
 ## Reproduction
 
 ```sh
@@ -206,6 +211,7 @@ make sim-subsystem-mlp2
 make sim-subsystem-k512-policies
 make sim-subsystem-k512-pair-policies
 make fpga-vpu-subsystem-k512-policy-power-matrix
+make fpga-vpu-subsystem-k512-pair-policy-power-matrix
 ```
 
 `tinyvit-checkpoint-fixture` requires the downloaded checkpoint at

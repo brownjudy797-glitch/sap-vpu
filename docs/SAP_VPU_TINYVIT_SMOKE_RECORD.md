@@ -267,8 +267,15 @@ all cases. The selected pairs expose nonuniform sparsity: global active groups
 range from 199 to 248 of 256 per pair. Their 8.79% VDOT and 4.49% read reductions
 are representative-slice RTL results, not full-layer averages.
 
+Matched 140 MHz gate-SAIF runs execute two four-pair sets per policy, keeping
+each capture at 512 tiles. Dense/global/budget dynamic energy per set is
+`2892.428/2721.248/2772.742` nJ, corresponding to `5.92%/4.14%` sparse-policy
+reductions. All rows match 6142/6200 routed nets with High confidence. Since
+Vivado reports 0.014 W dynamic for every row, this is a matched energy/latency
+comparison rather than a resolved average-power claim.
+
 Use this record to justify that SAP-VPU now has a repeatable TinyViT-oriented
 kernel path, captured model activations, a full-K FC1 output slice, checked host
 aggregation, and an explicit software/hardware boundary for bias/GELU. The next
-evidence step is matched gate-SAIF for the representative output-pair masks,
+evidence step is end-to-end TinyViT logit/top-1 stability for the selected masks,
 while full-model accuracy remains required before a final policy claim.
