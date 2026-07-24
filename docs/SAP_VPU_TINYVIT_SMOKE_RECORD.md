@@ -234,40 +234,33 @@ bytes in the 4 KiB ROM. Against the selected floating-point partial, the
 global/budget maximum absolute errors are `0.05415/0.03485`; these local results
 do not establish full-model accuracy.
 
-The host-side `tinyvit-sparsity-study` broadens that numerical check to eight
-fixed, hash-checked PyTorch Hub sample images and all 784 stage-1 tokens per
-image, for 6,272 token samples. With one dataset-calibrated INT8 scale set, the
-dense 128-channel FC2 partial has mean/max absolute error `0.04825/0.26169`.
-The fixed 25% lowest-L1 weight-group policy reduces modeled VDOT count from
-401,408 to 301,056, but increases mean/max error to `0.16866/1.15533`.
-Structured weight metadata saves 50,176 of 401,408 modeled payload reads.
-Only 44 of 200,704 quantized activation groups are naturally all zero, so
-activation metadata would improve the modeled VDOT reduction only from 25% to
-25.016% on this sample. These results make the fixed 25% policy an ablation
-point rather than the default accuracy-preserving policy. The image set is a
-small engineering calibration set, not a formal vision accuracy dataset.
-
-The follow-up mask sweep holds the images, activations, scales, and INT8
-weights constant. NRMSE is normalized by the RMS of the matching floating-point
-128-channel FC2 partial:
+The host-side `tinyvit-sparsity-study` now broadens that numerical check to the
+complete 512-input, 128-output FC2 matrix over eight fixed, hash-checked PyTorch
+Hub sample images and all 784 stage-1 tokens per image, for 6,272 token samples.
+The sweep holds images, activations, scales, and INT8 weights constant. NRMSE is
+normalized by the RMS of the matching floating-point no-bias FC2 output:
 
 | Policy | Group sparsity | Mean abs. error | NRMSE | Payload reads saved |
 | --- | ---: | ---: | ---: | ---: |
-| Dense INT8 | 0% | 0.04825 | 0.09155 | 0 |
-| L1 budget 2% | 4.69% | 0.05541 | 0.10614 | 9,408 |
-| Global L1 6.25% | 6.25% | 0.05973 | 0.11530 | 12,544 |
-| Global L1 12.5% | 12.5% | 0.08182 | 0.15741 | 25,088 |
-| Global L1 25% | 25% | 0.13776 | 0.26976 | 50,176 |
-| Per-K8 L1 25% | 25% | 0.16866 | 0.33187 | 50,176 |
+| Dense INT8 | 0% | 0.06328 | 0.05465 | 0 |
+| Layer L1 budget 1% | 3.99% | 0.08407 | 0.07506 | 2,082,304 |
+| Layer-global L1 6.25% | 6.25% | 0.10075 | 0.09110 | 3,430,784 |
+| Layer L1 budget 2% | 6.77% | 0.10474 | 0.09461 | 3,738,112 |
+| Layer-global L1 12.5% | 12.5% | 0.15371 | 0.13927 | 7,244,160 |
+| Layer-global L1 25% | 25% | 0.26820 | 0.23997 | 15,999,872 |
+| Tile-local L1 25% | 25% | 0.33736 | 0.30443 | 12,845,056 |
 
-Global ranking is consistently better than forcing one dropped group in every
-K=8 chunk. `global_l1_6p25` is therefore the throughput-oriented hardware
-candidate, while `l1_budget_2pct` is the conservative candidate. Neither is a
-final paper policy until full-model accuracy or a stronger layer-level
-guardrail is measured; `per_k8_l1_25` remains a hardware stress ablation.
+Dense execution models 102,760,448 VDOTs and the same number of payload reads.
+Only 42 of 802,816 quantized activation groups are naturally all zero. Layer-
+global 6.25% sparsity therefore reduces VDOTs by 6.25%, while reusable input
+groups limit total payload-read reduction to 3.34%. Global ranking is more
+accurate than forcing one dropped group in every 2x2x8 tile. The 1% L1-budget
+policy is the conservative candidate; 6.25% layer-global is the throughput
+candidate; 25% tile-local remains a stress ablation. None is a final model
+policy until end-to-end accuracy is measured.
 
 Use this record to justify that SAP-VPU now has a repeatable TinyViT-oriented
 kernel path, captured model activations, a full-K FC1 output slice, checked host
 aggregation, and an explicit software/hardware boundary for bias/GELU. The next
-evidence step is gate-activity comparison for the two hardware-checked policies,
+evidence step is an RTL sweep of representative full-layer output-pair masks,
 while full-model accuracy remains required before a final policy claim.

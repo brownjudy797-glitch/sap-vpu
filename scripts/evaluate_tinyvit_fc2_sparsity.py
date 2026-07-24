@@ -5,23 +5,17 @@ from __future__ import annotations
 
 import argparse
 import json
-import math
 from pathlib import Path
 import sys
 from urllib.request import urlretrieve
 
 from export_tinyvit_activation_fixture import (
-    FC1_GELU_REQUANT_SHIFT,
-    FC1_K128_OUTPUT_CHANNELS,
     LAYER_ID,
     MODEL_ID,
     TIMM_MODEL,
     quantize_symmetric,
-    requantize_signed,
-    round_ties_away,
     sha256,
 )
-from prepare_tinyvit_fc1_k128 import fc2_lowest_l1_group_masks, fc2_structured_group_masks
 
 
 IMAGE_SET = (
@@ -35,6 +29,11 @@ IMAGE_SET = (
     ("unet_brain_mri.png", "be225a6130bb1a370579e533a7e751b111f9f8fb00d00bfc3c7235b3ce017426"),
 )
 IMAGE_BASE_URL = "https://raw.githubusercontent.com/pytorch/hub/master/images"
+FC2_INPUT_CHANNELS = 512
+FC2_OUTPUT_CHANNELS = 128
+GROUP_LANES = 4
+CHUNK_K = 8
+OUTPUT_TILE_CHANNELS = 2
 
 
 def prepare_images(directory: Path) -> list[Path]:
@@ -68,22 +67,57 @@ def error_metrics(reference: object, estimate: object) -> dict[str, float]:
     }
 
 
-def apply_group_masks(weights: object, masks: list[int]) -> tuple[object, object]:
+def policy_group_valid(weights: object, policy: str) -> object:
     import torch
 
-    sparse = weights.clone()
-    valid = torch.zeros((2, FC1_K128_OUTPUT_CHANNELS // 4), dtype=torch.bool)
-    for chunk, mask in enumerate(masks):
-        for output in range(2):
-            for group in range(2):
-                group_index = output * 2 + group
-                channel_group = chunk * 2 + group
-                if mask & (1 << group_index):
-                    valid[output, channel_group] = True
-                else:
-                    base = channel_group * 4
-                    sparse[output, base : base + 4] = 0
-    return sparse, valid
+    group_l1 = weights.abs().reshape(weights.shape[0], -1, GROUP_LANES).sum(2)
+    valid = torch.ones_like(group_l1, dtype=torch.bool)
+    if policy == "tile_local_l1_25":
+        tiles = group_l1.reshape(
+            weights.shape[0] // OUTPUT_TILE_CHANNELS,
+            OUTPUT_TILE_CHANNELS,
+            weights.shape[1] // CHUNK_K,
+            CHUNK_K // GROUP_LANES,
+        ).permute(0, 2, 1, 3).reshape(-1, 4)
+        tile_valid = torch.ones_like(tiles, dtype=torch.bool)
+        tile_valid.scatter_(1, tiles.argmin(1, keepdim=True), False)
+        return tile_valid.reshape(
+            weights.shape[0] // OUTPUT_TILE_CHANNELS,
+            weights.shape[1] // CHUNK_K,
+            OUTPUT_TILE_CHANNELS,
+            CHUNK_K // GROUP_LANES,
+        ).permute(0, 2, 1, 3).reshape_as(valid)
+
+    kind, value = policy.rsplit("_", 1)
+    ordered = torch.argsort(group_l1.flatten())
+    if kind == "layer_global_l1":
+        drop_count = int(valid.numel() * float(value) / 100.0)
+    elif kind == "layer_l1_budget":
+        limit = float(group_l1.sum()) * float(value) / 100.0
+        drop_count = int((group_l1.flatten()[ordered].cumsum(0) <= limit).sum())
+    else:
+        raise ValueError(f"unsupported policy: {policy}")
+    valid.flatten()[ordered[:drop_count]] = False
+    return valid
+
+
+def apply_group_valid(weights: object, valid: object) -> object:
+    return (
+        weights.reshape(weights.shape[0], -1, GROUP_LANES)
+        * valid.unsqueeze(2)
+    ).reshape_as(weights)
+
+
+def self_test() -> None:
+    import torch
+
+    weights = torch.arange(1, 33, dtype=torch.int32).reshape(4, 8)
+    global_valid = policy_group_valid(weights, "layer_global_l1_25")
+    tile_valid = policy_group_valid(weights, "tile_local_l1_25")
+    assert global_valid.shape == (4, 2)
+    assert int((~global_valid).sum()) == 2
+    assert int((~tile_valid).sum()) == 2
+    assert int(apply_group_valid(weights, global_valid).count_nonzero()) == 24
 
 
 def capture_activations(model: object, transform: object, image_paths: list[Path]) -> tuple:
@@ -92,18 +126,9 @@ def capture_activations(model: object, transform: object, image_paths: list[Path
 
     mlp = model.stages[1].blocks[0].mlp
     captured: dict[str, object] = {}
-    hooks = [
-        mlp.fc1.register_forward_hook(
-            lambda _module, inputs, output: captured.update(
-                fc1_input=inputs[0].detach(), fc1_output=output.detach()
-            )
-        ),
-        mlp.fc2.register_forward_hook(
-            lambda _module, inputs, _output: captured.update(gelu=inputs[0].detach())
-        ),
-    ]
-    inputs = []
-    preactivations = []
+    hook = mlp.fc2.register_forward_hook(
+        lambda _module, inputs, _output: captured.update(gelu=inputs[0].detach())
+    )
     gelu = []
     token_counts = []
     try:
@@ -114,14 +139,11 @@ def capture_activations(model: object, transform: object, image_paths: list[Path
                 model_input = transform(image.convert("RGB")).unsqueeze(0)
             with torch.inference_mode():
                 model(model_input)
-            inputs.append(captured["fc1_input"][0, :, :FC1_K128_OUTPUT_CHANNELS])
-            preactivations.append(captured["fc1_output"][0, :, :FC1_K128_OUTPUT_CHANNELS])
-            gelu.append(captured["gelu"][0, :, :FC1_K128_OUTPUT_CHANNELS])
-            token_counts.append(int(inputs[-1].shape[0]))
+            gelu.append(captured["gelu"][0, :, :FC2_INPUT_CHANNELS])
+            token_counts.append(int(gelu[-1].shape[0]))
     finally:
-        for hook in hooks:
-            hook.remove()
-    return torch.cat(inputs), torch.cat(preactivations), torch.cat(gelu), token_counts
+        hook.remove()
+    return torch.cat(gelu), token_counts
 
 
 def evaluate(checkpoint: Path, image_paths: list[Path]) -> dict[str, object]:
@@ -130,7 +152,6 @@ def evaluate(checkpoint: Path, image_paths: list[Path]) -> dict[str, object]:
     import timm
     import torch
     import torchvision
-    import torch.nn.functional as functional
     from safetensors.torch import load_file
     from timm.data import create_transform, resolve_model_data_config
 
@@ -139,72 +160,63 @@ def evaluate(checkpoint: Path, image_paths: list[Path]) -> dict[str, object]:
     model.eval()
     data_config = resolve_model_data_config(model)
     transform = create_transform(**data_config, is_training=False)
-    inputs, actual_preactivation, actual_gelu, token_counts = capture_activations(
-        model, transform, image_paths
-    )
+    actual_gelu, token_counts = capture_activations(model, transform, image_paths)
     mlp = model.stages[1].blocks[0].mlp
+    if tuple(actual_gelu.shape[1:]) != (FC2_INPUT_CHANNELS,):
+        raise ValueError(f"expected GELU width {FC2_INPUT_CHANNELS}, got {actual_gelu.shape[1]}")
 
-    input_int8, input_scale = quantize_symmetric(inputs)
-    fc1_weight = mlp.fc1.weight[
-        :FC1_K128_OUTPUT_CHANNELS, :FC1_K128_OUTPUT_CHANNELS
+    gelu_int8, gelu_scale = quantize_symmetric(actual_gelu)
+    fc2_weight = mlp.fc2.weight[
+        :FC2_OUTPUT_CHANNELS, :FC2_INPUT_CHANNELS
     ].detach()
-    fc1_weight_int8, fc1_weight_scale = quantize_symmetric(fc1_weight)
-    accumulator_scale = input_scale * fc1_weight_scale
-    accumulator = input_int8 @ fc1_weight_int8.T
-    bias = round_ties_away(mlp.fc1.bias[:FC1_K128_OUTPUT_CHANNELS] / accumulator_scale)
-    biased_accumulator = accumulator + bias.to(torch.int32)
-
-    gelu_scale = float(actual_preactivation.abs().max()) / 127.0
-    requant_multiplier = int(
-        math.floor(accumulator_scale / gelu_scale * (1 << FC1_GELU_REQUANT_SHIFT) + 0.5)
-    )
-    preactivation_int8 = requantize_signed(
-        biased_accumulator, requant_multiplier, FC1_GELU_REQUANT_SHIFT
-    )
-    lut_input = torch.arange(-128, 128, dtype=torch.float32) * gelu_scale
-    gelu_lut = round_ties_away(functional.gelu(lut_input) / gelu_scale).clamp(-128, 127)
-    gelu_int8 = gelu_lut[(preactivation_int8 + 128).to(torch.int64)].to(torch.int32)
-
-    fc2_weight = mlp.fc2.weight[:2, :FC1_K128_OUTPUT_CHANNELS].detach()
+    if tuple(fc2_weight.shape) != (FC2_OUTPUT_CHANNELS, FC2_INPUT_CHANNELS):
+        raise ValueError(
+            f"expected FC2 weight shape [{FC2_OUTPUT_CHANNELS}, {FC2_INPUT_CHANNELS}], "
+            f"got {list(fc2_weight.shape)}"
+        )
     fc2_weight_int8, fc2_weight_scale = quantize_symmetric(fc2_weight)
     output_scale = gelu_scale * fc2_weight_scale
     reference = actual_gelu @ fc2_weight.T
     dense = gelu_int8 @ fc2_weight_int8.T
     dense_dequantized = dense.to(torch.float32) * output_scale
 
-    activation_nonzero = ~gelu_int8.reshape(-1, FC1_K128_OUTPUT_CHANNELS // 4, 4).eq(0).all(2)
+    activation_nonzero = ~gelu_int8.reshape(-1, FC2_INPUT_CHANNELS // GROUP_LANES, GROUP_LANES).eq(0).all(2)
     total_tokens = int(gelu_int8.shape[0])
-    dense_vdots = total_tokens * 2 * (FC1_K128_OUTPUT_CHANNELS // 4)
+    input_groups = FC2_INPUT_CHANNELS // GROUP_LANES
+    output_pairs = FC2_OUTPUT_CHANNELS // OUTPUT_TILE_CHANNELS
+    dense_vdots = total_tokens * FC2_OUTPUT_CHANNELS * input_groups
     token_pairs = sum((count + 1) // 2 for count in token_counts)
-    dense_weight_reads = token_pairs * 2 * (FC1_K128_OUTPUT_CHANNELS // 4)
-    dense_input_reads = total_tokens * (FC1_K128_OUTPUT_CHANNELS // 4)
-    weight_values = fc2_weight_int8.tolist()
+    dense_weight_reads = token_pairs * FC2_OUTPUT_CHANNELS * input_groups
+    dense_input_reads = total_tokens * output_pairs * input_groups
 
-    policy_masks = {
-        "global_l1_6p25": fc2_lowest_l1_group_masks(weight_values, drop_count=4),
-        "global_l1_12p5": fc2_lowest_l1_group_masks(weight_values, drop_count=8),
-        "global_l1_25": fc2_lowest_l1_group_masks(weight_values, drop_count=16),
-        "per_k8_l1_25": fc2_structured_group_masks(weight_values),
-        "l1_budget_1pct": fc2_lowest_l1_group_masks(weight_values, l1_budget=0.01),
-        "l1_budget_2pct": fc2_lowest_l1_group_masks(weight_values, l1_budget=0.02),
-        "l1_budget_5pct": fc2_lowest_l1_group_masks(weight_values, l1_budget=0.05),
-    }
+    policy_names = (
+        "layer_global_l1_6.25",
+        "layer_global_l1_12.5",
+        "layer_global_l1_25",
+        "tile_local_l1_25",
+        "layer_l1_budget_1",
+        "layer_l1_budget_2",
+        "layer_l1_budget_5",
+    )
     policies = {}
     policy_estimates = {}
     total_weight_l1 = int(fc2_weight_int8.abs().sum())
-    for name, masks in policy_masks.items():
-        sparse_weight, structured_valid = apply_group_masks(fc2_weight_int8, masks)
+    for name in policy_names:
+        structured_valid = policy_group_valid(fc2_weight_int8, name)
+        sparse_weight = apply_group_valid(fc2_weight_int8, structured_valid)
         estimate = (gelu_int8 @ sparse_weight.T).to(torch.float32) * output_scale
         policy_estimates[name] = estimate
         active_groups = int(structured_valid.sum())
         structured_vdots = total_tokens * active_groups
         combined_vdots = int(
-            (activation_nonzero[:, None, :] & structured_valid[None, :, :]).sum()
+            (activation_nonzero.to(torch.int32) @ structured_valid.T.to(torch.int32)).sum()
         )
+        pair_valid = structured_valid.reshape(output_pairs, OUTPUT_TILE_CHANNELS, input_groups).any(1)
+        structured_input_reads = total_tokens * int(pair_valid.sum())
         structured_weight_reads = token_pairs * active_groups
         policies[name] = {
-            "group_masks": [f"0x{mask:x}" for mask in masks],
-            "weight_group_sparsity": 1.0 - active_groups / 64,
+            "selection_scope": "full-layer" if name.startswith("layer_") else "2x2x8-tile",
+            "weight_group_sparsity": 1.0 - active_groups / structured_valid.numel(),
             "dropped_weight_l1_ratio": 1.0 - float(sparse_weight.abs().sum()) / total_weight_l1,
             "error": error_metrics(reference, estimate),
             "pruning_delta": error_metrics(dense_dequantized, estimate),
@@ -212,8 +224,11 @@ def evaluate(checkpoint: Path, image_paths: list[Path]) -> dict[str, object]:
             "vdot_reduction": 1.0 - structured_vdots / dense_vdots,
             "combined_zero_activation_vdots": combined_vdots,
             "combined_vdot_reduction": 1.0 - combined_vdots / dense_vdots,
-            "payload_reads": dense_input_reads + structured_weight_reads,
-            "payload_reads_saved": dense_weight_reads - structured_weight_reads,
+            "payload_reads": structured_input_reads + structured_weight_reads,
+            "payload_reads_saved": (
+                dense_input_reads + dense_weight_reads
+                - structured_input_reads - structured_weight_reads
+            ),
         }
 
     per_image = []
@@ -237,7 +252,7 @@ def evaluate(checkpoint: Path, image_paths: list[Path]) -> dict[str, object]:
         offset += count
 
     return {
-        "schema": "sap-vpu-tinyvit-fc2-sparsity-study-v2",
+        "schema": "sap-vpu-tinyvit-fc2-sparsity-study-v3",
         "provenance": {
             "model_id": MODEL_ID,
             "layer_id": LAYER_ID,
@@ -255,17 +270,13 @@ def evaluate(checkpoint: Path, image_paths: list[Path]) -> dict[str, object]:
             "images": len(image_paths),
             "tokens_per_image": token_counts,
             "token_samples": total_tokens,
-            "fc2_input_channels": FC1_K128_OUTPUT_CHANNELS,
-            "fc2_output_channels": 2,
+            "fc2_input_channels": FC2_INPUT_CHANNELS,
+            "fc2_output_channels": FC2_OUTPUT_CHANNELS,
         },
         "quantization": {
             "scheme": "dataset-calibrated-symmetric-int8",
-            "input_scale": input_scale,
-            "fc1_weight_scale": fc1_weight_scale,
             "gelu_scale": gelu_scale,
             "fc2_weight_scale": fc2_weight_scale,
-            "requant_multiplier": requant_multiplier,
-            "requant_shift": FC1_GELU_REQUANT_SHIFT,
         },
         "baseline": {
             "error": error_metrics(reference, dense_dequantized),
@@ -285,11 +296,19 @@ def evaluate(checkpoint: Path, image_paths: list[Path]) -> dict[str, object]:
 
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("checkpoint", type=Path)
-    parser.add_argument("image_dir", type=Path)
-    parser.add_argument("output", type=Path)
+    parser.add_argument("checkpoint", type=Path, nargs="?")
+    parser.add_argument("image_dir", type=Path, nargs="?")
+    parser.add_argument("output", type=Path, nargs="?")
+    parser.add_argument("--self-test", action="store_true")
     args = parser.parse_args()
     try:
+        if args.self_test:
+            if args.checkpoint or args.image_dir or args.output:
+                parser.error("--self-test does not accept paths")
+            self_test()
+            return 0
+        if not args.checkpoint or not args.image_dir or not args.output:
+            parser.error("checkpoint, image_dir, and output are required")
         result = evaluate(args.checkpoint, prepare_images(args.image_dir))
         args.output.parent.mkdir(parents=True, exist_ok=True)
         args.output.write_text(json.dumps(result, indent=2, sort_keys=True) + "\n", encoding="ascii")

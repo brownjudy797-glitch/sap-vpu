@@ -580,6 +580,7 @@ tinyvit-activation-fixture:
 	  "$(TINYVIT_CHECKPOINT)" "$(TINYVIT_IMAGE)" "$(TINYVIT_ACTIVATION_FIXTURE)"
 
 tinyvit-sparsity-study:
+	$(TINYVIT_MODEL_PYTHON) scripts/evaluate_tinyvit_fc2_sparsity.py --self-test
 	$(TINYVIT_MODEL_PYTHON) scripts/evaluate_tinyvit_fc2_sparsity.py \
 	  "$(TINYVIT_CHECKPOINT)" "$(TINYVIT_EVAL_IMAGE_DIR)" "$(TINYVIT_SPARSITY_STUDY)"
 	test -s "$(TINYVIT_SPARSITY_STUDY)"
