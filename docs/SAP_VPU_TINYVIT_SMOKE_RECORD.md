@@ -243,24 +243,32 @@ normalized by the RMS of the matching floating-point no-bias FC2 output:
 | Policy | Group sparsity | Mean abs. error | NRMSE | Payload reads saved |
 | --- | ---: | ---: | ---: | ---: |
 | Dense INT8 | 0% | 0.06328 | 0.05465 | 0 |
-| Layer L1 budget 1% | 3.99% | 0.08407 | 0.07506 | 2,082,304 |
-| Layer-global L1 6.25% | 6.25% | 0.10075 | 0.09110 | 3,430,784 |
-| Layer L1 budget 2% | 6.77% | 0.10474 | 0.09461 | 3,738,112 |
-| Layer-global L1 12.5% | 12.5% | 0.15371 | 0.13927 | 7,244,160 |
-| Layer-global L1 25% | 25% | 0.26820 | 0.23997 | 15,999,872 |
+| Layer L1 budget 1% | 3.99% | 0.08349 | 0.07455 | 2,101,120 |
+| Layer-global L1 6.25% | 6.25% | 0.09960 | 0.09005 | 3,443,328 |
+| Layer L1 budget 2% | 6.77% | 0.10420 | 0.09424 | 3,731,840 |
+| Layer-global L1 12.5% | 12.5% | 0.15408 | 0.14012 | 7,250,432 |
+| Layer-global L1 25% | 25% | 0.26917 | 0.24092 | 15,968,512 |
 | Tile-local L1 25% | 25% | 0.33736 | 0.30443 | 12,845,056 |
 
 Dense execution models 102,760,448 VDOTs and the same number of payload reads.
 Only 42 of 802,816 quantized activation groups are naturally all zero. Layer-
 global 6.25% sparsity therefore reduces VDOTs by 6.25%, while reusable input
-groups limit total payload-read reduction to 3.34%. Global ranking is more
+groups limit total payload-read reduction to 3.35%. Global ranking is more
 accurate than forcing one dropped group in every 2x2x8 tile. The 1% L1-budget
 policy is the conservative candidate; 6.25% layer-global is the throughput
 candidate; 25% tile-local remains a stress ablation. None is a final model
-policy until end-to-end accuracy is measured.
+policy until end-to-end accuracy is measured. Version 4 orders equal-L1 groups
+by flat index so the policy is deterministic across PyTorch versions.
+
+The same full-layer masks are now checked in RTL for output pairs `(0,1)`,
+`(42,43)`, `(84,85)`, and `(126,127)`. Dense/global/budget runs respectively
+issue `2048/1868/1922` VDOTs and `2048/1956/1985` OBI reads, with 1024 writes in
+all cases. The selected pairs expose nonuniform sparsity: global active groups
+range from 199 to 248 of 256 per pair. Their 8.79% VDOT and 4.49% read reductions
+are representative-slice RTL results, not full-layer averages.
 
 Use this record to justify that SAP-VPU now has a repeatable TinyViT-oriented
 kernel path, captured model activations, a full-K FC1 output slice, checked host
 aggregation, and an explicit software/hardware boundary for bias/GELU. The next
-evidence step is an RTL sweep of representative full-layer output-pair masks,
+evidence step is matched gate-SAIF for the representative output-pair masks,
 while full-model accuracy remains required before a final policy claim.

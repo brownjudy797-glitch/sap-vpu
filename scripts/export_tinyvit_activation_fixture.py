@@ -11,6 +11,14 @@ from pathlib import Path
 import sys
 from typing import Any
 
+from prepare_tinyvit_fc2_k512 import (
+    CHUNKS as FC2_K512_CHUNKS,
+    PAIR_SCHEMA as FC2_K512_PAIR_SCHEMA,
+    REPRESENTATIVE_OUTPUT_PAIRS,
+    layer_policy_masks,
+    masked_aggregate,
+)
+
 
 MODEL_ID = "timm/tiny_vit_5m_224.dist_in22k_ft_in1k"
 TIMM_MODEL = "tiny_vit_5m_224"
@@ -25,6 +33,7 @@ FC1_K128_OUTPUT_CHANNELS = 128
 FC1_GELU_REQUANT_SHIFT = 16
 FC2_K512_INPUT_CHANNELS = 512
 FC2_K512_OUTPUT_CHANNELS = 2
+FC2_K512_LAYER_OUTPUT_CHANNELS = 128
 
 
 def sha256(path: Path) -> str:
@@ -220,6 +229,41 @@ def build_fixture(checkpoint: Path, image: Path, image_url: str) -> dict[str, An
     )
     fc2_k512_float_no_bias = fc2_k512_input @ fc2_k512_weight.T
 
+    fc2_k512_full_weight = mlp.fc2.weight[
+        :FC2_K512_LAYER_OUTPUT_CHANNELS, :FC2_K512_INPUT_CHANNELS
+    ].detach()
+    fc2_k512_full_weight_int8, fc2_k512_full_weight_scale = quantize_symmetric(
+        fc2_k512_full_weight
+    )
+    fc2_k512_input_values = as_list(fc2_k512_input_int8)
+    fc2_k512_full_weight_values = as_list(fc2_k512_full_weight_int8)
+    full_layer_masks = {
+        "layer_global_l1_6p25": layer_policy_masks(
+            fc2_k512_full_weight_values, "layer_global_l1_6.25"
+        ),
+        "layer_l1_budget_1pct": layer_policy_masks(
+            fc2_k512_full_weight_values, "layer_l1_budget_1"
+        ),
+    }
+    fc2_k512_pair_weights = [
+        [fc2_k512_full_weight_values[output] for output in pair]
+        for pair in REPRESENTATIVE_OUTPUT_PAIRS
+    ]
+    fc2_k512_pair_dense = [
+        masked_aggregate(fc2_k512_input_values, weights, [0xF] * FC2_K512_CHUNKS)
+        for weights in fc2_k512_pair_weights
+    ]
+    fc2_k512_pair_policies = {}
+    for name, masks in full_layer_masks.items():
+        pair_masks = [masks[pair[0] // 2] for pair in REPRESENTATIVE_OUTPUT_PAIRS]
+        fc2_k512_pair_policies[name] = {
+            "masks": pair_masks,
+            "expected_integer_output": [
+                masked_aggregate(fc2_k512_input_values, weights, selected_masks)
+                for weights, selected_masks in zip(fc2_k512_pair_weights, pair_masks)
+            ],
+        }
+
     return {
         "schema": "sap-vpu-tinyvit-mlp2-int8-v1",
         "provenance": {
@@ -263,6 +307,10 @@ def build_fixture(checkpoint: Path, image: Path, image_url: str) -> dict[str, An
                 ),
                 "fc2_k512_weights": (
                     f"{LAYER_ID}.fc2.weight[0:{FC2_K512_OUTPUT_CHANNELS},"
+                    f"0:{FC2_K512_INPUT_CHANNELS}]"
+                ),
+                "fc2_k512_pair_weights": (
+                    f"{LAYER_ID}.fc2.weight[{[list(pair) for pair in REPRESENTATIVE_OUTPUT_PAIRS]},"
                     f"0:{FC2_K512_INPUT_CHANNELS}]"
                 ),
             },
@@ -407,6 +455,28 @@ def build_fixture(checkpoint: Path, image: Path, image_url: str) -> dict[str, An
                 "integer_vs_no_bias_error": error_metrics(
                     fc2_k512_float_no_bias, fc2_k512_dequantized
                 ),
+            },
+        },
+        "fc2_k512_pairs": {
+            "schema": FC2_K512_PAIR_SCHEMA,
+            "shape": {
+                "tokens": len(TOKEN_INDICES),
+                "input_channels": FC2_K512_INPUT_CHANNELS,
+                "output_pairs": len(REPRESENTATIVE_OUTPUT_PAIRS),
+            },
+            "chunk_k": 8,
+            "output_pairs": [list(pair) for pair in REPRESENTATIVE_OUTPUT_PAIRS],
+            "weights": fc2_k512_pair_weights,
+            "expected_integer_output": fc2_k512_pair_dense,
+            "policies": fc2_k512_pair_policies,
+            "quantization": {
+                "scheme": "symmetric-int8",
+                "input_scale": fc2_k512_input_scale,
+                "weight_scale": fc2_k512_full_weight_scale,
+                "input_zero_point": 0,
+                "weight_zero_point": 0,
+                "weight_scope": "full-512x128-fc2-tensor",
+                "rounding": "nearest-ties-away-from-zero",
             },
         },
     }

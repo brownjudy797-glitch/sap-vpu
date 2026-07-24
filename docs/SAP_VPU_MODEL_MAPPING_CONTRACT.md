@@ -171,6 +171,23 @@ This is the complete FC2 input dimension, not a complete TinyViT layer: only two
 tokens and two output channels are covered, FC1/GELU are supplied by the captured
 model activation, and FC2 bias is outside the integer dot-product boundary.
 
+The companion `fc2_k512_pairs` fixture quantizes the complete 512x128 FC2 weight
+tensor with one scale, then stores four evenly spaced output pairs: `(0,1)`,
+`(42,43)`, `(84,85)`, and `(126,127)`. Full-layer 6.25% global-L1 and 1% L1-
+budget masks use a deterministic `(L1 norm, flat group index)` ordering.
+`make sim-subsystem-k512-pair-policies` applies those masks to 256 K=8 tiles and
+checks all 16 accumulated INT32 outputs. A weight mask also suppresses a token
+input group when neither output uses that K4 group.
+
+| Representative policy | VDOTs | OBI reads | OBI writes |
+| --- | ---: | ---: | ---: |
+| Dense | 2048 | 2048 | 1024 |
+| Full-layer global L1 6.25% | 1868 | 1956 | 1024 |
+| Full-layer L1 budget 1% | 1922 | 1985 | 1024 |
+
+These four pairs validate mask transport, output variation, and memory skip.
+Their reductions are not a full-layer RTL or power estimate.
+
 ## Reproduction
 
 ```sh
@@ -187,6 +204,7 @@ make tinyvit-smoke
 make tinyvit-fc1-k128-smoke
 make sim-subsystem-mlp2
 make sim-subsystem-k512-policies
+make sim-subsystem-k512-pair-policies
 make fpga-vpu-subsystem-k512-policy-power-matrix
 ```
 
@@ -218,9 +236,10 @@ rather than fetched from RAM.
 
 `tinyvit-sparsity-study` extends the host-side numerical check to all 784
 stage-1 tokens from eight fixed, hash-checked PyTorch Hub sample images. Version
-3 evaluates the complete 512-input, 128-output FC2 matrix with one dataset-
+4 evaluates the complete 512-input, 128-output FC2 matrix with one dataset-
 calibrated INT8 scale set and sweeps full-layer lowest-L1, tile-local lowest-L1,
-and cumulative-L1-budget group policies. Counts follow the hardware's two-token,
+and cumulative-L1-budget group policies. Equal-L1 groups use the same explicit
+flat-index tie-break as the RTL fixture. Counts follow the hardware's two-token,
 two-output, K=8 tiling and distinguish weight-group VDOTs from reusable input
 payload reads. Detailed error/activity data is written under `work/tinyvit/`.
 This is a small policy-calibration set, not an ImageNet accuracy benchmark or a

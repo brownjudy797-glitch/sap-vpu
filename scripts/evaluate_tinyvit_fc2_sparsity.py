@@ -16,6 +16,7 @@ from export_tinyvit_activation_fixture import (
     quantize_symmetric,
     sha256,
 )
+from prepare_tinyvit_fc2_k512 import layer_masks_to_valid_matrix, layer_policy_masks
 
 
 IMAGE_SET = (
@@ -32,7 +33,6 @@ IMAGE_BASE_URL = "https://raw.githubusercontent.com/pytorch/hub/master/images"
 FC2_INPUT_CHANNELS = 512
 FC2_OUTPUT_CHANNELS = 128
 GROUP_LANES = 4
-CHUNK_K = 8
 OUTPUT_TILE_CHANNELS = 2
 
 
@@ -70,35 +70,8 @@ def error_metrics(reference: object, estimate: object) -> dict[str, float]:
 def policy_group_valid(weights: object, policy: str) -> object:
     import torch
 
-    group_l1 = weights.abs().reshape(weights.shape[0], -1, GROUP_LANES).sum(2)
-    valid = torch.ones_like(group_l1, dtype=torch.bool)
-    if policy == "tile_local_l1_25":
-        tiles = group_l1.reshape(
-            weights.shape[0] // OUTPUT_TILE_CHANNELS,
-            OUTPUT_TILE_CHANNELS,
-            weights.shape[1] // CHUNK_K,
-            CHUNK_K // GROUP_LANES,
-        ).permute(0, 2, 1, 3).reshape(-1, 4)
-        tile_valid = torch.ones_like(tiles, dtype=torch.bool)
-        tile_valid.scatter_(1, tiles.argmin(1, keepdim=True), False)
-        return tile_valid.reshape(
-            weights.shape[0] // OUTPUT_TILE_CHANNELS,
-            weights.shape[1] // CHUNK_K,
-            OUTPUT_TILE_CHANNELS,
-            CHUNK_K // GROUP_LANES,
-        ).permute(0, 2, 1, 3).reshape_as(valid)
-
-    kind, value = policy.rsplit("_", 1)
-    ordered = torch.argsort(group_l1.flatten())
-    if kind == "layer_global_l1":
-        drop_count = int(valid.numel() * float(value) / 100.0)
-    elif kind == "layer_l1_budget":
-        limit = float(group_l1.sum()) * float(value) / 100.0
-        drop_count = int((group_l1.flatten()[ordered].cumsum(0) <= limit).sum())
-    else:
-        raise ValueError(f"unsupported policy: {policy}")
-    valid.flatten()[ordered[:drop_count]] = False
-    return valid
+    masks = layer_policy_masks(weights.tolist(), policy)
+    return torch.tensor(layer_masks_to_valid_matrix(masks), dtype=torch.bool)
 
 
 def apply_group_valid(weights: object, valid: object) -> object:
@@ -252,7 +225,7 @@ def evaluate(checkpoint: Path, image_paths: list[Path]) -> dict[str, object]:
         offset += count
 
     return {
-        "schema": "sap-vpu-tinyvit-fc2-sparsity-study-v3",
+        "schema": "sap-vpu-tinyvit-fc2-sparsity-study-v4",
         "provenance": {
             "model_id": MODEL_ID,
             "layer_id": LAYER_ID,
