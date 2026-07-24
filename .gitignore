@@ -41,6 +41,7 @@ stack.info.*/
 ucli.key
 
 # Vivado generated side files
+.Xil/
 vivado*.jou
 vivado*.log
 clockInfo.txt

@@ -57,6 +57,17 @@ The default run executes 128 fixture-driven INT8 MLP2 inferences with shape
 ReLU/repack step, and one M=2, N=2, K=4 FC2 tile. Override
 `FPGA_SUBSYSTEM_ITERATIONS` only when a longer activity window is required.
 
+Run the matched K=128 FC2 dense/sparse policy matrix against the same current
+subsystem checkpoint:
+
+```sh
+make fpga-vpu-subsystem-policy-power-matrix
+```
+
+The matrix runs `fc2_dense`, `fc2_global_l1_6p25`, and
+`fc2_l1_budget_2pct`. Each policy executes 32 identical 2x128x2 workloads;
+only descriptor metadata and the resulting group skips differ.
+
 Run power from an existing routed checkpoint with VPU smoke SAIF activity:
 
 ```sh
@@ -130,6 +141,7 @@ The flow writes:
 - `work/fpga/vpu_subsystem_140_saif_power/sap_vpu_subsystem_gate.saif`
 - `work/fpga/vpu_subsystem_140_saif_power/fpga_vpu_subsystem_power.csv`
 - `work/fpga/vpu_subsystem_140_saif_power/power/reports/post_route_saif_power.rpt`
+- `work/fpga/vpu_subsystem_140_policy_power/<policy>/fpga_vpu_subsystem_power.csv`
 - `work/fpga/vpu_core/checkpoints/post_synth.dcp`
 - `work/fpga/vpu_core/checkpoints/post_route.dcp`
 
@@ -171,6 +183,11 @@ The flow writes:
 - ReLU and hidden-word repacking between FC1 and FC2 are performed at the
   testbench software boundary. Their CPU energy is not included in the
   subsystem power result.
+- The K=128 policy matrix uses the same current post-synthesis netlist, routed
+  checkpoint, 140 MHz clock, iteration count, output stores, and model fixture
+  for all policies. It changes descriptor metadata only. Compare dynamic energy
+  per workload; per-VDOT energy increases when fixed scheduler overhead is
+  divided by fewer issued VDOTs.
 - The runner requires a passing RAM read/write/result check, at least 99% routed
   net annotation, High confidence, and no Vivado clock/reset activity warning.
 - Generated reports remain under ignored `work/` and must not be committed.
@@ -187,7 +204,7 @@ Current local Artix-7 `xc7a35tcsg324-1`, Vivado 2023.2, standalone
 | `work/fpga/vpu_core_sliced_125` | 125 | 0.418 | 1814 | 729 | 0 | 0 | 0.089 | pass |
 | `work/fpga/vpu_core_sliced_130` | 130 | 0.176 | 1814 | 733 | 0 | 0 | 0.090 | pass |
 | `work/fpga/vpu_core_sliced_135` | 135 | 0.301 | 1816 | 732 | 0 | 0 | 0.090 | pass |
-| `work/fpga/vpu_core_sliced_140` | 140 | 0.044 | 1820 | 744 | 0 | 0 | 0.091 | pass |
+| `work/fpga/vpu_core_current_140` | 140 | 0.074 | 1862 | 788 | 0 | 0 | 0.083 | pass |
 | `work/fpga/vpu_core_win_141mhz` | 141 | -0.036 | 1822 | 742 | 0 | 0 | 0.091 | fail |
 | `work/fpga/vpu_core_sliced_145` | 145 | -0.008 | 1824 | 749 | 0 | 0 | 0.092 | fail |
 
@@ -198,37 +215,53 @@ generated for the same RTL and mapping style.
 Older local Windows runs at 150 MHz and 200 MHz used a DSP-mapped implementation
 and are not part of the current no-DSP sliced VPU-core table.
 
-Current same-mode out-of-context comparison for the complete subsystem:
+Current matched-RTL out-of-context comparison at 140 MHz, plus the earlier
+100 MHz checkpoint:
 
 | Top | Clock MHz | Worst slack ns | LUT | FF | DSP | BRAM | Status |
 | --- | ---: | ---: | ---: | ---: | ---: | ---: | --- |
 | `sap_vpu_core` | 100 | 2.191 | 1817 | 729 | 0 | 0 | pass |
 | `sap_vpu_subsystem` | 100 | 1.816 | 2741 | 1332 | 0 | 0 | pass |
-| `sap_vpu_core` | 140 | 0.090 | 1817 | 742 | 0 | 0 | pass |
-| `sap_vpu_subsystem` | 140 | 0.091 | 2752 | 1332 | 0 | 0 | pass |
+| `sap_vpu_core` | 140 | 0.074 | 1862 | 788 | 0 | 0 | pass |
+| `sap_vpu_subsystem` | 140 | 0.025 | 2523 | 1303 | 0 | 0 | pass |
 
 At 140 MHz, adding the tiled scheduler, four-word register scratchpads, and OBI
-data mover costs 935 LUTs (+51.5%) and 590 FFs (+79.5%) relative to the core in
-the same OOC flow. The near-equal WNS is a comparative IP result; it is not a
-claim that full-SoC or board timing is unchanged. Vectorless power rounds to
-0.082 W for both 140 MHz runs and is therefore not used as evidence of equal
-power.
+data mover costs 661 LUTs (+35.5%) and 515 FFs (+65.4%) relative to the current
+core in the same OOC flow. Both builds use the `Explore` implementation
+directives. This is comparative IP evidence, not full-SoC or board timing
+signoff.
 
-Current complete-subsystem gate-SAIF checkpoint on the same 140 MHz routed
-design:
+The earlier pre-group-skip MLP2 checkpoint remains a flow baseline:
 
 | MLP2 iterations | Tiles | VDOTs | RAM reads | RAM writes | Duration ps | Nets matched | Confidence | Total W | Dynamic W | Dynamic pJ/MLP2 | Dynamic pJ/tile | Dynamic pJ/VDOT |
 | ---: | ---: | ---: | ---: | ---: | ---: | ---: | --- | ---: | ---: | ---: | ---: | ---: |
 | 128 | 384 | 1536 | 1536 | 1536 | 167,290,637 | 6452/6461 (99.86%) | High | 0.082 | 0.013 | 16,990.455 | 5,663.485 | 1,415.871 |
 
-This checkpoint maps real-image activations and quantized `fc1/fc2` weight
+That checkpoint maps real-image activations and quantized `fc1/fc2` weight
 slices from timm TinyViT-5M through three autonomous read-compute-write tiles
 per fixture. The checkpoint/image SHA-256 values, preprocessing, model, layer,
 and exact tensor slices are recorded in the fixture. Software-boundary
 requantization/ReLU/repacking, external RAM, CPU, interconnect, and board power
 are excluded. It is therefore not end-to-end TinyViT energy. The 0.001 W report
 resolution also prevents using the unchanged 0.013 W rounded dynamic result as
-a fixture-to-fixture power claim.
+a fixture-to-fixture power claim. It must not be mixed with the current sparse
+policy matrix below because the RTL checkpoint differs.
+
+Current K=128 FC2 gate-SAIF matrix on the July 24 group-skip RTL and matched
+140 MHz routed checkpoint:
+
+| Policy | Iterations | Tiles | VDOTs | RAM reads | RAM writes | Duration ps | Nets matched | Dynamic W | Dynamic pJ/workload | Energy reduction |
+| --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
+| `fc2_dense` | 32 | 512 | 4096 | 4096 | 2048 | 413,203,981 | 6142/6200 (99.06%) | 0.014 | 180,776.742 | baseline |
+| `fc2_global_l1_6p25` | 32 | 512 | 3840 | 3968 | 2048 | 395,834,637 | 6142/6200 (99.06%) | 0.014 | 173,177.654 | 4.20% |
+| `fc2_l1_budget_2pct` | 32 | 512 | 3904 | 4000 | 2048 | 400,176,973 | 6142/6200 (99.06%) | 0.014 | 175,077.426 | 3.15% |
+
+All three gate simulations check exact aggregate outputs and expected
+VDOT/read/write counts before power analysis. Global 6.25% group sparsity removes
+6.25% of VDOTs and 3.125% of RAM reads; the error-budget policy removes 4.6875%
+of VDOTs and 2.344% of RAM reads. Vivado rounds all three dynamic-power values
+to 0.014 W, so the supported claim is lower matched-workload latency and dynamic
+energy, not a separately resolved average-power reduction.
 
 Current local SAIF power-flow smoke on the 140 MHz checkpoint:
 

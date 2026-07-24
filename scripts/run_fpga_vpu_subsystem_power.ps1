@@ -4,7 +4,9 @@ param(
   [string]$PostSynthDcp = 'work\fpga\vpu_subsystem_140\checkpoints\post_synth.dcp',
   [string]$PostRouteDcp = 'work\fpga\vpu_subsystem_140\checkpoints\post_route.dcp',
   [double]$ClockMhz = 140.0,
-  [int]$Iterations = 128
+  [int]$Iterations = 128,
+  [ValidateSet('mlp2_dense', 'fc2_dense', 'fc2_global_l1_6p25', 'fc2_l1_budget_2pct')]
+  [string]$Policy = 'mlp2_dense'
 )
 
 $ErrorActionPreference = 'Stop'
@@ -33,6 +35,7 @@ $netlistDir = Join-Path $OutDir 'netlist'
 $xsimDir = Join-Path $OutDir 'xsim'
 $powerDir = Join-Path $OutDir 'power'
 $fixtureDir = 'work\tinyvit\fixture'
+$fc2FixtureDir = 'work\tinyvit_fc1_k128'
 $fixtureMetadataRel = Join-Path $fixtureDir 'tinyvit_mlp2_fixture_metadata.json'
 $vcdRel = Join-Path $OutDir 'sap_vpu_subsystem_gate.vcd'
 $saifRel = Join-Path $OutDir 'sap_vpu_subsystem_gate.saif'
@@ -44,6 +47,7 @@ foreach ($path in @(
   (Join-Path $repo $PostSynthDcp),
   (Join-Path $repo $PostRouteDcp),
   (Join-Path $repo (Join-Path $fixtureDir 'tinyvit_mlp2_fixture_tb.svh')),
+  (Join-Path $repo (Join-Path $fc2FixtureDir 'tinyvit_fc2_k128_policy_tb.svh')),
   (Join-Path $repo $fixtureMetadataRel),
   (Join-Path $repo 'rtl\sap_vpu_pkg.sv'),
   (Join-Path $repo 'tb\sap_vpu_subsystem_gate_tb.sv'),
@@ -84,11 +88,11 @@ if (!(Test-Path -LiteralPath $netlistPath) -or (Get-Item -LiteralPath $netlistPa
 }
 
 Invoke-VivadoCmd (
-  'pushd "{0}" && xvlog -sv -i "!root!\{2}" "!root!\rtl\sap_vpu_pkg.sv" "!root!\tb\sap_vpu_subsystem_gate_tb.sv" "!root!\{1}" && xelab -debug typical -L unisims_ver sap_vpu_subsystem_gate_tb glbl -s sap_vpu_subsystem_gate_tb_snapshot && popd' -f $xsimDir, $netlistRel, $fixtureDir
+  'pushd "{0}" && xvlog -sv -i "!root!\{2}" -i "!root!\{3}" "!root!\rtl\sap_vpu_pkg.sv" "!root!\tb\sap_vpu_subsystem_gate_tb.sv" "!root!\{1}" && xelab -debug typical -L unisims_ver sap_vpu_subsystem_gate_tb glbl -s sap_vpu_subsystem_gate_tb_snapshot && popd' -f $xsimDir, $netlistRel, $fixtureDir, $fc2FixtureDir
 ) (Join-Path $OutDir 'compile.log')
 
 Invoke-VivadoCmd (
-  'pushd "{0}" && xsim --nolog -R --testplusarg "{{vcd=../sap_vpu_subsystem_gate.vcd iterations={1} clock_half_ns={2}}}" sap_vpu_subsystem_gate_tb_snapshot && popd' -f $xsimDir, $Iterations, $clockHalfNs
+  'pushd "{0}" && xsim --nolog -R --testplusarg "{{vcd=../sap_vpu_subsystem_gate.vcd iterations={1} clock_half_ns={2} policy={3}}}" sap_vpu_subsystem_gate_tb_snapshot && popd' -f $xsimDir, $Iterations, $clockHalfNs, $Policy
 ) (Join-Path $OutDir 'xsim.log')
 
 $xsimLogPath = Join-Path $repo (Join-Path $OutDir 'xsim.log')
@@ -154,12 +158,43 @@ foreach ($field in @('Total On-Chip Power (W)', 'Dynamic (W)', 'Device Static (W
   $fields[$field] = $match.Groups[1].Value.Trim()
 }
 $dynamicW = [double]::Parse($fields['Dynamic (W)'], [cultureinfo]::InvariantCulture)
-$tiles = $Iterations * 3
-$vdots = $Iterations * 12
+$workload = 'tinyvit_mlp2_2x4x4x2'
+$tilesPerIteration = 3
+$vdotsPerIteration = 12
+$readsPerIteration = 12
+$writesPerIteration = 12
+switch ($Policy) {
+  'fc2_dense' {
+    $workload = 'tinyvit_fc2_2x128x2'
+    $tilesPerIteration = 16
+    $vdotsPerIteration = 128
+    $readsPerIteration = 128
+    $writesPerIteration = 64
+  }
+  'fc2_global_l1_6p25' {
+    $workload = 'tinyvit_fc2_2x128x2'
+    $tilesPerIteration = 16
+    $vdotsPerIteration = 120
+    $readsPerIteration = 124
+    $writesPerIteration = 64
+  }
+  'fc2_l1_budget_2pct' {
+    $workload = 'tinyvit_fc2_2x128x2'
+    $tilesPerIteration = 16
+    $vdotsPerIteration = 122
+    $readsPerIteration = 125
+    $writesPerIteration = 64
+  }
+}
+$tiles = $Iterations * $tilesPerIteration
+$vdots = $Iterations * $vdotsPerIteration
+$ramReads = $Iterations * $readsPerIteration
+$ramWrites = $Iterations * $writesPerIteration
 $dynamicEnergyPj = $dynamicW * $durationPs
 $summary = [pscustomobject]@{
   top = 'sap_vpu_subsystem'
-  workload = 'tinyvit_mlp2_2x4x4x2'
+  workload = $workload
+  policy = $Policy
   fixture_kind = $fixtureMetadata.provenance.kind
   model_id = $fixtureMetadata.provenance.model_id
   layer_id = $fixtureMetadata.provenance.layer_id
@@ -169,13 +204,14 @@ $summary = [pscustomobject]@{
   iterations = $Iterations
   tiles = $tiles
   vdots = $vdots
-  ram_reads = $vdots
-  ram_writes = $vdots
+  ram_reads = $ramReads
+  ram_writes = $ramWrites
   total_w = $fields['Total On-Chip Power (W)']
   dynamic_w = $fields['Dynamic (W)']
   static_w = $fields['Device Static (W)']
   duration_ps = $durationPs
-  dynamic_pj_per_mlp2 = ($dynamicEnergyPj / $Iterations).ToString('0.000', [cultureinfo]::InvariantCulture)
+  dynamic_pj_per_workload = ($dynamicEnergyPj / $Iterations).ToString('0.000', [cultureinfo]::InvariantCulture)
+  dynamic_pj_per_mlp2 = if ($Policy -eq 'mlp2_dense') { ($dynamicEnergyPj / $Iterations).ToString('0.000', [cultureinfo]::InvariantCulture) } else { '' }
   dynamic_pj_per_tile = ($dynamicEnergyPj / $tiles).ToString('0.000', [cultureinfo]::InvariantCulture)
   dynamic_pj_per_vdot = ($dynamicEnergyPj / $vdots).ToString('0.000', [cultureinfo]::InvariantCulture)
   confidence = $fields['Confidence Level']

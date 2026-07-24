@@ -4,6 +4,7 @@ module sap_vpu_subsystem_gate_tb;
   import sap_vpu_pkg::*;
 
 `include "tinyvit_mlp2_fixture_tb.svh"
+`include "tinyvit_fc2_k128_policy_tb.svh"
 
   localparam realtime DEFAULT_CLK_HALF_PERIOD_NS = 3.5715;
   localparam int unsigned DEFAULT_ITERATIONS = 128;
@@ -14,6 +15,13 @@ module sap_vpu_subsystem_gate_tb;
   localparam logic [31:0] HIDDEN_BASE = 32'h0000_0400;
   localparam logic [31:0] FC2_WEIGHT_BASE = 32'h0000_0500;
   localparam logic [31:0] FC2_OUT_BASE = 32'h0000_0600;
+  localparam logic [31:0] FC2_K128_INPUT_BASE = 32'h0000_0800;
+  localparam logic [31:0] FC2_K128_WEIGHT_BASE = 32'h0000_0900;
+  localparam logic [31:0] FC2_K128_OUT_BASE = 32'h0000_0a00;
+  localparam int unsigned POLICY_MLP2_DENSE = 0;
+  localparam int unsigned POLICY_FC2_DENSE = 1;
+  localparam int unsigned POLICY_FC2_GLOBAL = 2;
+  localparam int unsigned POLICY_FC2_BUDGET = 3;
 
   logic        clk_i;
   logic        rst_ni;
@@ -41,12 +49,18 @@ module sap_vpu_subsystem_gate_tb;
   logic [31:0] fc1_output_0 [0:3];
   logic [31:0] fc1_output_1 [0:3];
   logic [31:0] fc2_output [0:3];
+  logic [31:0] fc2_k128_output [0:3];
   logic [31:0] hidden_words [0:1];
   int unsigned read_transactions;
   int unsigned write_transactions;
   int unsigned iterations = DEFAULT_ITERATIONS;
   realtime     clk_half_period_ns = DEFAULT_CLK_HALF_PERIOD_NS;
   string       vcd_file = "sap_vpu_subsystem_gate.vcd";
+  string       activity_policy = "mlp2_dense";
+  int unsigned policy_id = POLICY_MLP2_DENSE;
+  int unsigned expected_vdots;
+  int unsigned expected_reads;
+  int unsigned expected_writes;
 
   sap_vpu_subsystem dut (
     .clk_i(clk_i),
@@ -88,6 +102,7 @@ module sap_vpu_subsystem_gate_tb;
         fc1_output_0[i] <= '0;
         fc1_output_1[i] <= '0;
         fc2_output[i]   <= '0;
+        fc2_k128_output[i] <= '0;
       end
     end else begin
       dma_rvalid_i <= 1'b0;
@@ -112,27 +127,38 @@ module sap_vpu_subsystem_gate_tb;
               FC2_OUT_BASE + 4:   fc2_output[1] <= dma_wdata_o;
               FC2_OUT_BASE + 8:   fc2_output[2] <= dma_wdata_o;
               FC2_OUT_BASE + 12:  fc2_output[3] <= dma_wdata_o;
+              FC2_K128_OUT_BASE + 0:  fc2_k128_output[0] <= dma_wdata_o;
+              FC2_K128_OUT_BASE + 4:  fc2_k128_output[1] <= dma_wdata_o;
+              FC2_K128_OUT_BASE + 8:  fc2_k128_output[2] <= dma_wdata_o;
+              FC2_K128_OUT_BASE + 12: fc2_k128_output[3] <= dma_wdata_o;
               default:            dma_err_i <= 1'b1;
             endcase
           end
         end else begin
           read_transactions <= read_transactions + 1;
-          case (dma_addr_o)
-            TOKEN_BASE + 0:      dma_rdata_i <= TINYVIT_MLP2_WORDS[0];
-            TOKEN_BASE + 4:      dma_rdata_i <= TINYVIT_MLP2_WORDS[1];
-            FC1_WEIGHT_BASE + 0: dma_rdata_i <= TINYVIT_MLP2_WORDS[2];
-            FC1_WEIGHT_BASE + 4: dma_rdata_i <= TINYVIT_MLP2_WORDS[3];
-            FC1_WEIGHT_BASE + 8: dma_rdata_i <= TINYVIT_MLP2_WORDS[4];
-            FC1_WEIGHT_BASE + 12: dma_rdata_i <= TINYVIT_MLP2_WORDS[5];
-            HIDDEN_BASE + 0:     dma_rdata_i <= hidden_words[0];
-            HIDDEN_BASE + 4:     dma_rdata_i <= hidden_words[1];
-            FC2_WEIGHT_BASE + 0: dma_rdata_i <= TINYVIT_MLP2_WORDS[6];
-            FC2_WEIGHT_BASE + 4: dma_rdata_i <= TINYVIT_MLP2_WORDS[7];
-            default: begin
-              dma_rdata_i <= '0;
-              dma_err_i   <= 1'b1;
-            end
-          endcase
+          if (dma_addr_o >= FC2_K128_INPUT_BASE && dma_addr_o < FC2_K128_INPUT_BASE + 256) begin
+            dma_rdata_i <= TINYVIT_FC2_K128_INPUT_WORDS[(dma_addr_o - FC2_K128_INPUT_BASE) >> 2];
+          end else if (dma_addr_o >= FC2_K128_WEIGHT_BASE &&
+                       dma_addr_o < FC2_K128_WEIGHT_BASE + 256) begin
+            dma_rdata_i <= TINYVIT_FC2_K128_WEIGHT_WORDS[(dma_addr_o - FC2_K128_WEIGHT_BASE) >> 2];
+          end else begin
+            case (dma_addr_o)
+              TOKEN_BASE + 0:      dma_rdata_i <= TINYVIT_MLP2_WORDS[0];
+              TOKEN_BASE + 4:      dma_rdata_i <= TINYVIT_MLP2_WORDS[1];
+              FC1_WEIGHT_BASE + 0: dma_rdata_i <= TINYVIT_MLP2_WORDS[2];
+              FC1_WEIGHT_BASE + 4: dma_rdata_i <= TINYVIT_MLP2_WORDS[3];
+              FC1_WEIGHT_BASE + 8: dma_rdata_i <= TINYVIT_MLP2_WORDS[4];
+              FC1_WEIGHT_BASE + 12: dma_rdata_i <= TINYVIT_MLP2_WORDS[5];
+              HIDDEN_BASE + 0:     dma_rdata_i <= hidden_words[0];
+              HIDDEN_BASE + 4:     dma_rdata_i <= hidden_words[1];
+              FC2_WEIGHT_BASE + 0: dma_rdata_i <= TINYVIT_MLP2_WORDS[6];
+              FC2_WEIGHT_BASE + 4: dma_rdata_i <= TINYVIT_MLP2_WORDS[7];
+              default: begin
+                dma_rdata_i <= '0;
+                dma_err_i   <= 1'b1;
+              end
+            endcase
+          end
         end
       end
     end
@@ -210,6 +236,7 @@ module sap_vpu_subsystem_gate_tb;
         FC1_OUT0_BASE: output_word = fc1_output_0[index];
         FC1_OUT1_BASE: output_word = fc1_output_1[index];
         FC2_OUT_BASE:  output_word = fc2_output[index];
+        FC2_K128_OUT_BASE: output_word = fc2_k128_output[index];
         default:       output_word = 'x;
       endcase
     end
@@ -243,23 +270,97 @@ module sap_vpu_subsystem_gate_tb;
     end
   endtask
 
+  task automatic run_tile_descriptors(
+    input int unsigned index,
+    input logic [31:0] lhs_base,
+    input logic [31:0] lhs_descriptor,
+    input logic [31:0] rhs_base,
+    input logic [31:0] rhs_descriptor,
+    input logic [31:0] out_base
+  );
+    logic [3:0] id;
+    begin
+      id = index[3:0];
+      send_cmd(id, SAP_OP_VTDMA, lhs_base, lhs_descriptor);
+      expect_rsp(id, 32'(lhs_descriptor[3:1]));
+      send_cmd(id + 4'd1, SAP_OP_VTDMA, rhs_base, rhs_descriptor);
+      expect_rsp(id + 4'd1, 32'(rhs_descriptor[3:1]));
+      send_cmd(id + 4'd2, SAP_OP_VTSTART,
+               lhs_descriptor[3:1] == 3'd2 ? 32'h0000_0112 : 32'h0000_0212, 32'h0);
+      expect_rsp(id + 4'd2, 32'h0);
+      send_cmd(id + 4'd3, SAP_OP_VTSTORE, out_base, 32'h0);
+      expect_rsp(id + 4'd3, 32'h0);
+    end
+  endtask
+
   task automatic run_tile(
     input int unsigned index,
     input logic [31:0] lhs_base,
     input logic [31:0] rhs_base,
     input logic [31:0] out_base
   );
-    logic [3:0] id;
     begin
-      id = index[3:0];
-      send_cmd(id, SAP_OP_VTDMA, lhs_base, 32'd4);
-      expect_rsp(id, 32'd2);
-      send_cmd(id + 4'd1, SAP_OP_VTDMA, rhs_base, 32'd5);
-      expect_rsp(id + 4'd1, 32'd2);
-      send_cmd(id + 4'd2, SAP_OP_VTSTART, 32'h0000_0112, 32'h0);
-      expect_rsp(id + 4'd2, 32'h0);
-      send_cmd(id + 4'd3, SAP_OP_VTSTORE, out_base, 32'h0);
-      expect_rsp(id + 4'd3, 32'h0);
+      run_tile_descriptors(index, lhs_base, 32'd4, rhs_base, 32'd5, out_base);
+    end
+  endtask
+
+  function automatic logic [3:0] fc2_policy_mask(
+    input int unsigned policy,
+    input int unsigned chunk
+  );
+    begin
+      case (policy)
+        POLICY_FC2_GLOBAL: fc2_policy_mask = TINYVIT_FC2_GLOBAL_L1_6P25_MASKS[chunk];
+        POLICY_FC2_BUDGET: fc2_policy_mask = TINYVIT_FC2_L1_BUDGET_2PCT_MASKS[chunk];
+        default:           fc2_policy_mask = 4'hf;
+      endcase
+    end
+  endfunction
+
+  function automatic logic [31:0] fc2_policy_expected(
+    input int unsigned policy,
+    input int unsigned index
+  );
+    begin
+      case (policy)
+        POLICY_FC2_GLOBAL: fc2_policy_expected = TINYVIT_FC2_GLOBAL_L1_6P25_EXPECTED[index];
+        POLICY_FC2_BUDGET: fc2_policy_expected = TINYVIT_FC2_L1_BUDGET_2PCT_EXPECTED[index];
+        default:           fc2_policy_expected = TINYVIT_FC2_DENSE_EXPECTED[index];
+      endcase
+    end
+  endfunction
+
+  task automatic run_fc2_k128(
+    input int unsigned iteration,
+    input int unsigned policy
+  );
+    logic signed [31:0] sums [0:3];
+    logic [3:0] mask;
+    logic [31:0] lhs_descriptor;
+    logic [31:0] rhs_descriptor;
+    begin
+      for (int output_index = 0; output_index < 4; output_index++) begin
+        sums[output_index] = '0;
+      end
+      for (int unsigned chunk = 0; chunk < 16; chunk++) begin
+        mask = fc2_policy_mask(policy, chunk);
+        lhs_descriptor = policy == POLICY_FC2_DENSE ? 32'd8 : 32'h0000_01f8;
+        rhs_descriptor = policy == POLICY_FC2_DENSE ? 32'd9 : {23'd0, 1'b1, mask, 4'h9};
+        run_tile_descriptors(
+          (iteration * 16) + chunk,
+          FC2_K128_INPUT_BASE + (chunk * 16), lhs_descriptor,
+          FC2_K128_WEIGHT_BASE + (chunk * 16), rhs_descriptor,
+          FC2_K128_OUT_BASE
+        );
+        for (int output_index = 0; output_index < 4; output_index++) begin
+          sums[output_index] += $signed(fc2_k128_output[output_index]);
+        end
+      end
+      for (int output_index = 0; output_index < 4; output_index++) begin
+        if (sums[output_index] !== $signed(fc2_policy_expected(policy, output_index))) begin
+          gate_fail("K=128 FC2 aggregate mismatch");
+        end
+      end
     end
   endtask
 
@@ -308,6 +409,34 @@ module sap_vpu_subsystem_gate_tb;
         clk_half_period_ns <= 0.0) begin
       $fatal(1, "clock_half_ns must be positive");
     end
+    void'($value$plusargs("policy=%s", activity_policy));
+    case (activity_policy)
+      "mlp2_dense": begin
+        policy_id = POLICY_MLP2_DENSE;
+        expected_vdots = iterations * 12;
+        expected_reads = iterations * 12;
+        expected_writes = iterations * 12;
+      end
+      "fc2_dense": begin
+        policy_id = POLICY_FC2_DENSE;
+        expected_vdots = iterations * 128;
+        expected_reads = iterations * 128;
+        expected_writes = iterations * 64;
+      end
+      "fc2_global_l1_6p25": begin
+        policy_id = POLICY_FC2_GLOBAL;
+        expected_vdots = iterations * 120;
+        expected_reads = iterations * 124;
+        expected_writes = iterations * 64;
+      end
+      "fc2_l1_budget_2pct": begin
+        policy_id = POLICY_FC2_BUDGET;
+        expected_vdots = iterations * 122;
+        expected_reads = iterations * 125;
+        expected_writes = iterations * 64;
+      end
+      default: $fatal(1, "unsupported policy: %s", activity_policy);
+    endcase
 
     #100;
     @(negedge clk_i);
@@ -317,19 +446,22 @@ module sap_vpu_subsystem_gate_tb;
     $dumpfile(vcd_file);
     $dumpvars(0, dut);
     for (int unsigned i = 0; i < iterations; i++) begin
-      run_mlp2(i);
+      if (policy_id == POLICY_MLP2_DENSE) begin
+        run_mlp2(i);
+      end else begin
+        run_fc2_k128(i, policy_id);
+      end
     end
     $dumpoff;
 
     send_cmd(4'he, SAP_OP_VREADCNT, 32'(SAP_CNT_MAC_ACTIVE), 32'h0);
-    expect_rsp(4'he, 32'(iterations * 12));
-    if (read_transactions != iterations * 12 ||
-        write_transactions != iterations * 12) begin
+    expect_rsp(4'he, 32'(expected_vdots));
+    if (read_transactions != expected_reads || write_transactions != expected_writes) begin
       gate_fail("DMA transaction count mismatch");
     end
 
-    $display("SUBSYSTEM_GATE_PASS: mlp2=%0d tiles=%0d reads=%0d writes=%0d",
-             iterations, iterations * 3, read_transactions, write_transactions);
+    $display("SUBSYSTEM_GATE_PASS: policy=%s iterations=%0d vdots=%0d reads=%0d writes=%0d",
+             activity_policy, iterations, expected_vdots, read_transactions, write_transactions);
     $finish;
   end
 

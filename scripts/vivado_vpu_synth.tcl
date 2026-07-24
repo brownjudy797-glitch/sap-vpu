@@ -49,9 +49,9 @@ report_timing_summary -file [file join $report_dir "post_synth_timing_summary.rp
 write_checkpoint -force [file join $checkpoint_dir "post_synth.dcp"]
 
 opt_design
-place_design
-phys_opt_design
-route_design
+place_design -directive Explore
+phys_opt_design -directive Explore
+route_design -directive Explore
 
 report_utilization -file [file join $report_dir "post_route_utilization.rpt"]
 report_timing_summary -file [file join $report_dir "post_route_timing_summary.rpt"]
