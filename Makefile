@@ -633,6 +633,8 @@ sim-subsystem-k512-pair-policies: sim-subsystem-mlp2
 
 sim-subsystem-k512-stream: sim-subsystem-mlp2
 	"$(SIM_DIR)/subsystem_mlp2_obj/sap_vpu_subsystem_mlp2_tb" +iterations=1 +policy=fc2_k512_stream_dense
+	"$(SIM_DIR)/subsystem_mlp2_obj/sap_vpu_subsystem_mlp2_tb" +iterations=1 +policy=fc2_k512_stream_global_l1_6p25
+	"$(SIM_DIR)/subsystem_mlp2_obj/sap_vpu_subsystem_mlp2_tb" +iterations=1 +policy=fc2_k512_stream_l1_budget_2pct
 
 tiled-gemm-check:
 	$(PYTHON) scripts/check_tiled_gemm_reference.py

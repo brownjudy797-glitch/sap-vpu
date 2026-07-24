@@ -365,11 +365,10 @@ paper-facing result.
 ## Next FPGA Steps
 
 1. Re-run both 140 MHz OOC checkpoints after any RTL datapath change.
-2. Measure the new dense `VTSTREAM` K=512 path against the previous 64-command
-   path; RTL simulation reduced output writes from 256 to four but has no new
-   FPGA timing or power result yet.
-3. Add packed sparse metadata to `VTSTREAM`, then re-run representative gate-SAIF
-   with the 12.5% global and 13.4% L1-budget candidates selected by the v5
-   logit-stability study.
+2. Materialize the 12.5% global and 13.4% L1-budget candidates as packed
+   `VTSTREAM` metadata. At 6.25%, metadata overhead makes total reads 517 versus
+   dense's 516 even though VDOTs fall from 512 to 480.
+3. Re-run representative gate-SAIF only after those candidate policies pass RTL;
+   the stream RTL has no new FPGA timing or power result yet.
 4. Add a board-level top and constraints only after the subsystem report remains
    reproducible.

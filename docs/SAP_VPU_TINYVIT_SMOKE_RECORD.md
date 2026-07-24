@@ -293,23 +293,26 @@ comparison rather than a resolved average-power claim.
 
 ## Autonomous K512 Accumulation
 
-`make sim-subsystem-k512-stream` runs the captured dense 2x512x2 FC2 slice from
-one `VTSTREAM` descriptor. The subsystem fetches and executes 64 K8 tiles,
-accumulates the four INT32 outputs internally, and matches the existing golden.
+`make sim-subsystem-k512-stream` runs the captured dense and sparse 2x512x2 FC2
+slices from `VTSTREAM` descriptors. The subsystem fetches 64 K8 tiles, caches
+four metadata bytes per word, skips invalid groups, accumulates four INT32
+outputs internally, and matches each policy's exact golden.
 
-| Path | VDOTs | OBI reads | OBI writes |
-| --- | ---: | ---: | ---: |
-| CPU/testbench-scheduled K8 partials | 512 | 512 | 256 |
-| Autonomous `VTSTREAM` | 512 | 516 | 4 |
+| Path | VDOTs | Payload reads | Descriptor + metadata reads | Total reads | Writes |
+| --- | ---: | ---: | ---: | ---: | ---: |
+| CPU/testbench-scheduled dense partials | 512 | 512 | 0 | 512 | 256 |
+| Dense `VTSTREAM` | 512 | 512 | 4 + 0 | 516 | 4 |
+| Global L1 6.25% `VTSTREAM` | 480 | 496 | 5 + 16 | 517 | 4 |
+| L1-budget 2% `VTSTREAM` | 480 | 496 | 5 + 16 | 517 | 4 |
 
-The four extra reads fetch the stream descriptor; final-result writes fall by
-98.44%. A two-iteration reset check also passes with 1024 VDOTs, 1032 reads, and
-eight writes. This is RTL functional and traffic evidence only; sparse metadata,
-new FPGA PPA, and gate-SAIF results remain pending.
+Final-result writes fall by 98.44%, and sparse VDOTs fall by 6.25%. Metadata
+overhead offsets the 16 saved payload reads, so no total-read reduction is
+claimed at this sparsity. A two-iteration sparse reset check passes at 960 VDOTs,
+1034 reads, and eight writes. New FPGA PPA and gate-SAIF results remain pending.
 
 Use this record to justify that SAP-VPU now has a repeatable TinyViT-oriented
 kernel path, captured model activations, a full-K FC1 output slice, checked host
 aggregation, autonomous K512 accumulation, and an explicit software/hardware
-boundary for bias/GELU. The next evidence step is sparse stream metadata plus
-updated FPGA PPA, while labeled full-model accuracy remains required before a
-final policy claim.
+boundary for bias/GELU. The next evidence step is the selected 12.5%-13.4%
+stream policy range followed by updated FPGA PPA, while labeled full-model
+accuracy remains required before a final policy claim.

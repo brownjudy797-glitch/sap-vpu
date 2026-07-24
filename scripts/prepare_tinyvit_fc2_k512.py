@@ -235,6 +235,27 @@ def masked_aggregate(
     ]
 
 
+def stream_input_mask(weight_mask: int) -> int:
+    input_mask = 0
+    for group in range(CHUNK_K // GROUP_LANES):
+        if weight_mask & (1 << group) or weight_mask & (1 << (group + 2)):
+            input_mask |= (1 << group) | (1 << (group + 2))
+    return input_mask
+
+
+def pack_stream_metadata(masks: list[int]) -> list[int]:
+    if len(masks) % 4:
+        raise ValueError("stream metadata requires a multiple of four chunks")
+    words = []
+    for base in range(0, len(masks), 4):
+        word = 0
+        for offset, weight_mask in enumerate(masks[base : base + 4]):
+            byte = (weight_mask << 4) | stream_input_mask(weight_mask)
+            word |= byte << (offset * 8)
+        words.append(word)
+    return words
+
+
 def pair_policy_counts(masks: list[list[int]]) -> tuple[int, int, int]:
     weight_reads = sum(bin(mask).count("1") for pair_masks in masks for mask in pair_masks)
     input_reads = 0
@@ -242,9 +263,7 @@ def pair_policy_counts(masks: list[list[int]]) -> tuple[int, int, int]:
         if len(pair_masks) != CHUNKS:
             raise ValueError("representative pair masks must contain 64 chunks")
         for mask in pair_masks:
-            for group in range(2):
-                if mask & (1 << group) or mask & (1 << (group + 2)):
-                    input_reads += TOKENS
+            input_reads += bin(stream_input_mask(mask)).count("1")
     return TOKENS * weight_reads, input_reads + weight_reads, len(masks) * CHUNKS * 4
 
 
@@ -270,6 +289,13 @@ def write_svh(
     for name, masks in policies.items():
         lines.append(f"localparam logic [3:0] TINYVIT_FC2_K512_{name}_MASKS [0:{len(masks) - 1}] = '{{")
         lines.append("  " + ", ".join(f"4'h{mask:x}" for mask in masks))
+        lines.append("};")
+        metadata = pack_stream_metadata(masks)
+        lines.append(
+            f"localparam logic [31:0] TINYVIT_FC2_K512_{name}_STREAM_METADATA_WORDS "
+            f"[0:{len(metadata) - 1}] = '{{"
+        )
+        lines.append("  " + ", ".join(f"32'h{word:08x}" for word in metadata))
         lines.append("};")
     expected = {
         "DENSE": dense_expected,
@@ -336,6 +362,7 @@ def self_test() -> None:
     global_masks = fc2_lowest_l1_group_masks(weights, drop_count=GLOBAL_DROP_COUNT)
     budget_masks = fc2_lowest_l1_group_masks(weights, l1_budget=0.02)
     assert len(global_masks) == CHUNKS
+    assert len(pack_stream_metadata(global_masks)) == CHUNKS // 4
     assert sum(4 - bin(mask).count("1") for mask in global_masks) == GLOBAL_DROP_COUNT
     assert 0 < sum(4 - bin(mask).count("1") for mask in budget_masks) < CHUNKS * 4
     assert global_masks == budget_masks
@@ -372,6 +399,7 @@ def self_test() -> None:
         assert "TINYVIT_FC2_K512_WEIGHT_WORDS [0:255]" in generated
         assert "TINYVIT_FC2_K512_GLOBAL_L1_6P25_MASKS [0:63]" in generated
         assert "TINYVIT_FC2_K512_L1_BUDGET_2PCT_MASKS [0:63]" in generated
+        assert "TINYVIT_FC2_K512_GLOBAL_L1_6P25_STREAM_METADATA_WORDS [0:15]" in generated
         assert "TINYVIT_FC2_K512_PAIR_COUNT = 4" in generated
         assert "TINYVIT_FC2_K512_PAIR_WEIGHT_WORDS [0:1023]" in generated
         assert "TINYVIT_FC2_K512_PAIR_LAYER_GLOBAL_L1_6P25_MASKS [0:255]" in generated

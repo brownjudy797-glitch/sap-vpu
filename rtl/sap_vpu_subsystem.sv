@@ -33,9 +33,11 @@ module sap_vpu_subsystem #(
 );
   import sap_vpu_pkg::*;
 
-  typedef enum logic [2:0] {
+  typedef enum logic [3:0] {
     STREAM_DESC_REQ,
     STREAM_DESC_WAIT,
+    STREAM_META_REQ,
+    STREAM_META_WAIT,
     STREAM_LOAD_REQ,
     STREAM_LOAD_WAIT,
     STREAM_START,
@@ -79,10 +81,13 @@ module sap_vpu_subsystem #(
   stream_state_t         stream_state_q;
   logic [X_ID_WIDTH-1:0] stream_cmd_id_q;
   logic [31:0]           stream_desc_addr_q;
-  logic [1:0]            stream_desc_index_q;
+  logic [2:0]            stream_desc_index_q;
   logic [31:0]           stream_lhs_base_q;
   logic [31:0]           stream_rhs_base_q;
   logic [31:0]           stream_out_base_q;
+  logic                  stream_metadata_enable_q;
+  logic [31:0]           stream_metadata_base_q;
+  logic [31:0]           stream_metadata_word_q;
   logic [6:0]            stream_block_count_q;
   logic [5:0]            stream_chunk_q;
   logic [3:0]            stream_load_index_q;
@@ -93,6 +98,11 @@ module sap_vpu_subsystem #(
   logic [31:0]           stream_dma_addr;
   logic                  stream_dma_we;
   logic [31:0]           stream_dma_wdata;
+  logic [7:0]            stream_metadata_byte;
+  logic [3:0]            stream_lhs_mask;
+  logic [3:0]            stream_rhs_mask;
+  logic                  stream_group_valid;
+  logic                  stream_skip_load;
   logic                  stream_load_response;
 
   logic                  local_rsp_valid_q;
@@ -187,20 +197,36 @@ module sap_vpu_subsystem #(
 
   assign dma_group_valid = !dma_metadata_q || dma_group_mask_q[dma_index_q];
   assign dma_skip_load = dma_active_q && !dma_wait_q && !dma_group_valid;
+  always_comb begin
+    unique case (stream_chunk_q[1:0])
+      2'd0: stream_metadata_byte = stream_metadata_word_q[7:0];
+      2'd1: stream_metadata_byte = stream_metadata_word_q[15:8];
+      2'd2: stream_metadata_byte = stream_metadata_word_q[23:16];
+      default: stream_metadata_byte = stream_metadata_word_q[31:24];
+    endcase
+  end
+  assign stream_lhs_mask = stream_metadata_enable_q ? stream_metadata_byte[3:0] : 4'hf;
+  assign stream_rhs_mask = stream_metadata_enable_q ? stream_metadata_byte[7:4] : 4'hf;
+  assign stream_group_valid = stream_load_index_q[2] ?
+                              stream_rhs_mask[stream_load_index_q[1:0]] :
+                              stream_lhs_mask[stream_load_index_q[1:0]];
+  assign stream_skip_load = stream_active_q && (stream_state_q == STREAM_LOAD_REQ) &&
+                            !stream_group_valid;
   assign stream_load_response = stream_active_q &&
                                 (stream_state_q == STREAM_LOAD_WAIT) &&
                                 dma_rvalid_i && !dma_err_i;
   assign tile_load_valid  = (cmd_valid_i && cmd_ready_o && is_tile_load) ||
                             (dma_active_q && dma_wait_q && dma_rvalid_i && !dma_err_i) ||
-                            dma_skip_load || stream_load_response;
+                            dma_skip_load || stream_load_response || stream_skip_load;
   assign tile_load_weight = stream_active_q ? stream_load_index_q[2] :
                             dma_active_q ? dma_weight_q : cmd_rs2_i[0];
   assign tile_load_index  = stream_active_q ? stream_load_index_q[1:0] :
                             dma_active_q ? dma_index_q : cmd_rs2_i[2:1];
-  assign tile_load_data   = stream_active_q ? dma_rdata_i :
+  assign tile_load_data   = stream_active_q ?
+                            (stream_group_valid ? dma_rdata_i : '0) :
                             dma_active_q && !dma_group_valid ? '0 :
                             dma_active_q ? dma_rdata_i : cmd_rs1_i[31:0];
-  assign tile_load_group_valid = stream_active_q ? 1'b1 :
+  assign tile_load_group_valid = stream_active_q ? stream_group_valid :
                                  dma_active_q ? dma_group_valid : 1'b1;
   assign tile_start_valid = (cmd_valid_i && cmd_ready_o && is_tile_start && start_args_valid) ||
                             (stream_active_q && (stream_state_q == STREAM_START));
@@ -213,10 +239,13 @@ module sap_vpu_subsystem #(
 
   assign stream_dma_req = stream_active_q &&
                           ((stream_state_q == STREAM_DESC_REQ) ||
-                           (stream_state_q == STREAM_LOAD_REQ) ||
+                           (stream_state_q == STREAM_META_REQ) ||
+                           ((stream_state_q == STREAM_LOAD_REQ) && stream_group_valid) ||
                            (stream_state_q == STREAM_STORE_REQ));
   assign stream_dma_addr = (stream_state_q == STREAM_DESC_REQ) ?
-                           stream_desc_addr_q + {28'd0, stream_desc_index_q, 2'b00} :
+                           stream_desc_addr_q + {27'd0, stream_desc_index_q, 2'b00} :
+                           (stream_state_q == STREAM_META_REQ) ?
+                           stream_metadata_base_q + {26'd0, stream_chunk_q[5:2], 2'b00} :
                            (stream_state_q == STREAM_LOAD_REQ) ?
                            (stream_load_index_q[2] ? stream_rhs_base_q : stream_lhs_base_q) +
                            ({26'd0, stream_chunk_q} << 4) +
@@ -281,6 +310,9 @@ module sap_vpu_subsystem #(
       stream_lhs_base_q   <= '0;
       stream_rhs_base_q   <= '0;
       stream_out_base_q   <= '0;
+      stream_metadata_enable_q <= 1'b0;
+      stream_metadata_base_q <= '0;
+      stream_metadata_word_q <= '0;
       stream_block_count_q <= '0;
       stream_chunk_q      <= '0;
       stream_load_index_q <= '0;
@@ -300,6 +332,9 @@ module sap_vpu_subsystem #(
           stream_cmd_id_q     <= cmd_id_i;
           stream_desc_addr_q  <= cmd_rs1_i[31:0];
           stream_desc_index_q <= '0;
+          stream_metadata_enable_q <= 1'b0;
+          stream_metadata_base_q <= '0;
+          stream_metadata_word_q <= '0;
           stream_chunk_q      <= '0;
           stream_load_index_q <= '0;
           stream_result_index_q <= '0;
@@ -427,18 +462,37 @@ module sap_vpu_subsystem #(
                 local_rsp_exc_q     <= 1'b1;
               end else begin
                 unique case (stream_desc_index_q)
-                  2'd0: stream_lhs_base_q <= dma_rdata_i;
-                  2'd1: stream_rhs_base_q <= dma_rdata_i;
-                  2'd2: stream_out_base_q <= dma_rdata_i;
-                  default: stream_block_count_q <= dma_rdata_i[6:0];
+                  3'd0: stream_lhs_base_q <= dma_rdata_i;
+                  3'd1: stream_rhs_base_q <= dma_rdata_i;
+                  3'd2: stream_out_base_q <= dma_rdata_i;
+                  3'd3: begin
+                    stream_block_count_q <= dma_rdata_i[6:0];
+                    stream_metadata_enable_q <= dma_rdata_i[8];
+                  end
+                  default: stream_metadata_base_q <= dma_rdata_i;
                 endcase
-                if (stream_desc_index_q == 2'd3) begin
+                if (stream_desc_index_q == 3'd3) begin
                   if ((stream_lhs_base_q[1:0] != 2'b00) ||
                       (stream_rhs_base_q[1:0] != 2'b00) ||
                       (stream_out_base_q[1:0] != 2'b00) ||
-                      (dma_rdata_i[31:7] != '0) ||
+                      (dma_rdata_i[31:9] != '0) || dma_rdata_i[7] ||
                       (dma_rdata_i[6:0] < 7'd1) ||
                       (dma_rdata_i[6:0] > 7'd64)) begin
+                    stream_active_q     <= 1'b0;
+                    local_rsp_valid_q   <= 1'b1;
+                    local_rsp_id_q      <= stream_cmd_id_q;
+                    local_rsp_data_q    <= '0;
+                    local_rsp_exc_q     <= 1'b1;
+                  end else if (dma_rdata_i[8]) begin
+                    stream_desc_index_q <= 3'd4;
+                    stream_state_q      <= STREAM_DESC_REQ;
+                  end else begin
+                    stream_chunk_q      <= '0;
+                    stream_load_index_q <= '0;
+                    stream_state_q      <= STREAM_LOAD_REQ;
+                  end
+                end else if (stream_desc_index_q == 3'd4) begin
+                  if (dma_rdata_i[1:0] != 2'b00) begin
                     stream_active_q     <= 1'b0;
                     local_rsp_valid_q   <= 1'b1;
                     local_rsp_id_q      <= stream_cmd_id_q;
@@ -447,7 +501,7 @@ module sap_vpu_subsystem #(
                   end else begin
                     stream_chunk_q      <= '0;
                     stream_load_index_q <= '0;
-                    stream_state_q      <= STREAM_LOAD_REQ;
+                    stream_state_q      <= STREAM_META_REQ;
                   end
                 end else begin
                   stream_desc_index_q <= stream_desc_index_q + 1'b1;
@@ -456,8 +510,43 @@ module sap_vpu_subsystem #(
               end
             end
           end
-          STREAM_LOAD_REQ: begin
+          STREAM_META_REQ: begin
             if (stream_dma_req && dma_gnt_i) begin
+              stream_state_q <= STREAM_META_WAIT;
+            end
+          end
+          STREAM_META_WAIT: begin
+            if (dma_rvalid_i) begin
+              if (dma_err_i) begin
+                stream_active_q     <= 1'b0;
+                local_rsp_valid_q   <= 1'b1;
+                local_rsp_id_q      <= stream_cmd_id_q;
+                local_rsp_data_q    <= '0;
+                local_rsp_exc_q     <= 1'b1;
+              end else begin
+                stream_metadata_word_q <= dma_rdata_i;
+                stream_state_q         <= STREAM_LOAD_REQ;
+              end
+            end
+          end
+          STREAM_LOAD_REQ: begin
+            if (stream_skip_load) begin
+              if (!tile_load_ready) begin
+                stream_active_q     <= 1'b0;
+                local_rsp_valid_q   <= 1'b1;
+                local_rsp_id_q      <= stream_cmd_id_q;
+                local_rsp_data_q    <= '0;
+                local_rsp_exc_q     <= 1'b1;
+              end else begin
+                dma_read_saved_q <= dma_read_saved_q + 32'd1;
+                if (stream_load_index_q == 4'd7) begin
+                  stream_load_index_q <= '0;
+                  stream_state_q      <= STREAM_START;
+                end else begin
+                  stream_load_index_q <= stream_load_index_q + 1'b1;
+                end
+              end
+            end else if (stream_dma_req && dma_gnt_i) begin
               stream_state_q <= STREAM_LOAD_WAIT;
             end
           end
@@ -502,7 +591,9 @@ module sap_vpu_subsystem #(
                 end else begin
                   stream_chunk_q      <= stream_chunk_q + 1'b1;
                   stream_load_index_q <= '0;
-                  stream_state_q      <= STREAM_LOAD_REQ;
+                  stream_state_q      <= stream_metadata_enable_q &&
+                                         (stream_chunk_q[1:0] == 2'd3) ?
+                                         STREAM_META_REQ : STREAM_LOAD_REQ;
                 end
               end else begin
                 stream_result_index_q <= stream_result_index_q + 1'b1;
