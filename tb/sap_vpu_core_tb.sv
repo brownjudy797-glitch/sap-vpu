@@ -154,8 +154,15 @@ module sap_vpu_core_tb;
     send_cmd(4'hc, SAP_OP_VREADCNT, 32'(SAP_CNT_GROUP_SKIPPED), 32'h0);
     if (rsp_data != 32'd1) $fatal(1, "zero-group VDOT group-skip count mismatch");
 
+    send_cmd(4'hd, SAP_OP_VSETPREC, 32'(SAP_PREC_INT2), 32'h0);
+    assert(rsp_data == 32'(SAP_PREC_INT2));
+
+    send_cmd(4'he, SAP_OP_VSETSPARSE_BMP, 32'h0000_ffff, 32'h0);
+    send_cmd(4'hf, SAP_OP_VDOT, 32'hffff_ffff, 32'h5555_5555);
+    assert(rsp_data == 32'hffff_fff0);
+
     cmd_valid = 1'b1;
-    cmd_id = 4'hd;
+    cmd_id = 4'h0;
     cmd_op = 7'h7f;
     assert(cmd_ready);
     tick();

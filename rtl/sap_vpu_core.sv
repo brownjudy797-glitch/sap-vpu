@@ -148,35 +148,16 @@ module sap_vpu_core #(
 
   function automatic logic signed [31:0] precision_product(
     input logic signed [31:0] lhs,
-    input logic signed [31:0] rhs,
-    input logic [1:0] precision
+    input logic signed [31:0] rhs
   );
     logic signed [7:0]  lhs8;
     logic signed [7:0]  rhs8;
-    logic signed [15:0] prod8;
-    logic signed [3:0]  lhs4;
-    logic signed [3:0]  rhs4;
-    logic signed [7:0]  prod4;
-    logic signed [1:0]  lhs2;
-    logic signed [1:0]  rhs2;
-    logic signed [3:0]  prod2;
+    logic signed [15:0] product;
     begin
       lhs8 = $signed(lhs[7:0]);
       rhs8 = $signed(rhs[7:0]);
-      prod8 = lhs8 * rhs8;
-      lhs4 = $signed(lhs[3:0]);
-      rhs4 = $signed(rhs[3:0]);
-      prod4 = lhs4 * rhs4;
-      lhs2 = $signed(lhs[1:0]);
-      rhs2 = $signed(rhs[1:0]);
-      prod2 = lhs2 * rhs2;
-
-      unique case (precision)
-        SAP_PREC_INT8: precision_product = $signed({{16{prod8[15]}}, prod8});
-        SAP_PREC_INT4: precision_product = $signed({{24{prod4[7]}}, prod4});
-        SAP_PREC_INT2: precision_product = $signed({{28{prod2[3]}}, prod2});
-        default:       precision_product = $signed({{16{prod8[15]}}, prod8});
-      endcase
+      product = lhs8 * rhs8;
+      precision_product = $signed({{16{product[15]}}, product});
     end
   endfunction
 
@@ -248,7 +229,7 @@ module sap_vpu_core #(
         vdot_sum_pending_q <= 1'b1;
       end else if (vdot_elem_pending_q && !rsp_valid_q) begin
         for (int unsigned i = 0; i < SAP_FRONT_MAX_LANES; i++) begin
-          dot_product = precision_product(vdot_lhs_q[i], vdot_rhs_q[i], precision_q);
+          dot_product = precision_product(vdot_lhs_q[i], vdot_rhs_q[i]);
           vdot_product_q[i] <= dot_product;
         end
         vdot_elem_pending_q <= 1'b0;

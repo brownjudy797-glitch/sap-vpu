@@ -234,7 +234,7 @@ The flow writes:
 ## Local Checkpoint
 
 Current local Artix-7 `xc7a35tcsg324-1`, Vivado 2023.2, standalone
-`sap_vpu_core` evidence for the current 0-DSP sliced datapath:
+`sap_vpu_core` evidence for the 0-DSP datapath:
 
 | Source | Clock MHz | Worst slack ns | LUT | FF | DSP | BRAM | Power W | Status |
 | --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | --- |
@@ -242,12 +242,17 @@ Current local Artix-7 `xc7a35tcsg324-1`, Vivado 2023.2, standalone
 | `work/fpga/vpu_core_sliced_130` | 130 | 0.176 | 1814 | 733 | 0 | 0 | 0.090 | pass |
 | `work/fpga/vpu_core_sliced_135` | 135 | 0.301 | 1816 | 732 | 0 | 0 | 0.090 | pass |
 | `work/fpga/vpu_core_current_140` | 140 | 0.074 | 1862 | 788 | 0 | 0 | 0.083 | pass |
+| `work/fpga/vpu_core_sharedmul_140_mapped` | 140 | 0.598 | 1310 | 725 | 0 | 0 | 0.082 | pass |
 | `work/fpga/vpu_core_win_141mhz` | 141 | -0.036 | 1822 | 742 | 0 | 0 | 0.091 | fail |
 | `work/fpga/vpu_core_sliced_145` | 145 | -0.008 | 1824 | 749 | 0 | 0 | 0.092 | fail |
 
-Treat 140 MHz as the current reproducible standalone VPU-core FPGA timing
-checkpoint. Do not claim 145 MHz or higher until a positive-slack run is
-generated for the same RTL and mapping style.
+Treat `vpu_core_sharedmul_140_mapped` as the current reproducible standalone
+VPU-core FPGA timing checkpoint. Its precision datapath selects already
+sign-extended INT8/INT4/INT2 operands before one signed 8x8 multiply per lane,
+instead of describing three parallel multipliers and selecting their results.
+Against `vpu_core_current_140`, this reduces LUTs by 552 (29.6%), FFs by 63
+(8.0%), and improves WNS by 0.524 ns. Do not claim 145 MHz or higher until a
+positive-slack run is generated for this same RTL and mapping style.
 
 Older local Windows runs at 150 MHz and 200 MHz used a DSP-mapped implementation
 and are not part of the current no-DSP sliced VPU-core table.
@@ -261,13 +266,21 @@ Current matched-RTL out-of-context comparison at 140 MHz, plus the earlier
 | `sap_vpu_subsystem` | 100 | 1.816 | 2741 | 1332 | 0 | 0 | pass |
 | `sap_vpu_core` | 140 | 0.074 | 1862 | 788 | 0 | 0 | pass |
 | `sap_vpu_subsystem` pre-stream | 140 | 0.025 | 2523 | 1303 | 0 | 0 | pass |
-| `sap_vpu_subsystem` stream | 140 | 0.021 | 3067 | 1656 | 0 | 0 | pass |
+| `sap_vpu_subsystem` stream, pre-shared-multiplier | 140 | 0.021 | 3067 | 1656 | 0 | 0 | pass |
+| `sap_vpu_core` shared-multiplier | 140 | 0.598 | 1310 | 725 | 0 | 0 | pass |
+| `sap_vpu_subsystem` stream, shared-multiplier | 140 | 0.061 | 3037 | 1761 | 0 | 0 | pass |
 
 The current stream subsystem adds 544 LUTs (+21.6%) and 353 FFs (+27.1%) over
 the pre-stream subsystem while retaining 140 MHz timing. It includes the
 64-block sequencer, packed-metadata cache, payload-read skip, accumulation, and
 final writeback. Both builds use `Explore`; these are OOC IP results, not full-
 SoC or board timing signoff.
+
+At subsystem level the shared-multiplier change reduces LUTs by only 30
+(1.0%), increases FFs by 105 (6.3%), and improves WNS by 0.040 ns relative to
+the preceding stream checkpoint. Vivado rebalanced logic across the flattened
+subsystem, so the standalone-core LUT reduction must not be presented as an
+equal full-subsystem area reduction.
 
 The earlier pre-group-skip MLP2 checkpoint remains a flow baseline:
 

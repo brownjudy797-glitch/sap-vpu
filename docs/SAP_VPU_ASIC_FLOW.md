@@ -232,9 +232,29 @@ installation are stopped; a compatible DC/Library Compiler installation or a
 validated regenerated `.db` is required before current-RTL ASIC evidence can
 resume.
 
+### 2026-07-25 Compatibility Audit
+
+DC `L-2016.03-SP1` was also launched in a CentOS 7 user space with its required
+legacy runtime libraries. The shell and license checkout completed, but the
+current TSMC28 library still emitted `DB-1`/`LDB-4` and mapping crashed. This
+rules out the Ubuntu 20.04 user space as the sole cause.
+
+The compiled `NangateOpenCellLibrary_typical.db` from the legacy `nutvpu`
+workspace loaded without library errors and passed analyze, elaborate, link,
+`check_design`, and `check_timing` for the current core. Mapping still failed
+inside Pass 1, both normally and with address randomization disabled. Reducing
+the precision datapath from three parallel products to one product per lane did
+not make mapping reproducible. The remaining blocker is therefore the old DC
+mapping engine on the current host, not subsystem size or one specific `.db`.
+
+Do not retry parameter combinations on this installation. Resume current-RTL
+ASIC PPA only with a newer compatible Design Compiler release. The Nangate45
+test above is a compatibility diagnostic and produced no PPA evidence.
+
 ## Local Checkpoint
 
-Current local TSMC28 `tt0p9v85c`, 10 ns, standalone `sap_vpu_core` evidence:
+Historical local TSMC28 `tt0p9v85c`, 10 ns, standalone `sap_vpu_core`
+evidence from before the shared-multiplier precision-datapath change:
 
 | Activity source | Internal power | Switching power | Leakage power | Total power |
 | --- | ---: | ---: | ---: | ---: |
@@ -243,9 +263,10 @@ Current local TSMC28 `tt0p9v85c`, 10 ns, standalone `sap_vpu_core` evidence:
 | TinyViT smoke VPU-instance SAIF | 0.4065 mW | 1.4669e-02 mW | 7.2839e+04 nW | 0.4940 mW |
 | Clean gate smoke SAIF | 0.5820 mW | 3.5651e-02 mW | 7.2731e-02 mW | 0.6904 mW |
 
-These are local reproducibility checkpoints. Re-generate the reports before
-using them in paper tables, and keep the run directory, command line, library
-corner, clock period, and SAIF annotation warnings with the cited number.
+These are no longer current-RTL checkpoints and must not be used in the final
+paper table. Re-generate the reports with a compatible newer DC release, and
+keep the run directory, command line, library corner, clock period, and SAIF
+annotation warnings with any replacement number.
 
 The clean gate row is a 275.044 ns functional smoke with `PWR-452` absent. It
 is a valid gate-level annotation smoke, not a policy comparison, full-SoC
