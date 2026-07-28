@@ -3,11 +3,10 @@
 ## Status
 
 This manifest freezes the current FPGA evidence artifacts at the file level.
-The repository baseline is commit
-`bd59377df21281f4c217c96bc6ac927d0d9bbe26` on
-`codex/ieee-paper-v0`, but the evidence was produced from a modified worktree.
-The commit alone is therefore not an exact source snapshot. Before manuscript
-submission, commit the intended source tree and rerun both summary targets.
+The matching hardware and software source snapshot is commit
+`eeb689fb1d711a528b8b67b3bced9fc3761f61ad` on
+`codex/ieee-paper-v0`. The follow-up manifest update changes documentation only.
+Both summary targets were rerun after the source snapshot commit.
 
 All `work/` paths below are ignored build artifacts and are not committed.
 

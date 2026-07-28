@@ -90,16 +90,14 @@ custom instruction, TinyML, and edge-AI accelerator work.
 
 ## Next Engineering Sequence
 
-1. Commit the intended source snapshot and rerun both FPGA summary targets;
-   the artifact-level reproducibility manifest is complete, but the current
-   modified worktree is not yet a clean source-level freeze.
+1. Define and validate an explicit all-layer quantization and calibration flow
+   on labeled images; the current one-layer accuracy guardrail is insufficient
+   for an end-to-end model claim.
 2. When authorized TSMC standard-cell timing-library access becomes available,
    repeat core/subsystem mapping, corner timing, and matched SAIF power.
-3. Extend labeled accuracy beyond one selected linear layer only after an
-   explicit all-layer quantization policy and calibration flow exist.
-4. Replace register scratchpads with explicit SRAM-macro assumptions only after
+3. Replace register scratchpads with explicit SRAM-macro assumptions only after
    capacity and traffic experiments justify the change.
-5. Retain 80 MHz as a failed RV32IMC timing point; do not overclock the passing
+4. Retain 80 MHz as a failed RV32IMC timing point; do not overclock the passing
    70 MHz model-derived board image without new timing and board evidence.
 
 ## TinyViT Kernel Plan

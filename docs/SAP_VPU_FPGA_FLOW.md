@@ -627,8 +627,7 @@ counts. Generated Markdown and CSV are under ignored
 
 ## Next FPGA Steps
 
-1. Commit the intended source snapshot and rerun both FPGA summary targets;
-   artifact hashes and commands are frozen in
-   `docs/records/SAP_VPU_FPGA_EVIDENCE_MANIFEST.md`.
+1. Treat the current 70 MHz board and 140 MHz OOC gate-SAIF evidence as frozen;
+   artifact hashes and commands are in the evidence manifest.
 2. Do not expand the stream engine until labeled accuracy or a broader model
    suite shows that the selected policy generalizes beyond the current guardrail.
