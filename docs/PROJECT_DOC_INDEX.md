@@ -18,3 +18,7 @@
 - [records/2026-07-06.md](records/2026-07-06.md) - Framework, TinyViT, FPGA, ASIC flow
 - [records/2026-07-21.md](records/2026-07-21.md) - Complete subsystem FPGA/ASIC synthesis checkpoint
 - [records/2026-07-24.md](records/2026-07-24.md) - Sparse K=128 FPGA policy power
+- [records/2026-07-25.md](records/2026-07-25.md) - Synopsys library audit and cross-model fixture check
+- [records/2026-07-27.md](records/2026-07-27.md) - DeiT full-dimension RTL, labeled validation, and full-output FPGA gate activity
+- [records/2026-07-28.md](records/2026-07-28.md) - Full-K DeiT board closure and current-DCP full-output gate activity
+- [records/SAP_VPU_FPGA_EVIDENCE_MANIFEST.md](records/SAP_VPU_FPGA_EVIDENCE_MANIFEST.md) - FPGA board and gate-SAIF artifact hashes and reproduction commands

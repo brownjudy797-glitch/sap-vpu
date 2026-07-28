@@ -14,7 +14,7 @@ set report_dir [file normalize [env_or_default REPORT_DIR [file join $repo_root 
 set netlist_dir [file normalize [env_or_default NETLIST_DIR [file join $repo_root "netlist/dc/vpu_core"]]]
 set ddc_file [file normalize [env_or_default DDC_FILE [file join $netlist_dir "${top_name}.ddc"]]]
 set db_file [file normalize [env_or_default STD_CELL_DB ""]]
-set process_corner [env_or_default TSMC28_CORNER "unknown"]
+set process_corner [env_or_default PROCESS_CORNER [env_or_default TSMC28_CORNER "unknown"]]
 set clock_period [env_or_default CLOCK_PERIOD "10.0"]
 set clock_uncertainty [env_or_default CLOCK_UNCERTAINTY "0.20"]
 set input_delay [env_or_default INPUT_DELAY "1.0"]

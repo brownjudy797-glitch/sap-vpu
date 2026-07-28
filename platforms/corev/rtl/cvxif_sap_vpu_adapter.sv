@@ -51,6 +51,12 @@ module cvxif_sap_vpu_adapter #(
   logic                  pending_q;
   logic                  pending_we_q;
   logic [4:0]            pending_rd_q;
+  logic                  cmd_valid_q;
+  logic [X_ID_WIDTH-1:0] cmd_id_q;
+  logic [6:0]            cmd_op_q;
+  logic [XLEN-1:0]       cmd_rs1_q;
+  logic [XLEN-1:0]       cmd_rs2_q;
+  logic [31:0]           cmd_instr_q;
 
   logic [6:0] funct7;
   logic [2:0] funct3;
@@ -137,15 +143,15 @@ module cvxif_sap_vpu_adapter #(
   end
 
   // ponytail: one in-flight op; add an ID scoreboard only when tests need it.
-  assign issue_ready_o   = !pending_q && (!is_supported || vpu_cmd_ready_i);
+  assign issue_ready_o   = !pending_q;
   assign issue_accept_o  = is_supported && issue_ready_o;
   assign issue_writeback_o = is_supported && scalar_write;
-  assign vpu_cmd_valid_o = issue_valid_i && issue_ready_o && is_supported;
-  assign vpu_cmd_id_o    = issue_id_i;
-  assign vpu_cmd_op_o    = decoded_op;
-  assign vpu_cmd_rs1_o   = issue_rs1_i;
-  assign vpu_cmd_rs2_o   = issue_rs2_i;
-  assign vpu_cmd_instr_o = issue_instr_i;
+  assign vpu_cmd_valid_o = cmd_valid_q;
+  assign vpu_cmd_id_o    = cmd_id_q;
+  assign vpu_cmd_op_o    = cmd_op_q;
+  assign vpu_cmd_rs1_o   = cmd_rs1_q;
+  assign vpu_cmd_rs2_o   = cmd_rs2_q;
+  assign vpu_cmd_instr_o = cmd_instr_q;
 
   assign result_valid_o  = pending_q && vpu_rsp_valid_i;
   assign result_id_o     = vpu_rsp_id_i;
@@ -161,16 +167,37 @@ module cvxif_sap_vpu_adapter #(
       pending_id_q <= '0;
       pending_we_q <= 1'b0;
       pending_rd_q <= '0;
+      cmd_valid_q  <= 1'b0;
+      cmd_id_q     <= '0;
+      cmd_op_q     <= '0;
+      cmd_rs1_q    <= '0;
+      cmd_rs2_q    <= '0;
+      cmd_instr_q  <= '0;
     end else begin
       if (commit_valid_i && commit_kill_i) begin
-        pending_q <= 1'b0;
+        pending_q   <= 1'b0;
+        cmd_valid_q <= 1'b0;
       end else if (result_valid_o && result_ready_i) begin
         pending_q <= 1'b0;
-      end else if (vpu_cmd_valid_o && vpu_cmd_ready_i) begin
+      end else if (issue_valid_i && issue_accept_o) begin
         pending_q    <= 1'b1;
         pending_id_q <= issue_id_i;
         pending_we_q <= scalar_write;
         pending_rd_q <= issue_instr_i[11:7];
+      end
+
+      if (!(commit_valid_i && commit_kill_i)) begin
+        if (vpu_cmd_valid_o && vpu_cmd_ready_i) begin
+          cmd_valid_q <= 1'b0;
+        end
+        if (issue_valid_i && issue_accept_o) begin
+          cmd_valid_q <= 1'b1;
+          cmd_id_q    <= issue_id_i;
+          cmd_op_q    <= decoded_op;
+          cmd_rs1_q   <= issue_rs1_i;
+          cmd_rs2_q   <= issue_rs2_i;
+          cmd_instr_q <= issue_instr_i;
+        end
       end
     end
   end

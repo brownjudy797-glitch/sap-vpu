@@ -17,7 +17,11 @@ module corev_min_soc #(
   output logic [7:0]  uart_tx_data_o,
   output logic        exit_valid_o,
   output logic [31:0] exit_code_o,
-  output logic        core_sleep_o
+  output logic        core_sleep_o,
+  output logic        debug_instr_req_o,
+  output logic        debug_data_req_o,
+  output logic [31:0] debug_instr_addr_o,
+  output logic [31:0] debug_instr_rdata_o
 );
   import cv32e40x_pkg::*;
 
@@ -53,8 +57,20 @@ module corev_min_soc #(
   logic        unused_debug_pc_valid;
   logic [31:0] unused_debug_pc;
 
-  logic [31:0] rom [0:ROM_WORDS-1];
-  logic [31:0] ram [0:RAM_WORDS-1];
+  logic [31:0] instr_rom [0:ROM_WORDS-1];
+  logic [31:0] data_rom [0:ROM_WORDS-1];
+  (* ram_style = "block" *) logic [31:0] ram [0:RAM_WORDS-1];
+  logic        data_ram_req;
+  logic        vpu_dma_ram_req;
+  logic        data_ram_rsp;
+  logic        vpu_dma_ram_rsp;
+  logic [31:0] ram_req_addr;
+  logic        ram_req_we;
+  logic [3:0]  ram_req_be;
+  logic [31:0] ram_req_wdata;
+  logic [31:0] ram_rdata;
+  logic [31:0] data_nonram_rdata;
+  logic [31:0] vpu_dma_nonram_rdata;
 
   logic                  xif_issue_ready;
   logic                  xif_issue_accept;
@@ -88,23 +104,27 @@ module corev_min_soc #(
   logic [31:0]           vpu_dma_rdata;
   logic                  vpu_dma_err;
 
-  function automatic logic [31:0] read_rom(input logic [31:0] addr);
+  function automatic logic [31:0] read_instr_rom(input logic [31:0] addr);
     begin
-      read_rom = 32'h0000_0013;
+      read_instr_rom = 32'h0000_0013;
       if ((addr >= BOOT_ADDR) && (((addr - BOOT_ADDR) >> 2) < ROM_WORDS)) begin
-        read_rom = rom[(addr - BOOT_ADDR) >> 2];
+        read_instr_rom = instr_rom[(addr - BOOT_ADDR) >> 2];
       end
     end
   endfunction
 
-  function automatic logic [31:0] read_data(input logic [31:0] addr);
+  function automatic logic [31:0] read_data_rom(input logic [31:0] addr);
     begin
-      read_data = 32'h0000_0000;
-      if ((addr >= RAM_BASE) && (((addr - RAM_BASE) >> 2) < RAM_WORDS)) begin
-        read_data = ram[(addr - RAM_BASE) >> 2];
-      end else if ((addr >= BOOT_ADDR) && (((addr - BOOT_ADDR) >> 2) < ROM_WORDS)) begin
-        read_data = rom[(addr - BOOT_ADDR) >> 2];
+      read_data_rom = 32'h0000_0000;
+      if ((addr >= BOOT_ADDR) && (((addr - BOOT_ADDR) >> 2) < ROM_WORDS)) begin
+        read_data_rom = data_rom[(addr - BOOT_ADDR) >> 2];
       end
+    end
+  endfunction
+
+  function automatic logic is_ram_addr(input logic [31:0] addr);
+    begin
+      is_ram_addr = (addr >= RAM_BASE) && (((addr - RAM_BASE) >> 2) < RAM_WORDS);
     end
   endfunction
 
@@ -202,7 +222,8 @@ module corev_min_soc #(
 
   initial begin
     if (ROM_INIT_FILE != "") begin
-      $readmemh(ROM_INIT_FILE, rom);
+      $readmemh(ROM_INIT_FILE, instr_rom);
+      $readmemh(ROM_INIT_FILE, data_rom);
     end
     if (RAM_INIT_FILE != "") begin
       $readmemh(RAM_INIT_FILE, ram);
@@ -210,18 +231,45 @@ module corev_min_soc #(
   end
 
   assign instr_gnt    = instr_req;
+  assign debug_instr_req_o = instr_req;
+  assign debug_data_req_o = data_req;
+  assign debug_instr_addr_o = instr_addr;
+  assign debug_instr_rdata_o = instr_rdata;
 
-  assign data_gnt    = data_req;
-  assign vpu_dma_gnt = vpu_dma_req && !data_req;
+  assign data_gnt    = data_req && !vpu_dma_req;
+  assign vpu_dma_gnt = vpu_dma_req;
+  assign data_ram_req = data_req && data_gnt && is_ram_addr(data_addr);
+  assign vpu_dma_ram_req = vpu_dma_req && vpu_dma_gnt && is_ram_addr(vpu_dma_addr);
+  assign ram_req_addr = data_ram_req ? data_addr : vpu_dma_addr;
+  assign ram_req_we = data_ram_req ? data_we : vpu_dma_we;
+  assign ram_req_be = data_ram_req ? data_be : vpu_dma_be;
+  assign ram_req_wdata = data_ram_req ? data_wdata : vpu_dma_wdata;
+  assign data_rdata = data_ram_rsp ? ram_rdata : data_nonram_rdata;
+  assign vpu_dma_rdata = vpu_dma_ram_rsp ? ram_rdata : vpu_dma_nonram_rdata;
+
+  always_ff @(posedge clk_i) begin
+    if (data_ram_req || vpu_dma_ram_req) begin
+      ram_rdata <= ram[(ram_req_addr - RAM_BASE) >> 2];
+      if (ram_req_we) begin
+        for (int unsigned i = 0; i < 4; i++) begin
+          if (ram_req_be[i]) begin
+            ram[(ram_req_addr - RAM_BASE) >> 2][8*i +: 8] <= ram_req_wdata[8*i +: 8];
+          end
+        end
+      end
+    end
+  end
 
   always_ff @(posedge clk_i or negedge rst_ni) begin
     if (!rst_ni) begin
       instr_rvalid    <= 1'b0;
       instr_rdata     <= 32'h0000_0013;
       data_rvalid     <= 1'b0;
-      data_rdata      <= 32'h0000_0000;
+      data_ram_rsp    <= 1'b0;
+      data_nonram_rdata <= 32'h0000_0000;
       vpu_dma_rvalid  <= 1'b0;
-      vpu_dma_rdata   <= 32'h0000_0000;
+      vpu_dma_ram_rsp <= 1'b0;
+      vpu_dma_nonram_rdata <= 32'h0000_0000;
       vpu_dma_err     <= 1'b0;
       uart_tx_valid_o <= 1'b0;
       uart_tx_data_o  <= 8'h00;
@@ -229,37 +277,31 @@ module corev_min_soc #(
       exit_code_o     <= 32'h0000_0000;
     end else begin
       instr_rvalid    <= instr_req && instr_gnt;
-      instr_rdata     <= read_rom(instr_addr);
+      instr_rdata     <= read_instr_rom(instr_addr);
       data_rvalid     <= data_req && data_gnt;
-      data_rdata      <= read_data(data_addr);
+      data_ram_rsp    <= data_ram_req;
+      if (data_req && data_gnt && !data_ram_req) begin
+        if ((data_addr >= BOOT_ADDR) && (((data_addr - BOOT_ADDR) >> 2) < ROM_WORDS)) begin
+          data_nonram_rdata <= read_data_rom(data_addr);
+        end else begin
+          data_nonram_rdata <= 32'h0000_0000;
+        end
+      end
       vpu_dma_rvalid  <= vpu_dma_req && vpu_dma_gnt;
-      vpu_dma_rdata   <= read_data(vpu_dma_addr);
-      vpu_dma_err     <= !((vpu_dma_addr >= RAM_BASE) &&
-                           (((vpu_dma_addr - RAM_BASE) >> 2) < RAM_WORDS));
+      vpu_dma_ram_rsp <= vpu_dma_ram_req;
+      if (vpu_dma_req && vpu_dma_gnt && !vpu_dma_ram_req) begin
+        vpu_dma_nonram_rdata <= 32'h0000_0000;
+      end
+      vpu_dma_err     <= vpu_dma_req && vpu_dma_gnt && !vpu_dma_ram_req;
       uart_tx_valid_o <= 1'b0;
       exit_valid_o    <= 1'b0;
       if (data_req && data_gnt && data_we) begin
-        if ((data_addr >= RAM_BASE) && (((data_addr - RAM_BASE) >> 2) < RAM_WORDS)) begin
-          for (int unsigned i = 0; i < 4; i++) begin
-            if (data_be[i]) begin
-              ram[(data_addr - RAM_BASE) >> 2][8*i +: 8] <= data_wdata[8*i +: 8];
-            end
-          end
-        end else if (data_addr == UART_ADDR) begin
+        if (data_addr == UART_ADDR) begin
           uart_tx_valid_o <= 1'b1;
           uart_tx_data_o  <= data_wdata[7:0];
         end else if (data_addr == EXIT_ADDR) begin
           exit_valid_o <= 1'b1;
           exit_code_o  <= data_wdata;
-        end
-      end
-      if (vpu_dma_req && vpu_dma_gnt && vpu_dma_we &&
-          (vpu_dma_addr >= RAM_BASE) &&
-          (((vpu_dma_addr - RAM_BASE) >> 2) < RAM_WORDS)) begin
-        for (int unsigned i = 0; i < 4; i++) begin
-          if (vpu_dma_be[i]) begin
-            ram[(vpu_dma_addr - RAM_BASE) >> 2][8*i +: 8] <= vpu_dma_wdata[8*i +: 8];
-          end
         end
       end
     end

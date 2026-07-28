@@ -216,6 +216,81 @@ sets per policy on the matched 140 MHz gate netlist. Dense/global/budget dynamic
 energy per set is `2892.428/2721.248/2772.742` nJ, a `5.92%/4.14%` reduction
 for the sparse policies. The gate result retains the four-pair boundary.
 
+## Cross-Model Linear Fixture
+
+`make transformer-fixture-check` runs one existing local real image through the
+TinyViT-5M and DeiT-Tiny checkpoints, captures two tokens at one MLP linear
+layer, and emits four evenly distributed output pairs as common INT8 fixtures.
+TinyViT uses
+`stages.1.blocks.0.mlp.fc2` with K=512; DeiT-Tiny uses
+`blocks.5.mlp.fc1` with K=192. Both dimensions divide into the existing K8 tile
+contract without padding.
+
+The checker recomputes every dense and sparse-policy integer output through
+`tiled_gemm`. DeiT-Tiny selects output pairs `(0,1)`, `(256,257)`, `(510,511)`,
+and `(766,767)`. Across these pairs, global-12.5% and L1-budget-5% reduce active
+K4 weight groups by 15.10% and 14.58%. The source image SHA-256 is
+`f3f87bb8ab3c26c7ecfd3ac60421d7f32b0503d1d6c5baf8bac42ed93d86351a`; the
+DeiT checkpoint SHA-256 is
+`a1311bcf4f24e3c95adaa75535db67bc4412d95535b98f7c1dfd1164dda41c97`.
+
+`make transformer-multi-image-check` extends the same host-side reference to
+all eight images currently stored in `work/tinyvit_eval_images`. It captures
+two tokens per image, producing 16 distinct INT8 input rows for each model.
+All 16 rows and all 16 dense results for the first representative output pair
+are unique in both models. The checker reproduces all four output pairs under
+dense, global-12.5%, and L1-budget-5% policies. The evaluated linear layers
+produce 6,272 TinyViT and 1,576 DeiT token samples before the two-token-per-image
+fixture selection.
+
+`make sim-subsystem-deit-stream` maps each DeiT output pair as 24 K8 blocks
+through the real `VTSTREAM` subsystem. Dense execution passes with 768 VDOTs,
+784 reads, and 16 final writes. Global-12.5% passes with 652 VDOTs, 750 reads,
+16 writes, and 62 payload reads suppressed; L1-budget-5% passes with
+656/752/16 and 60 suppressed reads. Relative to dense, this is a
+15.10%/14.58% VDOT reduction and 4.34%/4.08% total-read reduction.
+
+`make sim-subsystem-deit-full-output` raises the pair count from 4 to 384 and
+checks all 768 `blocks.5.mlp.fc1` output channels for two tokens. Dense,
+global-12.5%, and L1-budget-5% pass at `73728/64512/64874` VDOTs,
+`75264/72764/72989` reads, and 1,536 writes. Global and budget reduce VDOTs by
+12.50% and 12.01%, total reads by 3.32% and 3.02%, and suppress 5,188 and 4,963
+payload reads.
+
+`make fpga-vpu-subsystem-deit-full-output-power-matrix` repeats that two-token,
+all-output mapping against the July 24 140 MHz routed subsystem checkpoint.
+Dense/global/budget activity reports 102.433/93.568/93.941 uJ per workload,
+corresponding to 8.66%/8.29% sparse-policy energy reductions with 7167/7230
+matched nets and High confidence. All three rounded dynamic-power values are
+0.015 W, so this supports latency and energy reduction, not a resolved average-
+power reduction. The matrix is one FC1 linear-layer window, not full-model or
+board energy.
+
+`make sim-subsystem-deit-token-sweep` keeps all 768 outputs and expands the
+fixture to 16 image-derived tokens. Because the hardware tile remains M=2, the
+testbench schedules eight token pairs through the same `VTSTREAM` datapath and
+checks 12,288 INT32 outputs. Dense, global-12.5%, and L1-budget-5% pass at
+`589824/516096/518992` VDOTs, `602112/582112/583912` reads, and 12,288 writes.
+The sparse policies reduce VDOTs by 12.50% and 12.01% and total reads by 3.32%
+and 3.02%.
+
+`make sim-subsystem-deit-all-tokens` covers all 197 image-derived tokens and all
+768 outputs. The odd final token is paired with one zero row, so the testbench
+schedules 99 M=2 tiles and verifies 151,296 real-token outputs plus 768 padded
+zeros. Dense, global-12.5%, and L1-budget-5% pass at
+`7299072/6386688/6422526` VDOTs, `7451136/7203636/7225911` reads, and 152,064
+writes. The sparse policies retain the same 12.50%/12.01% VDOT and
+3.32%/3.02% total-read reductions across the complete token dimension.
+
+The full-output sweep passes independently on the dog image and local
+`hybridnets.jpg` road scene. Between the images, all 1,536 dense and global
+results differ; 1,535 of 1,536 budget results differ. The two-image check uses
+two tokens per image, while the larger one-image sweep covers all 197 tokens.
+The images are unlabeled and neither path includes bias or GELU. This is full
+token- and output-dimension RTL evidence for one linear operation, not
+autonomous token batching, full DeiT inference, accuracy, or FPGA/ASIC
+cross-model PPA.
+
 ## Reproduction
 
 ```sh
@@ -223,6 +298,16 @@ make tinyvit-fixture-check
 make tinyvit-checkpoint-fixture
 make tinyvit-activation-fixture TINYVIT_MODEL_PYTHON=/path/to/python
 make tinyvit-sparsity-study TINYVIT_MODEL_PYTHON=/path/to/python
+make transformer-fixture-check
+make transformer-multi-image-check
+make sim-subsystem-deit-stream
+make sim-subsystem-deit-full-output
+make sim-subsystem-deit-token-sweep
+make sim-subsystem-deit-all-tokens
+make sim-subsystem-deit-stream \
+  TRANSFORMER_FIXTURE_IMAGE=work/tinyvit_eval_images/hybridnets.jpg \
+  TRANSFORMER_FIXTURE_JSON=work/model_generalization/transformer_hybridnets_fixtures.json \
+  TRANSFORMER_STREAM_FIXTURE_DIR=work/transformer_fixture/hybridnets
 make tiled-gemm-check
 make tiled-gemm-rtl-check
 make tiled-gemm-soc-smoke
@@ -235,6 +320,8 @@ make sim-subsystem-k512-policies
 make sim-subsystem-k512-pair-policies
 make fpga-vpu-subsystem-k512-policy-power-matrix
 make fpga-vpu-subsystem-k512-pair-policy-power-matrix
+make fpga-vpu-subsystem-deit-policy-power-matrix
+make fpga-vpu-subsystem-deit-full-output-power-matrix
 ```
 
 `tinyvit-checkpoint-fixture` requires the downloaded checkpoint at
@@ -280,3 +367,29 @@ with the float model. On eight unlabeled images, dense INT8, 12.5% global-L1,
 and 13.40% L1-budget-5% all retain 8/8 top-1 agreement; the two 25% policies
 retain only 6/8 and 7/8. This measures whole-network response to one modified
 FC2 layer, not labeled accuracy or a model in which every layer is sparse.
+
+## Labeled Cross-Model Sensitivity
+
+`make transformer-imagenette-full` evaluates all 3,925 Imagenette-160
+validation images. It replaces only the selected TinyViT FC2 or DeiT FC1 linear
+result with the quantized/sparse emulation, including the original bias, then
+runs the remaining network in float. The dataset contains all ten Imagenette
+synsets; labels map to the corresponding ImageNet-1K indices.
+
+| Model | Variant | Group sparsity | Top-1 correct | Top-5 correct | Float top-1 agreement |
+| --- | --- | ---: | ---: | ---: | ---: |
+| TinyViT-5M | Float reference | - | 3030/3925 (77.20%) | 3769/3925 (96.03%) | - |
+| TinyViT-5M | Dense INT8 | 0% | 3031/3925 (77.22%) | 3767/3925 (95.97%) | 3887/3925 (99.03%) |
+| TinyViT-5M | Global L1 | 12.50% | 3023/3925 (77.02%) | 3755/3925 (95.67%) | 3837/3925 (97.76%) |
+| TinyViT-5M | L1 budget | 13.40% | 3020/3925 (76.94%) | 3757/3925 (95.72%) | 3823/3925 (97.40%) |
+| DeiT-Tiny | Float reference | - | 2766/3925 (70.47%) | 3623/3925 (92.31%) | - |
+| DeiT-Tiny | Dense INT8 | 0% | 2773/3925 (70.65%) | 3622/3925 (92.28%) | 3903/3925 (99.44%) |
+| DeiT-Tiny | Global L1 | 12.50% | 2778/3925 (70.78%) | 3632/3925 (92.54%) | 3766/3925 (95.95%) |
+| DeiT-Tiny | L1 budget | 12.01% | 2780/3925 (70.83%) | 3634/3925 (92.59%) | 3778/3925 (96.25%) |
+
+Dense INT4/INT2 top-1 accuracy falls to 71.64%/43.72% for TinyViT and
+66.70%/56.15% for DeiT, so low-bit modes remain ablations rather than the
+default policy. Small positive DeiT deltas relative to float are treated as
+quantization perturbation, not accuracy improvement. The result is labeled
+single-layer sensitivity evidence, not all-layer quantization or end-to-end
+RTL inference.

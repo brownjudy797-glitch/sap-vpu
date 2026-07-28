@@ -122,7 +122,7 @@ def main() -> int:
     qor = parse_qor(report_root / "qor.rpt")
     power = parse_power(report_root / "power.rpt", top)
 
-    print("# SAP-VPU TSMC28 DC Summary")
+    print("# SAP-VPU ASIC DC Summary")
     print()
     print(f"Work: `{work_root}`")
     print(f"Reports: `{report_root}`")
@@ -142,10 +142,15 @@ def main() -> int:
         f"{power['leakage_power']} | {power['total_power']} |"
     )
     print()
+    if top == "sap_vpu_core":
+        scope = "VPU-core ASIC evidence, not full-SoC evidence"
+    elif top == "sap_vpu_subsystem":
+        scope = "VPU-subsystem internal-IP evidence, not full-SoC evidence"
+    else:
+        scope = "block-level ASIC evidence, not full-SoC evidence"
     print(
         "Power is Design Compiler power: vectorless unless the report was generated "
-        "with an activity file such as SAIF. Treat standalone `sap_vpu_core` results "
-        "as VPU-core ASIC evidence, not full SoC evidence."
+        f"with an activity file such as SAIF. Treat these results as {scope}."
     )
     return 0
 

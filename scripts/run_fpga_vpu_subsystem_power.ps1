@@ -3,6 +3,8 @@ param(
   [string]$OutDir = 'work\fpga\vpu_subsystem_140_saif_power',
   [string]$PostSynthDcp = 'work\fpga\vpu_subsystem_140\checkpoints\post_synth.dcp',
   [string]$PostRouteDcp = 'work\fpga\vpu_subsystem_140\checkpoints\post_route.dcp',
+  [string]$DeitFixtureDir = 'work\transformer_fixture',
+  [string]$DeitFixtureJson = 'work\model_generalization\transformer_linear_fixtures.json',
   [double]$ClockMhz = 140.0,
   [int]$Iterations = 128,
   [ValidateSet('mlp2_dense', 'fc2_dense', 'fc2_global_l1_6p25', 'fc2_l1_budget_2pct',
@@ -10,7 +12,8 @@ param(
                'fc2_k512_pairs_dense', 'fc2_k512_pairs_global_l1_6p25',
                'fc2_k512_pairs_l1_budget_1pct', 'fc2_k512_stream_pairs_dense',
                'fc2_k512_stream_pairs_global_l1_12p5',
-               'fc2_k512_stream_pairs_l1_budget_5pct')]
+               'fc2_k512_stream_pairs_l1_budget_5pct', 'deit_tiny_stream_dense',
+               'deit_tiny_stream_global_l1_12p5', 'deit_tiny_stream_l1_budget_5')]
   [string]$Policy = 'mlp2_dense'
 )
 
@@ -30,7 +33,7 @@ if ($detectedDistro -ne $wslDistro) {
 }
 if ($ClockMhz -le 0.0) { throw 'ClockMhz must be positive' }
 if ($Iterations -le 0) { throw 'Iterations must be positive' }
-foreach ($path in @($OutDir, $PostSynthDcp, $PostRouteDcp)) {
+foreach ($path in @($OutDir, $PostSynthDcp, $PostRouteDcp, $DeitFixtureDir, $DeitFixtureJson)) {
   if ([IO.Path]::IsPathRooted($path) -or $path -match '(^|[\\/])\.\.([\\/]|$)') {
     throw "Path must be repository-relative: $path"
   }
@@ -42,13 +45,24 @@ $powerDir = Join-Path $OutDir 'power'
 $fixtureDir = 'work\tinyvit\fixture'
 $fc2FixtureDir = 'work\tinyvit_fc1_k128'
 $fc2K512FixtureDir = 'work\tinyvit_fc2_k512'
+$deitPolicy = $Policy.StartsWith('deit_tiny_stream_', [StringComparison]::Ordinal)
+$deitFixtureSvhRel = Join-Path $DeitFixtureDir 'deit_tiny_stream_fixture_tb.svh'
+$deitMemoryFiles = @(
+  'deit_tiny_stream_input_words.hex',
+  'deit_tiny_stream_weight_words.hex',
+  'deit_tiny_stream_dense_expected.hex',
+  'deit_tiny_stream_global_l1_12p5_metadata_words.hex',
+  'deit_tiny_stream_global_l1_12p5_expected.hex',
+  'deit_tiny_stream_l1_budget_5_metadata_words.hex',
+  'deit_tiny_stream_l1_budget_5_expected.hex'
+)
 $fixtureMetadataRel = Join-Path $fixtureDir 'tinyvit_mlp2_fixture_metadata.json'
 $vcdRel = Join-Path $OutDir 'sap_vpu_subsystem_gate.vcd'
 $saifRel = Join-Path $OutDir 'sap_vpu_subsystem_gate.saif'
 $netlistRel = Join-Path $netlistDir 'sap_vpu_subsystem_funcsim.v'
 $clockHalfNs = (500.0 / $ClockMhz).ToString('0.############', [cultureinfo]::InvariantCulture)
 
-foreach ($path in @(
+$requiredPaths = @(
   $settings,
   (Join-Path $repo $PostSynthDcp),
   (Join-Path $repo $PostRouteDcp),
@@ -60,10 +74,37 @@ foreach ($path in @(
   (Join-Path $repo 'tb\sap_vpu_subsystem_gate_tb.sv'),
   (Join-Path $repo 'scripts\vivado_vpu_write_funcsim.tcl'),
   (Join-Path $repo 'scripts\vivado_vpu_saif_power.tcl')
-)) {
+)
+if ($deitPolicy) {
+  $requiredPaths += @(
+    (Join-Path $repo $deitFixtureSvhRel),
+    (Join-Path $repo $DeitFixtureJson)
+  )
+  foreach ($file in $deitMemoryFiles) {
+    $requiredPaths += Join-Path $repo (Join-Path $DeitFixtureDir $file)
+  }
+}
+foreach ($path in $requiredPaths) {
   if (!(Test-Path -LiteralPath $path)) { throw "Missing required file: $path" }
 }
 $fixtureMetadata = Get-Content -Raw -LiteralPath (Join-Path $repo $fixtureMetadataRel) | ConvertFrom-Json
+$fixtureKind = $fixtureMetadata.provenance.kind
+$modelId = $fixtureMetadata.provenance.model_id
+$layerId = $fixtureMetadata.provenance.layer_id
+$checkpointSha256 = $fixtureMetadata.provenance.checkpoint_sha256
+$inputSource = $fixtureMetadata.provenance.input_source
+$deitSvhText = ''
+if ($deitPolicy) {
+  $deitFixture = Get-Content -Raw -LiteralPath (Join-Path $repo $DeitFixtureJson) | ConvertFrom-Json
+  $deitModel = $deitFixture.models.deit_tiny
+  if (!$deitModel) { throw 'Missing deit_tiny model metadata' }
+  $fixtureKind = 'checkpoint'
+  $modelId = $deitModel.provenance.model_id
+  $layerId = $deitModel.provenance.layer
+  $checkpointSha256 = $deitModel.provenance.checkpoint_sha256
+  $inputSource = 'real-image-model-activation'
+  $deitSvhText = Get-Content -Raw -LiteralPath (Join-Path $repo $deitFixtureSvhRel)
+}
 & wsl.exe -d $wslDistro -- test -x $vcd2saif
 if ($LASTEXITCODE -ne 0) { throw "Missing vcd2saif: $vcd2saif" }
 
@@ -84,6 +125,12 @@ $directories = @(
   (Join-Path $repo $powerDir)
 )
 New-Item -ItemType Directory -Force -Path $directories | Out-Null
+if ($deitPolicy) {
+  foreach ($file in $deitMemoryFiles) {
+    Copy-Item -Force -LiteralPath (Join-Path $repo (Join-Path $DeitFixtureDir $file)) `
+      -Destination (Join-Path $repo (Join-Path $xsimDir $file))
+  }
+}
 
 Invoke-VivadoCmd (
   'pushd "{0}" && vivado -mode batch -source "!root!\scripts\vivado_vpu_write_funcsim.tcl" -tclargs "!root!\{1}" "!root!\{0}" sap_vpu_subsystem && popd' -f $netlistDir, $PostSynthDcp
@@ -94,12 +141,18 @@ if (!(Test-Path -LiteralPath $netlistPath) -or (Get-Item -LiteralPath $netlistPa
   throw "Missing or empty functional netlist: $netlistPath"
 }
 
+$deitXvlogArgs = ''
+$deitRuntimeArg = ''
+if ($deitPolicy) {
+  $deitXvlogArgs = '-d SAP_VPU_DEIT_STREAM -i "!root!\{0}"' -f $DeitFixtureDir
+  $deitRuntimeArg = ' deit_fixture_dir=.'
+}
 Invoke-VivadoCmd (
-  'pushd "{0}" && xvlog -sv -i "!root!\{2}" -i "!root!\{3}" -i "!root!\{4}" "!root!\rtl\sap_vpu_pkg.sv" "!root!\tb\sap_vpu_subsystem_gate_tb.sv" "!root!\{1}" && xelab -debug typical -L unisims_ver sap_vpu_subsystem_gate_tb glbl -s sap_vpu_subsystem_gate_tb_snapshot && popd' -f $xsimDir, $netlistRel, $fixtureDir, $fc2FixtureDir, $fc2K512FixtureDir
+  'pushd "{0}" && xvlog -sv {5} -i "!root!\{2}" -i "!root!\{3}" -i "!root!\{4}" "!root!\rtl\sap_vpu_pkg.sv" "!root!\tb\sap_vpu_subsystem_gate_tb.sv" "!root!\{1}" && xelab -debug typical -L unisims_ver sap_vpu_subsystem_gate_tb glbl -s sap_vpu_subsystem_gate_tb_snapshot && popd' -f $xsimDir, $netlistRel, $fixtureDir, $fc2FixtureDir, $fc2K512FixtureDir, $deitXvlogArgs
 ) (Join-Path $OutDir 'compile.log')
 
 Invoke-VivadoCmd (
-  'pushd "{0}" && xsim --nolog -R --testplusarg "{{vcd=../sap_vpu_subsystem_gate.vcd iterations={1} clock_half_ns={2} policy={3}}}" sap_vpu_subsystem_gate_tb_snapshot && popd' -f $xsimDir, $Iterations, $clockHalfNs, $Policy
+  'pushd "{0}" && xsim --nolog -R --testplusarg "{{vcd=../sap_vpu_subsystem_gate.vcd iterations={1} clock_half_ns={2} policy={3}{4}}}" sap_vpu_subsystem_gate_tb_snapshot && popd' -f $xsimDir, $Iterations, $clockHalfNs, $Policy, $deitRuntimeArg
 ) (Join-Path $OutDir 'xsim.log')
 
 $xsimLogPath = Join-Path $repo (Join-Path $OutDir 'xsim.log')
@@ -256,20 +309,45 @@ switch ($Policy) {
     $writesPerIteration = 16
   }
 }
-$tiles = $Iterations * $tilesPerIteration
-$vdots = $Iterations * $vdotsPerIteration
-$ramReads = $Iterations * $readsPerIteration
-$ramWrites = $Iterations * $writesPerIteration
+if ($deitPolicy) {
+  function Get-DeitGeneratedInt([string]$Name) {
+    $match = [regex]::Match(
+      $deitSvhText,
+      '(?m)^localparam int unsigned ' + [regex]::Escape($Name) + ' = (\d+);'
+    )
+    if (!$match.Success) { throw "Missing generated DeiT count: $Name" }
+    return [long]$match.Groups[1].Value
+  }
+
+  $prefix = switch ($Policy) {
+    'deit_tiny_stream_dense' { 'DEIT_TINY_STREAM_DENSE' }
+    'deit_tiny_stream_global_l1_12p5' { 'DEIT_TINY_STREAM_GLOBAL_L1_12P5' }
+    'deit_tiny_stream_l1_budget_5' { 'DEIT_TINY_STREAM_L1_BUDGET_5' }
+  }
+  $tokenCount = Get-DeitGeneratedInt 'DEIT_TINY_STREAM_TOKEN_COUNT'
+  $tokenPairCount = Get-DeitGeneratedInt 'DEIT_TINY_STREAM_TOKEN_PAIR_COUNT'
+  $pairCount = Get-DeitGeneratedInt 'DEIT_TINY_STREAM_PAIR_COUNT'
+  $kBlocks = Get-DeitGeneratedInt 'DEIT_TINY_STREAM_K_BLOCKS'
+  $workload = "deit_tiny_fc1_${tokenCount}tokens_$($pairCount * 2)outputs_stream"
+  $tilesPerIteration = $tokenPairCount * $pairCount * $kBlocks
+  $vdotsPerIteration = Get-DeitGeneratedInt "${prefix}_VDOTS"
+  $readsPerIteration = Get-DeitGeneratedInt "${prefix}_READS"
+  $writesPerIteration = Get-DeitGeneratedInt 'DEIT_TINY_STREAM_WRITES'
+}
+$tiles = [long]$Iterations * $tilesPerIteration
+$vdots = [long]$Iterations * $vdotsPerIteration
+$ramReads = [long]$Iterations * $readsPerIteration
+$ramWrites = [long]$Iterations * $writesPerIteration
 $dynamicEnergyPj = $dynamicW * $durationPs
 $summary = [pscustomobject]@{
   top = 'sap_vpu_subsystem'
   workload = $workload
   policy = $Policy
-  fixture_kind = $fixtureMetadata.provenance.kind
-  model_id = $fixtureMetadata.provenance.model_id
-  layer_id = $fixtureMetadata.provenance.layer_id
-  checkpoint_sha256 = $fixtureMetadata.provenance.checkpoint_sha256
-  input_source = $fixtureMetadata.provenance.input_source
+  fixture_kind = $fixtureKind
+  model_id = $modelId
+  layer_id = $layerId
+  checkpoint_sha256 = $checkpointSha256
+  input_source = $inputSource
   clock_mhz = $ClockMhz.ToString('0.###', [cultureinfo]::InvariantCulture)
   iterations = $Iterations
   tiles = $tiles

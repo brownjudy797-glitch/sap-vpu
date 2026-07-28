@@ -2,9 +2,17 @@
 
 module corev_min_soc_tiled_gemm_dma_tb #(
   parameter string ROM_INIT_FILE = "work/tiled_gemm_dma_soc/sap_vpu_tiled_gemm_dma_soc.hex",
-  parameter string RAM_INIT_FILE = ""
+  parameter string RAM_INIT_FILE = "",
+  parameter int unsigned EXPECTED_DMA_READS = 24,
+  parameter bit EXPECT_POLICY_UART = 1'b0,
+  parameter int unsigned EXPECTED_DENSE_MAC_ACTIVE = 192,
+  parameter int unsigned EXPECTED_GLOBAL_MAC_ACTIVE = 154,
+  parameter int unsigned EXPECTED_BUDGET_MAC_ACTIVE = 158,
+  parameter int unsigned EXPECTED_DENSE_DMA_SAVED = 0,
+  parameter int unsigned EXPECTED_GLOBAL_DMA_SAVED = 21,
+  parameter int unsigned EXPECTED_BUDGET_DMA_SAVED = 19
 );
-  localparam int unsigned TIMEOUT_CYCLES = 30000;
+  localparam int unsigned TIMEOUT_CYCLES = EXPECT_POLICY_UART ? 3000000 : 30000;
   localparam int unsigned FC2_SUM_RAM_WORD = 12;
   localparam int unsigned FC2_GLOBAL_SUM_RAM_WORD = 16;
   localparam int unsigned FC2_BUDGET_SUM_RAM_WORD = 24;
@@ -18,9 +26,24 @@ module corev_min_soc_tiled_gemm_dma_tb #(
   logic exit_valid;
   logic [31:0] exit_code;
   logic core_sleep;
+  logic debug_instr_req;
+  logic debug_data_req;
+  logic [31:0] debug_instr_addr;
+  logic [31:0] debug_instr_rdata;
   logic report_fc2_window;
   int unsigned dma_read_transactions;
+  int parsed_fields;
+  logic [31:0] dense_cycles;
+  logic [31:0] dense_mac_active;
+  logic [31:0] dense_dma_saved;
+  logic [31:0] global_cycles;
+  logic [31:0] global_mac_active;
+  logic [31:0] global_dma_saved;
+  logic [31:0] budget_cycles;
+  logic [31:0] budget_mac_active;
+  logic [31:0] budget_dma_saved;
   string ram_init_file;
+  string uart_transcript;
 
   corev_min_soc #(
     .ROM_INIT_FILE(ROM_INIT_FILE),
@@ -33,26 +56,59 @@ module corev_min_soc_tiled_gemm_dma_tb #(
     .uart_tx_data_o(uart_tx_data),
     .exit_valid_o(exit_valid),
     .exit_code_o(exit_code),
-    .core_sleep_o(core_sleep)
+    .core_sleep_o(core_sleep),
+    .debug_instr_req_o(debug_instr_req),
+    .debug_data_req_o(debug_data_req),
+    .debug_instr_addr_o(debug_instr_addr),
+    .debug_instr_rdata_o(debug_instr_rdata)
   );
 
   always #5 clk = ~clk;
 
-  always_ff @(posedge clk or negedge rst_n) begin
+  always @(posedge clk or negedge rst_n) begin
     if (!rst_n) begin
       dma_read_transactions <= 0;
     end else if (dut.vpu_dma_req && dut.vpu_dma_gnt && !dut.vpu_dma_we) begin
       dma_read_transactions <= dma_read_transactions + 1;
     end
     if (rst_n && uart_tx_valid) begin
-      $fatal(1, "Unexpected UART byte 0x%02x", uart_tx_data);
+      if (!EXPECT_POLICY_UART) begin
+        $fatal(1, "Unexpected UART byte 0x%02x", uart_tx_data);
+      end
+      uart_transcript = {uart_transcript, uart_tx_data};
     end
     if (rst_n && exit_valid) begin
       if (exit_code !== 32'd1) begin
         $fatal(1, "Tiled GEMM DMA SoC smoke exit code expected 1 got %0d", exit_code);
       end
-      if (!report_fc2_window && dma_read_transactions != 24) begin
-        $fatal(1, "Tiled GEMM DMA reads expected 24 got %0d", dma_read_transactions);
+      if (!report_fc2_window && dma_read_transactions != EXPECTED_DMA_READS) begin
+        $fatal(1, "Tiled GEMM DMA reads expected %0d got %0d",
+               EXPECTED_DMA_READS, dma_read_transactions);
+      end
+      if (EXPECT_POLICY_UART) begin
+        parsed_fields = $sscanf(uart_transcript,
+            "D,%h,%h,%h\nG,%h,%h,%h\nB,%h,%h,%h\n",
+            dense_cycles, dense_mac_active, dense_dma_saved,
+            global_cycles, global_mac_active, global_dma_saved,
+            budget_cycles, budget_mac_active, budget_dma_saved);
+        if (parsed_fields != 9) begin
+          $fatal(1, "Policy UART parse expected 9 fields got %0d: %s",
+                 parsed_fields, uart_transcript);
+        end
+        if (dense_mac_active != EXPECTED_DENSE_MAC_ACTIVE ||
+            global_mac_active != EXPECTED_GLOBAL_MAC_ACTIVE ||
+            budget_mac_active != EXPECTED_BUDGET_MAC_ACTIVE ||
+            dense_dma_saved != EXPECTED_DENSE_DMA_SAVED ||
+            global_dma_saved != EXPECTED_GLOBAL_DMA_SAVED ||
+            budget_dma_saved != EXPECTED_BUDGET_DMA_SAVED) begin
+          $fatal(1, "Policy UART counters mismatch: %s", uart_transcript);
+        end
+        if (!(global_cycles < dense_cycles && budget_cycles < dense_cycles)) begin
+          $fatal(1, "Policy UART cycle ordering mismatch: dense=%0d global=%0d budget=%0d",
+                 dense_cycles, global_cycles, budget_cycles);
+        end
+        $display("Tile policy cycles: dense=%0d global=%0d budget=%0d",
+                 dense_cycles, global_cycles, budget_cycles);
       end
       if (report_fc2_window) begin
         if (dma_read_transactions !=
@@ -88,6 +144,7 @@ module corev_min_soc_tiled_gemm_dma_tb #(
     rst_n = 1'b0;
     fetch_enable = 1'b0;
     report_fc2_window = 1'b0;
+    uart_transcript = "";
     if ($value$plusargs("ram_init=%s", ram_init_file)) begin
       $readmemh(ram_init_file, dut.ram);
       report_fc2_window = 1'b1;
@@ -98,6 +155,14 @@ module corev_min_soc_tiled_gemm_dma_tb #(
     fetch_enable = 1'b1;
 
     repeat (TIMEOUT_CYCLES) @(posedge clk);
+    $display("Timeout state: pc=0x%08x instr=0x%08x dma_reads=%0d data_req=%0b",
+             debug_instr_addr, debug_instr_rdata, dma_read_transactions, debug_data_req);
+    $display("CPU data: addr=0x%08x we=%0b rvalid=%0b ram_rsp=%0b; VPU DMA: req=%0b gnt=%0b addr=0x%08x we=%0b",
+             dut.data_addr, dut.data_we, dut.data_rvalid, dut.data_ram_rsp,
+             dut.vpu_dma_req, dut.vpu_dma_gnt, dut.vpu_dma_addr, dut.vpu_dma_we);
+    $display("Output RAM: %0d %0d %0d %0d",
+             $signed(dut.ram[16]), $signed(dut.ram[17]),
+             $signed(dut.ram[18]), $signed(dut.ram[19]));
     $fatal(1, "Timed out waiting for tiled GEMM DMA SoC smoke exit");
   end
 endmodule

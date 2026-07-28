@@ -1,16 +1,15 @@
-# SAP-VPU TSMC28 ASIC Flow
+# SAP-VPU TSMC ASIC Flow
 
 ## Scope
 
 This flow captures a Synopsys Design Compiler evidence path for the standalone
-`sap_vpu_core` and a front-end/mapping path for the complete
-`sap_vpu_subsystem`. The accepted PPA checkpoint remains core-only until the
-complete subsystem maps successfully.
+`sap_vpu_core` and the complete `sap_vpu_subsystem`. TSMC remains the paper
+target; the local TSMC28 flow is the historical compatibility path.
 
-Use only the local TSMC28 standard-cell `.db` files for this flow. Do not use
-open PDK or Nangate-style libraries for paper-facing ASIC numbers.
+Use only validated TSMC standard-cell `.db` files for paper-facing ASIC
+numbers. Nangate45 results are toolchain diagnostics only.
 
-## Default Target
+## Legacy TSMC28 Default
 
 Default Make variables:
 
@@ -34,6 +33,28 @@ TSMC28_DB=$TSMC28_ROOT/Front_End/timing_power_noise/NLDM/tcbn28hpcplusbwp7t40p14
 Override `TSMC28_DB` and `TSMC28_CORNER` together when running another TSMC28
 corner. `SYNOPSYS_ENV_FILE` is intentionally empty by default so this flow does
 not import unrelated open-library environment variables.
+
+The runner also accepts process-neutral overrides. These take precedence over
+the legacy names:
+
+```sh
+STD_CELL_DB=/path/to/compiled/library.db
+PROCESS_CORNER=corner_name
+```
+
+## School-Server Toolchain
+
+The validated server toolchain is:
+
+```sh
+DC_SHELL=/data/synopsys/syn/T-2022.03-SP5-2/bin/dc_shell
+SNPS_LICENSE=27020@gl01
+```
+
+The installed `CORE65LPSVT` library is STMicroelectronics CMOS065_LP, not
+TSMC. It is valid only for toolchain diagnostics. The server TSMC65 PDK
+contains SPICE and technology views, but no verified TSMC standard-cell timing
+`.db` has been found. Do not label `CORE65LPSVT` results as TSMC PPA.
 
 Crash-workaround knobs for old DC installations:
 
@@ -67,6 +88,23 @@ Run DC synthesis:
 ```sh
 make dc-vpu-synth DC_CLOCK_PERIOD=10.0
 ```
+
+Run post-synthesis setup/hold and power analysis with PrimeTime:
+
+```sh
+make pt-vpu-analyze \
+  PT_SHELL=/path/to/pt_shell \
+  PT_STD_CELL_DB=/path/to/authorized/standard_cell.db \
+  PT_PROCESS_CORNER=process_corner \
+  PT_NETLIST_FILE=/path/to/sap_vpu_subsystem.v \
+  PT_SDC_FILE=/path/to/sap_vpu_subsystem.sdc \
+  PT_REPORT_DIR=reports/pt/process_corner/subsystem
+```
+
+For activity-aware power, also pass `PT_SAIF_FILE` and, when the SAIF includes
+the testbench hierarchy, `PT_SAIF_STRIP_PATH=sap_vpu_subsystem_gate_tb/dut`.
+The generated `pt.log` must show successful timing checks and SAIF annotation
+coverage before any result is used.
 
 Run the complete subsystem front-end precheck and synthesis in isolated output
 directories:
@@ -250,6 +288,35 @@ mapping engine on the current host, not subsystem size or one specific `.db`.
 Do not retry parameter combinations on this installation. Resume current-RTL
 ASIC PPA only with a newer compatible Design Compiler release. The Nangate45
 test above is a compatibility diagnostic and produced no PPA evidence.
+
+### 2026-07-25 School-Server Toolchain Validation
+
+The school server provides DC `T-2022.03-SP5-2`, PrimeTime
+`W-2024.09-SP4-1`, VCS `V-2023.12-SP2`, and license service
+`27020@gl01`. The shared STMicroelectronics `CORE65LPSVT` CMOS065_LP delivery
+contains compiled Synopsys timing libraries and matching Verilog models.
+
+Current core and subsystem RTL passed analyze, elaborate, link, `compile_ultra`,
+report generation, and DDC/netlist/SDC export with this diagnostic library:
+
+| Design | Corner | Slack ns | Cell area | Cells | Vectorless DC power |
+| --- | --- | ---: | ---: | ---: | ---: |
+| `sap_vpu_core` | nominal 1.00 V, 25 C | +1.712 | 27,589.639 | 5,784 | 0.6181 mW |
+| `sap_vpu_subsystem` | nominal 1.00 V, 25 C | +0.0228 | 45,834.879 | 9,327 | 1.2319 mW |
+| `sap_vpu_subsystem` | worst 0.90 V, 125 C | +0.0003 | 46,870.199 | 9,809 | 1.0523 mW |
+
+The runs contain no DC `Error` or internal fatal message. They prove that the
+new compiler can map the current subsystem, but the library is not TSMC and the
+power is vectorless. None of these numbers belongs in the paper PPA table.
+Obtain an authorized TSMC timing `.db`, then repeat mapping, setup/hold, SAIF,
+and PrimeTime analysis. Nangate45 is also not a paper target.
+
+The same ST diagnostic checkpoint also passed a VCS gate simulation for
+`fc2_k512_stream_dense` and a complete VCD-to-SAIF-to-PrimeTime run. PrimeTime
+annotated 10,258 nets (100%) and 9,323 leaf cells (99.99%), with setup slack
+`+0.0228 ns`, hold slack `+0.0663 ns`, and no Error/Fatal. Its `0.7253 mW`
+activity-aware total power is a flow diagnostic only; it is not TSMC evidence
+and must not enter a paper comparison.
 
 ## Local Checkpoint
 

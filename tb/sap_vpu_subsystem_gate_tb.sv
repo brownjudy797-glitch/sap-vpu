@@ -6,6 +6,9 @@ module sap_vpu_subsystem_gate_tb;
 `include "tinyvit_mlp2_fixture_tb.svh"
 `include "tinyvit_fc2_k128_policy_tb.svh"
 `include "tinyvit_fc2_k512_policy_tb.svh"
+`ifdef SAP_VPU_DEIT_STREAM
+`include "deit_tiny_stream_fixture_tb.svh"
+`endif
 
   localparam realtime DEFAULT_CLK_HALF_PERIOD_NS = 3.5715;
   localparam int unsigned DEFAULT_ITERATIONS = 128;
@@ -33,6 +36,15 @@ module sap_vpu_subsystem_gate_tb;
   localparam logic [31:0] FC2_K512_STREAM_BUDGET_META_BASE = 32'h0000_3440;
   localparam logic [31:0] FC2_K512_STREAM_PAIR_GLOBAL_META_BASE = 32'h0000_3500;
   localparam logic [31:0] FC2_K512_STREAM_PAIR_BUDGET_META_BASE = 32'h0000_3600;
+`ifdef SAP_VPU_DEIT_STREAM
+  localparam logic [31:0] DEIT_STREAM_DESC_BASE = 32'h0000_3700;
+  localparam logic [31:0] DEIT_STREAM_GLOBAL_DESC_BASE = 32'h0000_3720;
+  localparam logic [31:0] DEIT_STREAM_BUDGET_DESC_BASE = 32'h0000_3740;
+  localparam logic [31:0] DEIT_STREAM_GLOBAL_META_BASE = 32'h0001_0000;
+  localparam logic [31:0] DEIT_STREAM_BUDGET_META_BASE = 32'h0001_4000;
+  localparam logic [31:0] DEIT_STREAM_WEIGHT_BASE = 32'h0002_0000;
+  localparam logic [31:0] DEIT_STREAM_INPUT_BASE = 32'h0005_0000;
+`endif
   localparam int unsigned POLICY_MLP2_DENSE = 0;
   localparam int unsigned POLICY_FC2_DENSE = 1;
   localparam int unsigned POLICY_FC2_GLOBAL = 2;
@@ -49,6 +61,15 @@ module sap_vpu_subsystem_gate_tb;
   localparam int unsigned POLICY_FC2_K512_STREAM_PAIR_GLOBAL = 13;
   localparam int unsigned POLICY_FC2_K512_STREAM_PAIR_BUDGET = 14;
   localparam int unsigned POLICY_FC2_K512_STREAM_PAIR_DENSE = 15;
+`ifdef SAP_VPU_DEIT_STREAM
+  localparam int unsigned POLICY_DEIT_STREAM_DENSE = 16;
+  localparam int unsigned POLICY_DEIT_STREAM_GLOBAL = 17;
+  localparam int unsigned POLICY_DEIT_STREAM_BUDGET = 18;
+  localparam int unsigned WATCHDOG_CYCLES = 100000 +
+    (DEIT_TINY_STREAM_TOKEN_PAIR_COUNT * DEIT_TINY_STREAM_PAIR_COUNT * 4000);
+`else
+  localparam int unsigned WATCHDOG_CYCLES = 1000000;
+`endif
 
   logic        clk_i;
   logic        rst_ni;
@@ -91,6 +112,30 @@ module sap_vpu_subsystem_gate_tb;
   int unsigned expected_writes;
   int unsigned expected_saved_reads;
   int unsigned stream_pair_index;
+  int unsigned stream_token_pair_index;
+`ifdef SAP_VPU_DEIT_STREAM
+  string       deit_fixture_dir;
+
+  initial begin
+    if (!$value$plusargs("deit_fixture_dir=%s", deit_fixture_dir)) begin
+      $fatal(1, "SUBSYSTEM_GATE_FAIL: missing deit_fixture_dir plusarg");
+    end
+    $readmemh({deit_fixture_dir, "/deit_tiny_stream_input_words.hex"},
+              DEIT_TINY_STREAM_INPUT_WORDS);
+    $readmemh({deit_fixture_dir, "/deit_tiny_stream_weight_words.hex"},
+              DEIT_TINY_STREAM_WEIGHT_WORDS);
+    $readmemh({deit_fixture_dir, "/deit_tiny_stream_dense_expected.hex"},
+              DEIT_TINY_STREAM_DENSE_EXPECTED);
+    $readmemh({deit_fixture_dir, "/deit_tiny_stream_global_l1_12p5_metadata_words.hex"},
+              DEIT_TINY_STREAM_GLOBAL_L1_12P5_METADATA_WORDS);
+    $readmemh({deit_fixture_dir, "/deit_tiny_stream_global_l1_12p5_expected.hex"},
+              DEIT_TINY_STREAM_GLOBAL_L1_12P5_EXPECTED);
+    $readmemh({deit_fixture_dir, "/deit_tiny_stream_l1_budget_5_metadata_words.hex"},
+              DEIT_TINY_STREAM_L1_BUDGET_5_METADATA_WORDS);
+    $readmemh({deit_fixture_dir, "/deit_tiny_stream_l1_budget_5_expected.hex"},
+              DEIT_TINY_STREAM_L1_BUDGET_5_EXPECTED);
+  end
+`endif
 
   sap_vpu_subsystem dut (
     .clk_i(clk_i),
@@ -238,6 +283,55 @@ module sap_vpu_subsystem_gate_tb;
                 dma_rdata_i <= FC2_K512_OUT_BASE;
               default: dma_rdata_i <= 32'd64;
             endcase
+`ifdef SAP_VPU_DEIT_STREAM
+          end else if (dma_addr_o >= DEIT_STREAM_DESC_BASE &&
+                       dma_addr_o < DEIT_STREAM_DESC_BASE + 16) begin
+            case (dma_addr_o)
+              DEIT_STREAM_DESC_BASE + 0:
+                dma_rdata_i <= DEIT_STREAM_INPUT_BASE +
+                               (stream_token_pair_index *
+                                DEIT_TINY_STREAM_TOKEN_PAIR_INPUT_BYTES);
+              DEIT_STREAM_DESC_BASE + 4:
+                dma_rdata_i <= DEIT_STREAM_WEIGHT_BASE +
+                               (stream_pair_index * DEIT_TINY_STREAM_PAIR_WEIGHT_BYTES);
+              DEIT_STREAM_DESC_BASE + 8: dma_rdata_i <= FC2_K512_OUT_BASE;
+              default: dma_rdata_i <= DEIT_TINY_STREAM_K_BLOCKS;
+            endcase
+          end else if (dma_addr_o >= DEIT_STREAM_GLOBAL_DESC_BASE &&
+                       dma_addr_o < DEIT_STREAM_GLOBAL_DESC_BASE + 20) begin
+            case (dma_addr_o)
+              DEIT_STREAM_GLOBAL_DESC_BASE + 0:
+                dma_rdata_i <= DEIT_STREAM_INPUT_BASE +
+                               (stream_token_pair_index *
+                                DEIT_TINY_STREAM_TOKEN_PAIR_INPUT_BYTES);
+              DEIT_STREAM_GLOBAL_DESC_BASE + 4:
+                dma_rdata_i <= DEIT_STREAM_WEIGHT_BASE +
+                               (stream_pair_index * DEIT_TINY_STREAM_PAIR_WEIGHT_BYTES);
+              DEIT_STREAM_GLOBAL_DESC_BASE + 8: dma_rdata_i <= FC2_K512_OUT_BASE;
+              DEIT_STREAM_GLOBAL_DESC_BASE + 12:
+                dma_rdata_i <= 32'(9'h100 | DEIT_TINY_STREAM_K_BLOCKS);
+              default:
+                dma_rdata_i <= DEIT_STREAM_GLOBAL_META_BASE +
+                               (stream_pair_index * DEIT_TINY_STREAM_PAIR_METADATA_BYTES);
+            endcase
+          end else if (dma_addr_o >= DEIT_STREAM_BUDGET_DESC_BASE &&
+                       dma_addr_o < DEIT_STREAM_BUDGET_DESC_BASE + 20) begin
+            case (dma_addr_o)
+              DEIT_STREAM_BUDGET_DESC_BASE + 0:
+                dma_rdata_i <= DEIT_STREAM_INPUT_BASE +
+                               (stream_token_pair_index *
+                                DEIT_TINY_STREAM_TOKEN_PAIR_INPUT_BYTES);
+              DEIT_STREAM_BUDGET_DESC_BASE + 4:
+                dma_rdata_i <= DEIT_STREAM_WEIGHT_BASE +
+                               (stream_pair_index * DEIT_TINY_STREAM_PAIR_WEIGHT_BYTES);
+              DEIT_STREAM_BUDGET_DESC_BASE + 8: dma_rdata_i <= FC2_K512_OUT_BASE;
+              DEIT_STREAM_BUDGET_DESC_BASE + 12:
+                dma_rdata_i <= 32'(9'h100 | DEIT_TINY_STREAM_K_BLOCKS);
+              default:
+                dma_rdata_i <= DEIT_STREAM_BUDGET_META_BASE +
+                               (stream_pair_index * DEIT_TINY_STREAM_PAIR_METADATA_BYTES);
+            endcase
+`endif
           end else if (dma_addr_o >= FC2_K512_STREAM_GLOBAL_META_BASE &&
                        dma_addr_o < FC2_K512_STREAM_GLOBAL_META_BASE + 64) begin
             dma_rdata_i <= TINYVIT_FC2_K512_GLOBAL_L1_6P25_STREAM_METADATA_WORDS[
@@ -258,6 +352,31 @@ module sap_vpu_subsystem_gate_tb;
             dma_rdata_i <= TINYVIT_FC2_K512_PAIR_LAYER_L1_BUDGET_5PCT_STREAM_METADATA_WORDS[
               (dma_addr_o - FC2_K512_STREAM_PAIR_BUDGET_META_BASE) >> 2
             ];
+`ifdef SAP_VPU_DEIT_STREAM
+          end else if (dma_addr_o >= DEIT_STREAM_GLOBAL_META_BASE &&
+                       dma_addr_o < DEIT_STREAM_GLOBAL_META_BASE +
+                                    (DEIT_TINY_STREAM_PAIR_COUNT *
+                                     DEIT_TINY_STREAM_PAIR_METADATA_BYTES)) begin
+            dma_rdata_i <= DEIT_TINY_STREAM_GLOBAL_L1_12P5_METADATA_WORDS[
+              (dma_addr_o - DEIT_STREAM_GLOBAL_META_BASE) >> 2
+            ];
+          end else if (dma_addr_o >= DEIT_STREAM_BUDGET_META_BASE &&
+                       dma_addr_o < DEIT_STREAM_BUDGET_META_BASE +
+                                    (DEIT_TINY_STREAM_PAIR_COUNT *
+                                     DEIT_TINY_STREAM_PAIR_METADATA_BYTES)) begin
+            dma_rdata_i <= DEIT_TINY_STREAM_L1_BUDGET_5_METADATA_WORDS[
+              (dma_addr_o - DEIT_STREAM_BUDGET_META_BASE) >> 2
+            ];
+`endif
+`ifdef SAP_VPU_DEIT_STREAM
+          end else if (dma_addr_o >= DEIT_STREAM_INPUT_BASE &&
+                       dma_addr_o < DEIT_STREAM_INPUT_BASE +
+                                    (DEIT_TINY_STREAM_TOKEN_PAIR_COUNT *
+                                     DEIT_TINY_STREAM_TOKEN_PAIR_INPUT_BYTES)) begin
+            dma_rdata_i <= DEIT_TINY_STREAM_INPUT_WORDS[
+              (dma_addr_o - DEIT_STREAM_INPUT_BASE) >> 2
+            ];
+`endif
           end else if (dma_addr_o >= FC2_K128_INPUT_BASE &&
                        dma_addr_o < FC2_K128_INPUT_BASE + 256) begin
             dma_rdata_i <= TINYVIT_FC2_K128_INPUT_WORDS[(dma_addr_o - FC2_K128_INPUT_BASE) >> 2];
@@ -275,6 +394,15 @@ module sap_vpu_subsystem_gate_tb;
             dma_rdata_i <= TINYVIT_FC2_K512_PAIR_WEIGHT_WORDS[
               (dma_addr_o - FC2_K512_PAIR_WEIGHT_BASE) >> 2
             ];
+`ifdef SAP_VPU_DEIT_STREAM
+          end else if (dma_addr_o >= DEIT_STREAM_WEIGHT_BASE &&
+                       dma_addr_o < DEIT_STREAM_WEIGHT_BASE +
+                                    (DEIT_TINY_STREAM_PAIR_COUNT *
+                                     DEIT_TINY_STREAM_PAIR_WEIGHT_BYTES)) begin
+            dma_rdata_i <= DEIT_TINY_STREAM_WEIGHT_WORDS[
+              (dma_addr_o - DEIT_STREAM_WEIGHT_BASE) >> 2
+            ];
+`endif
           end else begin
             case (dma_addr_o)
               TOKEN_BASE + 0:      dma_rdata_i <= TINYVIT_MLP2_WORDS[0];
@@ -300,8 +428,7 @@ module sap_vpu_subsystem_gate_tb;
 
   task automatic gate_fail(input string message);
     begin
-      $display("SUBSYSTEM_GATE_FAIL: %s", message);
-      $finish;
+      $fatal(1, "SUBSYSTEM_GATE_FAIL: %s", message);
     end
   endtask
 
@@ -404,6 +531,61 @@ module sap_vpu_subsystem_gate_tb;
       end
     end
   endtask
+
+`ifdef SAP_VPU_DEIT_STREAM
+  function automatic logic [31:0] deit_stream_expected(
+    input int unsigned policy,
+    input int unsigned pair,
+    input int unsigned token_pair,
+    input int unsigned index
+  );
+    int unsigned expected_index;
+    begin
+      expected_index = pair * (DEIT_TINY_STREAM_TOKEN_PAIR_COUNT * 4) +
+                       token_pair * 4 + index;
+      case (policy)
+        POLICY_DEIT_STREAM_GLOBAL:
+          deit_stream_expected = DEIT_TINY_STREAM_GLOBAL_L1_12P5_EXPECTED[expected_index];
+        POLICY_DEIT_STREAM_BUDGET:
+          deit_stream_expected = DEIT_TINY_STREAM_L1_BUDGET_5_EXPECTED[expected_index];
+        default: deit_stream_expected = DEIT_TINY_STREAM_DENSE_EXPECTED[expected_index];
+      endcase
+    end
+  endfunction
+
+  task automatic run_deit_stream(
+    input int unsigned iteration,
+    input int unsigned policy
+  );
+    logic [3:0] id;
+    logic [31:0] descriptor_base;
+    begin
+      case (policy)
+        POLICY_DEIT_STREAM_GLOBAL: descriptor_base = DEIT_STREAM_GLOBAL_DESC_BASE;
+        POLICY_DEIT_STREAM_BUDGET: descriptor_base = DEIT_STREAM_BUDGET_DESC_BASE;
+        default: descriptor_base = DEIT_STREAM_DESC_BASE;
+      endcase
+      for (int unsigned token_pair = 0;
+           token_pair < DEIT_TINY_STREAM_TOKEN_PAIR_COUNT; token_pair++) begin
+        stream_token_pair_index = token_pair;
+        for (int unsigned pair = 0; pair < DEIT_TINY_STREAM_PAIR_COUNT; pair++) begin
+          stream_pair_index = pair;
+          id = 4'((((iteration * DEIT_TINY_STREAM_TOKEN_PAIR_COUNT) + token_pair) *
+                   DEIT_TINY_STREAM_PAIR_COUNT) + pair);
+          send_cmd(id, SAP_OP_VTSTREAM, descriptor_base, 32'h0);
+          expect_rsp(id, DEIT_TINY_STREAM_K_BLOCKS);
+          expect_tile(
+            FC2_K512_OUT_BASE,
+            deit_stream_expected(policy, pair, token_pair, 0),
+            deit_stream_expected(policy, pair, token_pair, 1),
+            deit_stream_expected(policy, pair, token_pair, 2),
+            deit_stream_expected(policy, pair, token_pair, 3)
+          );
+        end
+      end
+    end
+  endtask
+`endif
 
   task automatic run_fc2_k512_stream(
     input int unsigned iteration,
@@ -974,6 +1156,29 @@ module sap_vpu_subsystem_gate_tb;
           fc2_k512_pair_weight_reads(policy_id)
         );
       end
+`ifdef SAP_VPU_DEIT_STREAM
+      "deit_tiny_stream_dense": begin
+        policy_id = POLICY_DEIT_STREAM_DENSE;
+        expected_vdots = iterations * DEIT_TINY_STREAM_DENSE_VDOTS;
+        expected_reads = iterations * DEIT_TINY_STREAM_DENSE_READS;
+        expected_writes = iterations * DEIT_TINY_STREAM_WRITES;
+        expected_saved_reads = 0;
+      end
+      "deit_tiny_stream_global_l1_12p5": begin
+        policy_id = POLICY_DEIT_STREAM_GLOBAL;
+        expected_vdots = iterations * DEIT_TINY_STREAM_GLOBAL_L1_12P5_VDOTS;
+        expected_reads = iterations * DEIT_TINY_STREAM_GLOBAL_L1_12P5_READS;
+        expected_writes = iterations * DEIT_TINY_STREAM_WRITES;
+        expected_saved_reads = iterations * DEIT_TINY_STREAM_GLOBAL_L1_12P5_SAVED_READS;
+      end
+      "deit_tiny_stream_l1_budget_5": begin
+        policy_id = POLICY_DEIT_STREAM_BUDGET;
+        expected_vdots = iterations * DEIT_TINY_STREAM_L1_BUDGET_5_VDOTS;
+        expected_reads = iterations * DEIT_TINY_STREAM_L1_BUDGET_5_READS;
+        expected_writes = iterations * DEIT_TINY_STREAM_WRITES;
+        expected_saved_reads = iterations * DEIT_TINY_STREAM_L1_BUDGET_5_SAVED_READS;
+      end
+`endif
       default: $fatal(1, "unsupported policy: %s", activity_policy);
     endcase
 
@@ -985,6 +1190,11 @@ module sap_vpu_subsystem_gate_tb;
     $dumpfile(vcd_file);
     $dumpvars(0, dut);
     for (int unsigned i = 0; i < iterations; i++) begin
+`ifdef SAP_VPU_DEIT_STREAM
+      if (policy_id >= POLICY_DEIT_STREAM_DENSE) begin
+        run_deit_stream(i, policy_id);
+      end else
+`endif
       if (policy_id == POLICY_MLP2_DENSE) begin
         run_mlp2(i);
       end else if (policy_id >= POLICY_FC2_K512_STREAM_PAIR_GLOBAL) begin
@@ -1017,7 +1227,7 @@ module sap_vpu_subsystem_gate_tb;
   end
 
   initial begin
-    repeat (1000000) @(posedge clk_i);
+    repeat (WATCHDOG_CYCLES) @(posedge clk_i);
     gate_fail("simulation timeout");
   end
 endmodule

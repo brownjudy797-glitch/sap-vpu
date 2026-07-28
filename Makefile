@@ -11,7 +11,9 @@ VERILATOR_TIMING_LDFLAGS ?= -no-pie
 # ponytail: smaller generated C++ chunks avoid WSL/compiler stalls; raise if build time dominates.
 VERILATOR_OUTPUT_SPLIT ?= 1000
 VERILATOR_OUTPUT_SPLIT_CFUNCS ?= 1000
-PYTHON ?= python3
+# ponytail: WSL Python 3.8 segfaults here; use the repo-local 3.12 runtime when installed.
+PYTHON ?= $(if $(wildcard $(ROOT_DIR)/work/toolchain/python312/bin/python3),$(ROOT_DIR)/work/toolchain/python312/bin/python3,python3)
+export PYTHONDONTWRITEBYTECODE := 1
 VIVADO ?= vivado
 XVLOG ?= xvlog
 XELAB ?= xelab
@@ -38,6 +40,26 @@ TILED_GEMM_DMA_SOC_BUILD_DIR ?= $(ROOT_DIR)/work/tiled_gemm_dma_soc
 TILED_GEMM_DMA_SOC_ELF := $(TILED_GEMM_DMA_SOC_BUILD_DIR)/sap_vpu_tiled_gemm_dma_soc.elf
 TILED_GEMM_DMA_SOC_BIN := $(TILED_GEMM_DMA_SOC_BUILD_DIR)/sap_vpu_tiled_gemm_dma_soc.bin
 TILED_GEMM_DMA_SOC_HEX := $(TILED_GEMM_DMA_SOC_BUILD_DIR)/sap_vpu_tiled_gemm_dma_soc.hex
+TILED_GEMM_DMA_SIM_HEX ?= $(TILED_GEMM_DMA_SOC_HEX)
+TILED_GEMM_DMA_SIM_EXPECTED_READS ?= 24
+TILED_GEMM_DMA_SIM_EXPECT_POLICY_UART ?= 0
+TILED_GEMM_DMA_SIM_EXPECTED_DENSE_MAC_ACTIVE ?= 192
+TILED_GEMM_DMA_SIM_EXPECTED_GLOBAL_MAC_ACTIVE ?= 154
+TILED_GEMM_DMA_SIM_EXPECTED_BUDGET_MAC_ACTIVE ?= 158
+TILED_GEMM_DMA_SIM_EXPECTED_DENSE_DMA_SAVED ?= 0
+TILED_GEMM_DMA_SIM_EXPECTED_GLOBAL_DMA_SAVED ?= 21
+TILED_GEMM_DMA_SIM_EXPECTED_BUDGET_DMA_SAVED ?= 19
+TILED_GEMM_DMA_SIM_DIR ?= $(SIM_DIR)/tiled_gemm_dma_soc_obj
+DEIT_TILE_BUILD_DIR ?= $(ROOT_DIR)/work/deit_tile
+DEIT_TILE_ASM := $(DEIT_TILE_BUILD_DIR)/tile_fixture.inc
+DEIT_TILE_ELF := $(DEIT_TILE_BUILD_DIR)/sap_vpu_deit_tile.elf
+DEIT_TILE_BIN := $(DEIT_TILE_BUILD_DIR)/sap_vpu_deit_tile.bin
+DEIT_TILE_HEX := $(DEIT_TILE_BUILD_DIR)/sap_vpu_deit_tile.hex
+TINYVIT_TILE_BUILD_DIR ?= $(ROOT_DIR)/work/tinyvit_tile
+TINYVIT_TILE_ASM := $(TINYVIT_TILE_BUILD_DIR)/tile_fixture.inc
+TINYVIT_TILE_ELF := $(TINYVIT_TILE_BUILD_DIR)/sap_vpu_tinyvit_tile.elf
+TINYVIT_TILE_BIN := $(TINYVIT_TILE_BUILD_DIR)/sap_vpu_tinyvit_tile.bin
+TINYVIT_TILE_HEX := $(TINYVIT_TILE_BUILD_DIR)/sap_vpu_tinyvit_tile.hex
 SAP_VPU_SOC_RTL := rtl/sap_vpu_pkg.sv rtl/sap_vpu_core.sv rtl/sap_vpu_tiled_gemm.sv rtl/sap_vpu_subsystem.sv
 TINYVIT_BUILD_DIR ?= $(ROOT_DIR)/work/tinyvit
 TINYVIT_ELF := $(TINYVIT_BUILD_DIR)/sap_vpu_tinyvit.elf
@@ -67,6 +89,18 @@ TINYVIT_FC1_K128_SVH := $(TINYVIT_FC1_K128_BUILD_DIR)/tinyvit_fc2_k128_policy_tb
 TINYVIT_FC1_K128_WINDOWS := 0 1 2 3 4 5 6 7
 TINYVIT_FC2_K512_BUILD_DIR ?= $(ROOT_DIR)/work/tinyvit_fc2_k512
 TINYVIT_FC2_K512_SVH := $(TINYVIT_FC2_K512_BUILD_DIR)/tinyvit_fc2_k512_policy_tb.svh
+MODEL_GENERALIZATION_IMAGES_PER_CLASS ?= 1
+MODEL_GENERALIZATION_BATCH_SIZE ?= 4
+TRANSFORMER_GENERALIZATION_JSON ?= work/model_generalization/transformer_generalization.json
+TRANSFORMER_DATASET_ROOT ?= work/datasets/imagenette2-160
+TRANSFORMER_FIXTURE_IMAGE ?= work/tinyvit_eval_images/dog.jpg
+TRANSFORMER_FIXTURE_JSON ?= work/model_generalization/transformer_linear_fixtures.json
+TRANSFORMER_FIXTURE_IMAGE_DIR ?= work/tinyvit_eval_images
+TRANSFORMER_MULTI_IMAGE_FIXTURE_JSON ?= work/model_generalization/transformer_multi_image_fixtures.json
+TRANSFORMER_DEIT_OUTPUT_PAIRS ?= 4
+TRANSFORMER_DEIT_TOKENS ?= 2
+TRANSFORMER_STREAM_FIXTURE_DIR ?= work/transformer_fixture
+TRANSFORMER_STREAM_FIXTURE_SVH := $(TRANSFORMER_STREAM_FIXTURE_DIR)/deit_tiny_stream_fixture_tb.svh
 VPU_CORE_ACTIVITY_DIR ?= $(ROOT_DIR)/work/activity/vpu_core
 VPU_CORE_VCD ?= $(VPU_CORE_ACTIVITY_DIR)/sap_vpu_core_tb.vcd
 VPU_CORE_SAIF ?= $(VPU_CORE_ACTIVITY_DIR)/sap_vpu_core.saif
@@ -96,8 +130,8 @@ FPGA_POLICY_DCP ?= work\fpga\vpu_core_sliced_140\checkpoints\post_route.dcp
 FPGA_POLICY_NETLIST ?= work\fpga\vpu_core_sliced_140_funcsim\sap_vpu_core_funcsim.v
 FPGA_POLICY_CLOCK_MHZ ?= 140
 FPGA_SUBSYSTEM_POWER_DIR ?= work\fpga\vpu_subsystem_140_saif_power
-FPGA_SUBSYSTEM_POST_SYNTH_DCP ?= work\fpga\vpu_subsystem_140\checkpoints\post_synth.dcp
-FPGA_SUBSYSTEM_POST_ROUTE_DCP ?= work\fpga\vpu_subsystem_140\checkpoints\post_route.dcp
+FPGA_SUBSYSTEM_POST_SYNTH_DCP ?= work\fpga\vpu_subsystem_140_current\checkpoints\post_synth.dcp
+FPGA_SUBSYSTEM_POST_ROUTE_DCP ?= work\fpga\vpu_subsystem_140_current\checkpoints\post_route.dcp
 FPGA_SUBSYSTEM_CLOCK_MHZ ?= 140
 FPGA_SUBSYSTEM_ITERATIONS ?= 128
 FPGA_SUBSYSTEM_POLICY_POWER_DIR ?= work\fpga\vpu_subsystem_140_policy_power
@@ -106,8 +140,28 @@ FPGA_SUBSYSTEM_K512_POLICY_POWER_DIR ?= work\fpga\vpu_subsystem_140_k512_policy_
 FPGA_SUBSYSTEM_K512_POLICY_ITERATIONS ?= 8
 FPGA_SUBSYSTEM_K512_PAIR_POLICY_POWER_DIR ?= work\fpga\vpu_subsystem_140_k512_pair_policy_power
 FPGA_SUBSYSTEM_K512_PAIR_POLICY_ITERATIONS ?= 2
-FPGA_SUBSYSTEM_K512_STREAM_POLICY_POWER_DIR ?= work\fpga\vpu_subsystem_140_k512_stream_policy_power
+FPGA_SUBSYSTEM_K512_STREAM_POLICY_POWER_DIR ?= work\fpga\vpu_subsystem_140_current_k512_stream_policy_power
 FPGA_SUBSYSTEM_K512_STREAM_POLICY_ITERATIONS ?= 2
+FPGA_SUBSYSTEM_DEIT_POLICY_POWER_DIR ?= work\fpga\vpu_subsystem_140_deit_policy_power
+FPGA_SUBSYSTEM_DEIT_POLICY_ITERATIONS ?= 2
+FPGA_SUBSYSTEM_DEIT_FULL_OUTPUT_POWER_DIR ?= work\fpga\vpu_subsystem_140_current_deit_full_output_power
+FPGA_SUBSYSTEM_DEIT_FULL_OUTPUT_ITERATIONS ?= 1
+FPGA_SUBSYSTEM_CROSS_MODEL_ENERGY_DIR ?= $(ROOT_DIR)/work/fpga/vpu_subsystem_140_current_cross_model_energy
+FPGA_SUBSYSTEM_CROSS_MODEL_ENERGY_MD := $(FPGA_SUBSYSTEM_CROSS_MODEL_ENERGY_DIR)/gate_saif_energy_table.md
+FPGA_SUBSYSTEM_CROSS_MODEL_ENERGY_CSV := $(FPGA_SUBSYSTEM_CROSS_MODEL_ENERGY_DIR)/gate_saif_energy_table.csv
+DAVINCI_FPGA_PART ?= xc7a200tfbg484-2
+DAVINCI_CLOCK_MHZ ?= 50
+DAVINCI_FPGA_BUILD_DIR ?= work\fpga\davinci_hello_$(DAVINCI_CLOCK_MHZ)
+DAVINCI_VPU_FPGA_BUILD_DIR ?= work\fpga\davinci_vpu_$(DAVINCI_CLOCK_MHZ)
+DAVINCI_TILED_GEMM_DMA_FPGA_BUILD_DIR ?= work\fpga\davinci_tiled_gemm_dma_$(DAVINCI_CLOCK_MHZ)
+DAVINCI_DEIT_TILE_FPGA_BUILD_DIR ?= work\fpga\davinci_deit_fc1_k192_sparse_uart_$(DAVINCI_CLOCK_MHZ)
+DAVINCI_TINYVIT_TILE_FPGA_BUILD_DIR ?= work\fpga\davinci_tinyvit_fc2_k512_sparse_uart_$(DAVINCI_CLOCK_MHZ)
+DAVINCI_MODEL_TILE_SUMMARY_DIR ?= $(ROOT_DIR)/work/fpga/davinci_model_tile_summary
+DAVINCI_MODEL_TILE_SUMMARY_MD := $(DAVINCI_MODEL_TILE_SUMMARY_DIR)/model_tile_board_table.md
+DAVINCI_MODEL_TILE_SUMMARY_CSV := $(DAVINCI_MODEL_TILE_SUMMARY_DIR)/model_tile_board_table.csv
+DAVINCI_SIM_DIR ?= $(SIM_DIR)/davinci_hello_obj
+DAVINCI_UART_PORT ?= COM5
+DAVINCI_CAPTURE_SECONDS ?= 5
 DC_CLOCK_PERIOD ?= 10.0
 DC_DESIGN_NAME ?= sap_vpu_core
 DC_WORK_DIR ?= $(ROOT_DIR)/work/dc/tsmc28/vpu_core
@@ -128,10 +182,22 @@ DC_GATE_VCD ?= $(DC_GATE_SIM_DIR)/sap_vpu_core_gate_tb.vcd
 DC_GATE_SAIF ?= $(DC_GATE_SIM_DIR)/sap_vpu_core_gate_tb.saif
 DC_GATE_POWER_WORK_DIR ?= $(DC_GATE_SIM_DIR)/dc_power
 DC_GATE_POWER_REPORT_DIR ?= $(DC_GATE_SIM_DIR)/reports_power
+PT_SHELL ?= pt_shell
+PT_DESIGN_NAME ?= sap_vpu_subsystem
+PT_STD_CELL_DB ?=
+PT_PROCESS_CORNER ?= unknown
+PT_NETLIST_FILE ?= $(ROOT_DIR)/netlist/dc/tsmc28/vpu_subsystem/$(PT_DESIGN_NAME).v
+PT_SDC_FILE ?= $(ROOT_DIR)/netlist/dc/tsmc28/vpu_subsystem/$(PT_DESIGN_NAME).sdc
+PT_REPORT_DIR ?= $(ROOT_DIR)/reports/pt/tsmc28/vpu_subsystem
+PT_SAIF_FILE ?=
+PT_SAIF_STRIP_PATH ?=
 
 .DEFAULT_GOAL := help
 
-.PHONY: help plan-check corev-fetch corev-rtl-flist lint-adapter lint-core lint-tiled-gemm lint-subsystem lint lint-corev-soc sim-adapter sim-core sim-tiled-gemm sim-core-vcd sim-hello sim-vpu sim-tiled-gemm-soc sim-tiled-gemm-dma-soc sim-tinyvit-fc1-k128 sim-tinyvit sim-tinyvit-vcd sim-subsystem-mlp2 sim-subsystem-sparse-policies sim-subsystem-k512-policies sim-subsystem-k512-pair-policies sim-subsystem-k512-stream sim encoding-check legacy-summary hello-build hello-smoke vpu-build vpu-smoke tiled-gemm-soc-build tiled-gemm-soc-smoke tiled-gemm-dma-soc-build tiled-gemm-dma-soc-smoke tinyvit-fc1-k128-fixture tinyvit-fc2-k512-fixture tinyvit-fc1-k128-build tinyvit-fc1-k128-smoke tinyvit-checkpoint-fixture tinyvit-activation-fixture tinyvit-sparsity-study tinyvit-fixture tinyvit-fixture-check tiled-gemm-check tiled-gemm-rtl-check tinyvit-build tinyvit-smoke tinyvit-summary tinyvit-paper-table fpga-vpu-synth fpga-vpu-funcsim-netlist fpga-vpu-funcsim-vcd fpga-vpu-funcsim-saif fpga-vpu-funcsim-saif-power fpga-vpu-policy-power-matrix fpga-vpu-subsystem-saif-power fpga-vpu-subsystem-policy-power-matrix fpga-vpu-subsystem-k512-policy-power-matrix fpga-vpu-subsystem-k512-pair-policy-power-matrix fpga-vpu-subsystem-k512-stream-policy-power-matrix fpga-vpu-saif-power fpga-vpu-summary dc-vpu-gate-netlist-check dc-vpu-gate-synth dc-vpu-gate-sim dc-vpu-gate-saif-power dc-vpu-precheck dc-vpu-synth dc-vpu-power dc-vpu-saif-power dc-vpu-tinyvit-saif-power dc-vpu-policy-power-matrix dc-vpu-summary
+.PHONY: help plan-check corev-fetch corev-rtl-flist lint-adapter lint-core lint-tiled-gemm lint-subsystem lint lint-corev-soc sim-adapter sim-core sim-tiled-gemm sim-core-vcd sim-hello sim-davinci-hello sim-vpu sim-tiled-gemm-soc sim-tiled-gemm-dma-soc sim-deit-tile sim-tinyvit-fc1-k128 sim-tinyvit sim-tinyvit-vcd sim-subsystem-mlp2 sim-subsystem-sparse-policies sim-subsystem-k512-policies sim-subsystem-k512-pair-policies sim-subsystem-k512-stream sim-subsystem-deit-stream sim-subsystem-deit-full-output sim-subsystem-deit-token-sweep sim-subsystem-deit-all-tokens sim encoding-check legacy-summary hello-build hello-smoke vpu-build vpu-smoke tiled-gemm-soc-build tiled-gemm-soc-smoke tiled-gemm-dma-soc-build tiled-gemm-dma-soc-smoke deit-tile-fixture deit-tile-build deit-tile-smoke tinyvit-fc1-k128-fixture tinyvit-fc2-k512-fixture tinyvit-fc1-k128-build tinyvit-fc1-k128-smoke tinyvit-checkpoint-fixture tinyvit-activation-fixture tinyvit-sparsity-study transformer-generalization transformer-imagenette-full transformer-fixture transformer-fixture-check transformer-multi-image-fixture transformer-multi-image-check transformer-stream-fixture transformer-deit-full-output-fixture tinyvit-fixture tinyvit-fixture-check tiled-gemm-check tiled-gemm-rtl-check tinyvit-build tinyvit-smoke tinyvit-summary tinyvit-paper-table fpga-vpu-synth fpga-davinci-hello fpga-davinci-vpu fpga-davinci-tiled-gemm-dma fpga-davinci-deit-tile fpga-davinci-board-smoke fpga-davinci-vpu-board-smoke fpga-davinci-tiled-gemm-dma-board-smoke fpga-davinci-deit-tile-board-smoke fpga-vpu-funcsim-netlist fpga-vpu-funcsim-vcd fpga-vpu-funcsim-saif fpga-vpu-funcsim-saif-power fpga-vpu-policy-power-matrix fpga-vpu-subsystem-saif-power fpga-vpu-subsystem-policy-power-matrix fpga-vpu-subsystem-k512-policy-power-matrix fpga-vpu-subsystem-k512-pair-policy-power-matrix fpga-vpu-subsystem-k512-stream-policy-power-matrix fpga-vpu-subsystem-deit-policy-power-matrix fpga-vpu-subsystem-deit-full-output-power-matrix fpga-vpu-saif-power fpga-vpu-summary dc-vpu-gate-netlist-check dc-vpu-gate-synth dc-vpu-gate-sim dc-vpu-gate-saif-power dc-vpu-precheck dc-vpu-synth dc-vpu-power dc-vpu-saif-power dc-vpu-tinyvit-saif-power dc-vpu-policy-power-matrix dc-vpu-summary pt-vpu-analyze
+.PHONY: sim-tinyvit-tile tinyvit-tile-fixture tinyvit-tile-build tinyvit-tile-smoke fpga-davinci-tinyvit-tile fpga-davinci-tinyvit-tile-board-smoke
+.PHONY: fpga-davinci-model-tile-summary
+.PHONY: fpga-vpu-subsystem-cross-model-energy-summary
 
 help:
 	@printf '%s\n' \
@@ -145,12 +211,18 @@ help:
 	  'make sim-core' \
 	  'make sim-core-vcd' \
 	  'make sim-hello' \
+	  'make sim-davinci-hello' \
 	  'make sim-tinyvit-vcd' \
 	  'make sim-subsystem-mlp2' \
 	  'make sim-subsystem-sparse-policies' \
 	  'make sim-subsystem-k512-policies' \
 	  'make sim-subsystem-k512-pair-policies' \
 	  'make sim-subsystem-k512-stream' \
+	  'make sim-subsystem-deit-stream' \
+	  'make sim-subsystem-deit-full-output' \
+	  'make sim-subsystem-deit-token-sweep' \
+	  'make sim-subsystem-deit-all-tokens' \
+	  'make transformer-imagenette-full' \
 	  'make encoding-check' \
 	  'make legacy-summary [LEGACY_RESULTS_DIR=../nutvpu/results]' \
 	  'make hello-build' \
@@ -158,17 +230,30 @@ help:
 	  'make vpu-smoke' \
 	  'make tiled-gemm-soc-smoke' \
 	  'make tiled-gemm-dma-soc-smoke' \
+	  'make deit-tile-smoke [TRANSFORMER_FIXTURE_JSON=work/model_generalization/transformer_linear_fixtures.json]' \
 	  'make tinyvit-fc1-k128-smoke' \
 	  'make tinyvit-smoke' \
 	  'make tinyvit-checkpoint-fixture [TINYVIT_CHECKPOINT=/path/to/model.safetensors]' \
 	  'make tinyvit-activation-fixture [TINYVIT_MODEL_PYTHON=/path/to/python]' \
 	  'make tinyvit-sparsity-study TINYVIT_MODEL_PYTHON=/path/to/python' \
+	  'make transformer-generalization [MODEL_GENERALIZATION_IMAGES_PER_CLASS=1]' \
+	  'make transformer-fixture-check [TRANSFORMER_FIXTURE_IMAGE=work/tinyvit_eval_images/dog.jpg]' \
+	  'make transformer-multi-image-check [TRANSFORMER_FIXTURE_IMAGE_DIR=work/tinyvit_eval_images]' \
 	  'make tinyvit-fixture [TINYVIT_FIXTURE_JSON=/path/to/fixture.json]' \
 	  'make tinyvit-fixture-check' \
 	  'make tiled-gemm-check' \
 	  'make tinyvit-summary' \
 	  'make tinyvit-paper-table' \
 	  'make fpga-vpu-synth [FPGA_PART=xc7a35tcsg324-1] [FPGA_CLOCK_MHZ=100]' \
+	  'make fpga-davinci-hello [DAVINCI_FPGA_PART=xc7a200tfbg484-2]' \
+	  'make fpga-davinci-board-smoke [DAVINCI_UART_PORT=COM5]' \
+	  'make fpga-davinci-vpu' \
+	  'make fpga-davinci-vpu-board-smoke [DAVINCI_UART_PORT=COM5]' \
+	  'make fpga-davinci-tiled-gemm-dma' \
+	  'make fpga-davinci-tiled-gemm-dma-board-smoke [DAVINCI_UART_PORT=COM5]' \
+	  'make fpga-davinci-deit-tile DAVINCI_CLOCK_MHZ=70' \
+	  'make fpga-davinci-deit-tile-board-smoke DAVINCI_CLOCK_MHZ=70 [DAVINCI_UART_PORT=COM5]' \
+	  'make fpga-davinci-model-tile-summary' \
 	  'make fpga-vpu-funcsim-netlist [FPGA_FUNCSIM_DCP=work/fpga/vpu_core_sliced_140/checkpoints/post_synth.dcp]' \
 	  'make fpga-vpu-funcsim-vcd' \
 	  'make fpga-vpu-funcsim-saif-power [FPGA_SAIF_DCP=work/fpga/vpu_core_sliced_140/checkpoints/post_route.dcp]' \
@@ -178,6 +263,9 @@ help:
 	  'make fpga-vpu-subsystem-k512-policy-power-matrix' \
 	  'make fpga-vpu-subsystem-k512-pair-policy-power-matrix' \
 	  'make fpga-vpu-subsystem-k512-stream-policy-power-matrix' \
+	  'make fpga-vpu-subsystem-deit-policy-power-matrix' \
+	  'make fpga-vpu-subsystem-deit-full-output-power-matrix' \
+	  'make fpga-vpu-subsystem-cross-model-energy-summary' \
 	  'make fpga-vpu-saif-power [FPGA_SAIF_DCP=work/fpga/vpu_core_sliced_140/checkpoints/post_route.dcp]' \
 	  'make fpga-vpu-summary' \
 	  'make dc-vpu-gate-netlist-check [DC_NETLIST_DIR=netlist/dc/tsmc28/vpu_core]' \
@@ -190,7 +278,8 @@ help:
 	  'make dc-vpu-saif-power [DC_NETLIST_DIR=netlist/dc/tsmc28/vpu_core]' \
 	  'make dc-vpu-tinyvit-saif-power [DC_NETLIST_DIR=netlist/dc/tsmc28/vpu_core]' \
 	  'make dc-vpu-policy-power-matrix' \
-	  'make dc-vpu-summary'
+	  'make dc-vpu-summary' \
+	  'make pt-vpu-analyze PT_STD_CELL_DB=/path/to/library.db PT_NETLIST_FILE=/path/to/netlist.v PT_SDC_FILE=/path/to/constraints.sdc'
 
 plan-check:
 	test -x scripts/fetch_corev_cv32e40x.sh
@@ -200,7 +289,11 @@ plan-check:
 	test -f rtl/sap_vpu_subsystem.sv
 	test -f platforms/corev/rtl/cvxif_sap_vpu_adapter.sv
 	test -f platforms/corev/rtl/corev_min_soc.sv
+	test -f platforms/corev/rtl/cv32e40x_fpga_clock_gate.sv
+	test -f platforms/davinci/rtl/sap_vpu_davinci_top.sv
+	test -f platforms/davinci/constr/davinci_a7_200t.xdc
 	test -f tb/corev_min_soc_hello_tb.sv
+	test -f tb/sap_vpu_davinci_top_tb.sv
 	test -f tb/corev_min_soc_vpu_tb.sv
 	test -f tb/corev_min_soc_tinyvit_tb.sv
 	test -f tb/sap_vpu_core_gate_tb.sv
@@ -210,11 +303,18 @@ plan-check:
 	test -f tb/sap_vpu_subsystem_gate_tb.sv
 	test -f scripts/run_fpga_vpu_policy_matrix.ps1
 	test -f scripts/run_fpga_vpu_subsystem_power.ps1
+	test -f scripts/vivado_davinci_build.tcl
+	test -f scripts/run_vivado_davinci_build.ps1
+	test -f scripts/vivado_davinci_program.tcl
+	test -f scripts/run_vivado_davinci_board_smoke.ps1
+	test -f scripts/summarize_davinci_model_tiles.py
+	test -f scripts/summarize_fpga_gate_energy.py
 	test -f sw/baremetal/sap_vpu_custom.h
 	test -f sw/baremetal/hello.S
 	test -f sw/baremetal/vpu_smoke.S
 	test -f sw/baremetal/tiled_gemm_soc_smoke.S
 	test -f sw/baremetal/tiled_gemm_dma_soc_smoke.S
+	test -f sw/baremetal/deit_tile_smoke.S
 	test -f sw/baremetal/tinyvit_fc1_k128_smoke.S
 	test -f sw/baremetal/tinyvit_mlp_smoke.S
 	test -f sw/baremetal/fixtures/tinyvit_mlp2_smoke.json
@@ -230,14 +330,19 @@ plan-check:
 	test -x scripts/prepare_tinyvit_fc1_k128.py
 	test -x scripts/prepare_tinyvit_fc2_k512.py
 	test -x scripts/check_tinyvit_fc2_window_aggregate.py
+	test -f scripts/evaluate_transformer_generalization.py
+	test -f scripts/run_transformer_generalization.ps1
 	test -x scripts/check_tiled_gemm_reference.py
 	test -f docs/SAP_VPU_MODEL_MAPPING_CONTRACT.md
 	test -f scripts/vivado_vpu_synth.tcl
+	test -f scripts/run_vivado_vpu_synth.ps1
 	test -f scripts/vivado_vpu_write_funcsim.tcl
 	test -f scripts/vivado_vpu_saif_power.tcl
 	test -x scripts/summarize_vivado_reports.py
 	test -f scripts/dc_vpu_synth.tcl
 	test -x scripts/run_dc_vpu_synth.sh
+	test -f scripts/pt_vpu_analyze.tcl
+	test -x scripts/run_pt_vpu_analyze.sh
 	test -x scripts/run_dc_vpu_policy_matrix.sh
 	test -x scripts/summarize_dc_reports.py
 	test -f docs/SAP_VPU_RESEARCH_PLAN.md
@@ -245,6 +350,7 @@ plan-check:
 	test -f docs/SAP_VPU_TINYVIT_SMOKE_RECORD.md
 	test -f docs/SAP_VPU_FPGA_FLOW.md
 	test -f docs/SAP_VPU_ASIC_FLOW.md
+	test -f docs/records/SAP_VPU_FPGA_EVIDENCE_MANIFEST.md
 
 corev-fetch:
 	scripts/fetch_corev_cv32e40x.sh "$(COREV_DIR)" "$(COREV_REF)"
@@ -358,6 +464,27 @@ sim-hello: hello-build corev-rtl-flist
 	  -o corev_min_soc_hello_tb
 	"$(SIM_DIR)/hello_obj/corev_min_soc_hello_tb"
 
+sim-davinci-hello: hello-build corev-rtl-flist
+	mkdir -p "$(DAVINCI_SIM_DIR)"
+	DESIGN_RTL_DIR="$(COREV_DIR)/rtl" $(VERILATOR) --binary --timing -sv \
+	  -DCOREV_ASSERT_OFF --top-module sap_vpu_davinci_top_tb -Wno-fatal \
+	  -Wno-BLKANDNBLK -Wno-TIMESCALEMOD -Wno-UNOPTFLAT \
+	  -Wno-WIDTHEXPAND -Wno-WIDTHTRUNC -Wno-WIDTHCONCAT \
+	  -Wno-ASCRANGE -Wno-IMPLICIT -Wno-UNSIGNED -Wno-COMBDLY \
+	  --output-split $(VERILATOR_OUTPUT_SPLIT) --output-split-cfuncs $(VERILATOR_OUTPUT_SPLIT_CFUNCS) \
+	  -f "$(COREV_RTL_FLIST)" \
+	  $(SAP_VPU_SOC_RTL) \
+	  platforms/corev/rtl/cvxif_sap_vpu_adapter.sv \
+	  platforms/corev/rtl/corev_min_soc.sv \
+	  platforms/davinci/rtl/sap_vpu_davinci_top.sv \
+	  tb/sap_vpu_davinci_top_tb.sv \
+	  --Mdir "$(DAVINCI_SIM_DIR)" \
+	  -MAKEFLAGS "CXX=$(VERILATOR_CXX)" \
+	  -CFLAGS "$(VERILATOR_TIMING_CFLAGS)" \
+	  -LDFLAGS "$(VERILATOR_TIMING_LDFLAGS)" \
+	  -o sap_vpu_davinci_top_tb
+	"$(DAVINCI_SIM_DIR)/sap_vpu_davinci_top_tb"
+
 sim-vpu: vpu-build corev-rtl-flist
 	mkdir -p "$(SIM_DIR)"
 	DESIGN_RTL_DIR="$(COREV_DIR)/rtl" $(VERILATOR) --binary --timing -sv \
@@ -402,6 +529,15 @@ sim-tiled-gemm-dma-soc: tiled-gemm-dma-soc-build corev-rtl-flist
 	mkdir -p "$(SIM_DIR)"
 	DESIGN_RTL_DIR="$(COREV_DIR)/rtl" $(VERILATOR) --binary --timing -sv \
 	  -DCOREV_ASSERT_OFF --top-module corev_min_soc_tiled_gemm_dma_tb -Wno-fatal \
+	  -GROM_INIT_FILE=\"$(TILED_GEMM_DMA_SIM_HEX)\" \
+	  -GEXPECTED_DMA_READS=$(TILED_GEMM_DMA_SIM_EXPECTED_READS) \
+	  -GEXPECT_POLICY_UART=$(TILED_GEMM_DMA_SIM_EXPECT_POLICY_UART) \
+	  -GEXPECTED_DENSE_MAC_ACTIVE=$(TILED_GEMM_DMA_SIM_EXPECTED_DENSE_MAC_ACTIVE) \
+	  -GEXPECTED_GLOBAL_MAC_ACTIVE=$(TILED_GEMM_DMA_SIM_EXPECTED_GLOBAL_MAC_ACTIVE) \
+	  -GEXPECTED_BUDGET_MAC_ACTIVE=$(TILED_GEMM_DMA_SIM_EXPECTED_BUDGET_MAC_ACTIVE) \
+	  -GEXPECTED_DENSE_DMA_SAVED=$(TILED_GEMM_DMA_SIM_EXPECTED_DENSE_DMA_SAVED) \
+	  -GEXPECTED_GLOBAL_DMA_SAVED=$(TILED_GEMM_DMA_SIM_EXPECTED_GLOBAL_DMA_SAVED) \
+	  -GEXPECTED_BUDGET_DMA_SAVED=$(TILED_GEMM_DMA_SIM_EXPECTED_BUDGET_DMA_SAVED) \
 	  -Wno-BLKANDNBLK -Wno-TIMESCALEMOD -Wno-UNOPTFLAT \
 	  -Wno-WIDTHEXPAND -Wno-WIDTHTRUNC -Wno-WIDTHCONCAT \
 	  -Wno-ASCRANGE -Wno-IMPLICIT -Wno-UNSIGNED -Wno-COMBDLY \
@@ -411,12 +547,32 @@ sim-tiled-gemm-dma-soc: tiled-gemm-dma-soc-build corev-rtl-flist
 	  platforms/corev/rtl/cvxif_sap_vpu_adapter.sv \
 	  platforms/corev/rtl/corev_min_soc.sv \
 	  tb/corev_min_soc_tiled_gemm_dma_tb.sv \
-	  --Mdir "$(SIM_DIR)/tiled_gemm_dma_soc_obj" \
+	  --Mdir "$(TILED_GEMM_DMA_SIM_DIR)" \
 	  -MAKEFLAGS "CXX=$(VERILATOR_CXX)" \
 	  -CFLAGS "$(VERILATOR_TIMING_CFLAGS)" \
 	  -LDFLAGS "$(VERILATOR_TIMING_LDFLAGS)" \
 	  -o corev_min_soc_tiled_gemm_dma_tb
-	"$(SIM_DIR)/tiled_gemm_dma_soc_obj/corev_min_soc_tiled_gemm_dma_tb"
+	"$(TILED_GEMM_DMA_SIM_DIR)/corev_min_soc_tiled_gemm_dma_tb"
+
+sim-deit-tile: deit-tile-build
+	$(MAKE) sim-tiled-gemm-dma-soc \
+	  TILED_GEMM_DMA_SIM_HEX="$(DEIT_TILE_HEX)" \
+	  TILED_GEMM_DMA_SIM_EXPECTED_READS=562 \
+	  TILED_GEMM_DMA_SIM_EXPECT_POLICY_UART=1 \
+	  TILED_GEMM_DMA_SIM_DIR="$(SIM_DIR)/deit_tile_obj"
+
+sim-tinyvit-tile: tinyvit-tile-build
+	$(MAKE) sim-tiled-gemm-dma-soc \
+	  TILED_GEMM_DMA_SIM_HEX="$(TINYVIT_TILE_HEX)" \
+	  TILED_GEMM_DMA_SIM_EXPECTED_READS=1523 \
+	  TILED_GEMM_DMA_SIM_EXPECT_POLICY_UART=1 \
+	  TILED_GEMM_DMA_SIM_EXPECTED_DENSE_MAC_ACTIVE=512 \
+	  TILED_GEMM_DMA_SIM_EXPECTED_GLOBAL_MAC_ACTIVE=458 \
+	  TILED_GEMM_DMA_SIM_EXPECTED_BUDGET_MAC_ACTIVE=448 \
+	  TILED_GEMM_DMA_SIM_EXPECTED_DENSE_DMA_SAVED=0 \
+	  TILED_GEMM_DMA_SIM_EXPECTED_GLOBAL_DMA_SAVED=27 \
+	  TILED_GEMM_DMA_SIM_EXPECTED_BUDGET_DMA_SAVED=32 \
+	  TILED_GEMM_DMA_SIM_DIR="$(SIM_DIR)/tinyvit_tile_obj"
 
 sim-tinyvit-fc1-k128: tinyvit-fc1-k128-build corev-rtl-flist
 	mkdir -p "$(SIM_DIR)"
@@ -549,6 +705,40 @@ tiled-gemm-dma-soc-build:
 tiled-gemm-dma-soc-smoke: sim-tiled-gemm-dma-soc lint-corev-soc
 	test -s "$(TILED_GEMM_DMA_SOC_HEX)"
 
+deit-tile-fixture:
+	test -s "$(TRANSFORMER_FIXTURE_JSON)"
+	mkdir -p "$(DEIT_TILE_BUILD_DIR)"
+	$(PYTHON) scripts/check_tiled_gemm_reference.py "$(TRANSFORMER_FIXTURE_JSON)" \
+	  --board-inc "$(DEIT_TILE_ASM)"
+
+deit-tile-build: deit-tile-fixture
+	$(RISCV_AS) -I "$(DEIT_TILE_BUILD_DIR)" -march=rv32imc -mabi=ilp32 \
+	  -o "$(DEIT_TILE_BUILD_DIR)/deit_tile_smoke.o" sw/baremetal/deit_tile_smoke.S
+	$(RISCV_LD) -m elf32lriscv -T sw/baremetal/link.ld \
+	  -o "$(DEIT_TILE_ELF)" "$(DEIT_TILE_BUILD_DIR)/deit_tile_smoke.o"
+	$(RISCV_OBJCOPY) -O binary "$(DEIT_TILE_ELF)" "$(DEIT_TILE_BIN)"
+	$(PYTHON) scripts/bin_to_verilog_hex.py "$(DEIT_TILE_BIN)" "$(DEIT_TILE_HEX)"
+
+deit-tile-smoke: sim-deit-tile lint-corev-soc
+	test -s "$(DEIT_TILE_HEX)"
+
+tinyvit-tile-fixture:
+	test -s "$(TINYVIT_ACTIVATION_FIXTURE)"
+	mkdir -p "$(TINYVIT_TILE_BUILD_DIR)"
+	$(PYTHON) scripts/prepare_tinyvit_fc2_k512.py "$(TINYVIT_ACTIVATION_FIXTURE)" \
+	  --board-inc "$(TINYVIT_TILE_ASM)"
+
+tinyvit-tile-build: tinyvit-tile-fixture
+	$(RISCV_AS) -I "$(TINYVIT_TILE_BUILD_DIR)" -march=rv32imc -mabi=ilp32 \
+	  -o "$(TINYVIT_TILE_BUILD_DIR)/tinyvit_tile_smoke.o" sw/baremetal/deit_tile_smoke.S
+	$(RISCV_LD) -m elf32lriscv -T sw/baremetal/link.ld \
+	  -o "$(TINYVIT_TILE_ELF)" "$(TINYVIT_TILE_BUILD_DIR)/tinyvit_tile_smoke.o"
+	$(RISCV_OBJCOPY) -O binary "$(TINYVIT_TILE_ELF)" "$(TINYVIT_TILE_BIN)"
+	$(PYTHON) scripts/bin_to_verilog_hex.py "$(TINYVIT_TILE_BIN)" "$(TINYVIT_TILE_HEX)"
+
+tinyvit-tile-smoke: sim-tinyvit-tile lint-corev-soc
+	test -s "$(TINYVIT_TILE_HEX)"
+
 tinyvit-fc1-k128-fixture:
 	mkdir -p "$(TINYVIT_FC1_K128_BUILD_DIR)"
 	set -e; for window in $(TINYVIT_FC1_K128_WINDOWS); do \
@@ -592,6 +782,62 @@ tinyvit-sparsity-study:
 	$(TINYVIT_MODEL_PYTHON) scripts/evaluate_tinyvit_fc2_sparsity.py \
 	  "$(TINYVIT_CHECKPOINT)" "$(TINYVIT_EVAL_IMAGE_DIR)" "$(TINYVIT_SPARSITY_STUDY)"
 	test -s "$(TINYVIT_SPARSITY_STUDY)"
+
+transformer-generalization:
+	$(POWERSHELL) -NoProfile -ExecutionPolicy Bypass \
+	  -File scripts/run_transformer_generalization.ps1 \
+	  -DatasetRoot "$(TRANSFORMER_DATASET_ROOT)" \
+	  -Output "$(TRANSFORMER_GENERALIZATION_JSON)" \
+	  -ImagesPerClass $(MODEL_GENERALIZATION_IMAGES_PER_CLASS) \
+	  -BatchSize $(MODEL_GENERALIZATION_BATCH_SIZE) \
+	  -DeitOutputPairs $(TRANSFORMER_DEIT_OUTPUT_PAIRS) \
+	  -DeitTokens $(TRANSFORMER_DEIT_TOKENS)
+
+transformer-imagenette-full:
+	$(MAKE) transformer-generalization \
+	  MODEL_GENERALIZATION_IMAGES_PER_CLASS=0 \
+	  MODEL_GENERALIZATION_BATCH_SIZE=32 \
+	  TRANSFORMER_GENERALIZATION_JSON=work/model_generalization/transformer_imagenette_val_all.json
+
+transformer-fixture:
+	$(POWERSHELL) -NoProfile -ExecutionPolicy Bypass \
+	  -File scripts/run_transformer_generalization.ps1 \
+	  -FixtureImage "$(TRANSFORMER_FIXTURE_IMAGE)" \
+	  -Output "$(TRANSFORMER_FIXTURE_JSON)" \
+	  -DeitOutputPairs $(TRANSFORMER_DEIT_OUTPUT_PAIRS) \
+	  -DeitTokens $(TRANSFORMER_DEIT_TOKENS)
+
+transformer-fixture-check: transformer-fixture
+	$(POWERSHELL) -NoProfile -ExecutionPolicy Bypass \
+	  -File scripts/run_transformer_generalization.ps1 \
+	  -CheckOnly -Output "$(TRANSFORMER_FIXTURE_JSON)"
+
+transformer-multi-image-fixture:
+	$(POWERSHELL) -NoProfile -ExecutionPolicy Bypass \
+	  -File scripts/run_transformer_generalization.ps1 \
+	  -FixtureDirectory "$(TRANSFORMER_FIXTURE_IMAGE_DIR)" \
+	  -Output "$(TRANSFORMER_MULTI_IMAGE_FIXTURE_JSON)" \
+	  -BatchSize $(MODEL_GENERALIZATION_BATCH_SIZE) \
+	  -DeitOutputPairs $(TRANSFORMER_DEIT_OUTPUT_PAIRS) \
+	  -DeitTokens $(TRANSFORMER_DEIT_TOKENS)
+
+transformer-multi-image-check: transformer-multi-image-fixture
+	$(POWERSHELL) -NoProfile -ExecutionPolicy Bypass \
+	  -File scripts/run_transformer_generalization.ps1 \
+	  -CheckOnly -Output "$(TRANSFORMER_MULTI_IMAGE_FIXTURE_JSON)"
+
+transformer-stream-fixture: transformer-fixture
+	$(POWERSHELL) -NoProfile -ExecutionPolicy Bypass \
+	  -File scripts/run_transformer_generalization.ps1 \
+	  -CheckOnly -Output "$(TRANSFORMER_FIXTURE_JSON)" \
+	  -Svh "$(TRANSFORMER_STREAM_FIXTURE_SVH)"
+
+transformer-deit-full-output-fixture:
+	$(MAKE) transformer-stream-fixture \
+	  TRANSFORMER_DEIT_OUTPUT_PAIRS=384 \
+	  TRANSFORMER_DEIT_TOKENS=2 \
+	  TRANSFORMER_FIXTURE_JSON=work/model_generalization/transformer_deit_full_output.json \
+	  TRANSFORMER_STREAM_FIXTURE_DIR=work/transformer_fixture/deit_full_output
 
 tinyvit-fixture:
 	mkdir -p "$(TINYVIT_FIXTURE_DIR)"
@@ -642,6 +888,43 @@ sim-subsystem-k512-stream: sim-subsystem-mlp2
 	"$(SIM_DIR)/subsystem_mlp2_obj/sap_vpu_subsystem_mlp2_tb" +iterations=1 +policy=fc2_k512_stream_pairs_global_l1_12p5
 	"$(SIM_DIR)/subsystem_mlp2_obj/sap_vpu_subsystem_mlp2_tb" +iterations=1 +policy=fc2_k512_stream_pairs_l1_budget_5pct
 
+sim-subsystem-deit-stream: tinyvit-fixture tinyvit-fc1-k128-fixture tinyvit-fc2-k512-fixture transformer-stream-fixture
+	mkdir -p "$(SIM_DIR)/subsystem_deit_obj"
+	$(VERILATOR) --binary --timing -sv --top-module sap_vpu_subsystem_gate_tb -Wno-fatal \
+	  -DSAP_VPU_DEIT_STREAM \
+	  -I"$(TINYVIT_FIXTURE_DIR)" -I"$(TINYVIT_FC1_K128_BUILD_DIR)" \
+	  -I"$(TINYVIT_FC2_K512_BUILD_DIR)" -I"$(TRANSFORMER_STREAM_FIXTURE_DIR)" \
+	  $(SAP_VPU_SOC_RTL) tb/sap_vpu_subsystem_gate_tb.sv \
+	  --Mdir "$(SIM_DIR)/subsystem_deit_obj" \
+	  -MAKEFLAGS "CXX=$(VERILATOR_CXX)" \
+	  -CFLAGS "$(VERILATOR_TIMING_CFLAGS)" \
+	  -LDFLAGS "$(VERILATOR_TIMING_LDFLAGS)" \
+	  -o sap_vpu_subsystem_deit_tb
+	"$(SIM_DIR)/subsystem_deit_obj/sap_vpu_subsystem_deit_tb" +deit_fixture_dir="$(TRANSFORMER_STREAM_FIXTURE_DIR)" +iterations=1 +policy=deit_tiny_stream_dense
+	"$(SIM_DIR)/subsystem_deit_obj/sap_vpu_subsystem_deit_tb" +deit_fixture_dir="$(TRANSFORMER_STREAM_FIXTURE_DIR)" +iterations=1 +policy=deit_tiny_stream_global_l1_12p5
+	"$(SIM_DIR)/subsystem_deit_obj/sap_vpu_subsystem_deit_tb" +deit_fixture_dir="$(TRANSFORMER_STREAM_FIXTURE_DIR)" +iterations=1 +policy=deit_tiny_stream_l1_budget_5
+
+sim-subsystem-deit-full-output:
+	$(MAKE) sim-subsystem-deit-stream \
+	  TRANSFORMER_DEIT_OUTPUT_PAIRS=384 \
+	  TRANSFORMER_DEIT_TOKENS=2 \
+	  TRANSFORMER_FIXTURE_JSON=work/model_generalization/transformer_deit_full_output.json \
+	  TRANSFORMER_STREAM_FIXTURE_DIR=work/transformer_fixture/deit_full_output
+
+sim-subsystem-deit-token-sweep:
+	$(MAKE) sim-subsystem-deit-stream \
+	  TRANSFORMER_DEIT_OUTPUT_PAIRS=384 \
+	  TRANSFORMER_DEIT_TOKENS=16 \
+	  TRANSFORMER_FIXTURE_JSON=work/model_generalization/transformer_deit_m16_full_output.json \
+	  TRANSFORMER_STREAM_FIXTURE_DIR=work/transformer_fixture/deit_m16_full_output
+
+sim-subsystem-deit-all-tokens:
+	$(MAKE) sim-subsystem-deit-stream \
+	  TRANSFORMER_DEIT_OUTPUT_PAIRS=384 \
+	  TRANSFORMER_DEIT_TOKENS=197 \
+	  TRANSFORMER_FIXTURE_JSON=work/model_generalization/transformer_deit_m197_full_output.json \
+	  TRANSFORMER_STREAM_FIXTURE_DIR=work/transformer_fixture/deit_m197_full_output
+
 tiled-gemm-check:
 	$(PYTHON) scripts/check_tiled_gemm_reference.py
 
@@ -666,8 +949,122 @@ tinyvit-paper-table: tinyvit-smoke
 
 fpga-vpu-synth:
 	mkdir -p "$(FPGA_BUILD_DIR)"
-	cd "$(FPGA_BUILD_DIR)" && $(VIVADO) -mode batch -source "$(ROOT_DIR)/scripts/vivado_vpu_synth.tcl" \
-	  -tclargs "$(FPGA_PART)" "$(FPGA_CLOCK_MHZ)" "$(FPGA_BUILD_DIR)" "$(FPGA_TOP)" "$(FPGA_OUT_OF_CONTEXT)"
+	@if command -v "$(VIVADO)" >/dev/null 2>&1; then \
+	  cd "$(FPGA_BUILD_DIR)" && $(VIVADO) -mode batch -source "$(ROOT_DIR)/scripts/vivado_vpu_synth.tcl" \
+	    -tclargs "$(FPGA_PART)" "$(FPGA_CLOCK_MHZ)" "$(FPGA_BUILD_DIR)" "$(FPGA_TOP)" "$(FPGA_OUT_OF_CONTEXT)"; \
+	else \
+	  $(POWERSHELL) -NoProfile -ExecutionPolicy Bypass \
+	    -File scripts/run_vivado_vpu_synth.ps1 \
+	    -VivadoRoot '$(VIVADO_ROOT_WINDOWS)' \
+	    -OutDir '$(patsubst $(ROOT_DIR)/%,%,$(FPGA_BUILD_DIR))' \
+	    -Part '$(FPGA_PART)' -ClockMhz '$(FPGA_CLOCK_MHZ)' \
+	    -Top '$(FPGA_TOP)' -OutOfContext '$(FPGA_OUT_OF_CONTEXT)'; \
+	fi
+
+fpga-davinci-hello: hello-build corev-rtl-flist
+	$(POWERSHELL) -NoProfile -ExecutionPolicy Bypass \
+	  -File scripts/run_vivado_davinci_build.ps1 \
+	  -VivadoRoot '$(VIVADO_ROOT_WINDOWS)' \
+	  -OutDir '$(DAVINCI_FPGA_BUILD_DIR)' \
+	  -Part '$(DAVINCI_FPGA_PART)' \
+	  -ClockMHz '$(DAVINCI_CLOCK_MHZ)' \
+	  -RomHex 'work\hello\sap_vpu_hello.hex' \
+	  -Image hello
+
+fpga-davinci-vpu: vpu-build corev-rtl-flist
+	$(POWERSHELL) -NoProfile -ExecutionPolicy Bypass \
+	  -File scripts/run_vivado_davinci_build.ps1 \
+	  -VivadoRoot '$(VIVADO_ROOT_WINDOWS)' \
+	  -OutDir '$(DAVINCI_VPU_FPGA_BUILD_DIR)' \
+	  -Part '$(DAVINCI_FPGA_PART)' \
+	  -ClockMHz '$(DAVINCI_CLOCK_MHZ)' \
+	  -RomHex 'work\vpu_smoke\sap_vpu_vpu.hex' \
+	  -Image vpu
+
+fpga-davinci-tiled-gemm-dma: tiled-gemm-dma-soc-build corev-rtl-flist
+	$(POWERSHELL) -NoProfile -ExecutionPolicy Bypass \
+	  -File scripts/run_vivado_davinci_build.ps1 \
+	  -VivadoRoot '$(VIVADO_ROOT_WINDOWS)' \
+	  -OutDir '$(DAVINCI_TILED_GEMM_DMA_FPGA_BUILD_DIR)' \
+	  -Part '$(DAVINCI_FPGA_PART)' \
+	  -ClockMHz '$(DAVINCI_CLOCK_MHZ)' \
+	  -RomHex 'work\tiled_gemm_dma_soc\sap_vpu_tiled_gemm_dma_soc.hex' \
+	  -Image tiled_gemm_dma
+
+fpga-davinci-deit-tile: deit-tile-build corev-rtl-flist
+	$(POWERSHELL) -NoProfile -ExecutionPolicy Bypass \
+	  -File scripts/run_vivado_davinci_build.ps1 \
+	  -VivadoRoot '$(VIVADO_ROOT_WINDOWS)' \
+	  -OutDir '$(DAVINCI_DEIT_TILE_FPGA_BUILD_DIR)' \
+	  -Part '$(DAVINCI_FPGA_PART)' \
+	  -ClockMHz '$(DAVINCI_CLOCK_MHZ)' \
+	  -RomHex 'work\deit_tile\sap_vpu_deit_tile.hex' \
+	  -Image deit_tile
+
+fpga-davinci-tinyvit-tile: tinyvit-tile-build corev-rtl-flist
+	$(POWERSHELL) -NoProfile -ExecutionPolicy Bypass \
+	  -File scripts/run_vivado_davinci_build.ps1 \
+	  -VivadoRoot '$(VIVADO_ROOT_WINDOWS)' \
+	  -OutDir '$(DAVINCI_TINYVIT_TILE_FPGA_BUILD_DIR)' \
+	  -Part '$(DAVINCI_FPGA_PART)' \
+	  -ClockMHz '$(DAVINCI_CLOCK_MHZ)' \
+	  -RomHex 'work\tinyvit_tile\sap_vpu_tinyvit_tile.hex' \
+	  -Image tinyvit_tile
+
+fpga-davinci-board-smoke:
+	$(POWERSHELL) -NoProfile -ExecutionPolicy Bypass \
+	  -File scripts/run_vivado_davinci_board_smoke.ps1 \
+	  -VivadoRoot '$(VIVADO_ROOT_WINDOWS)' \
+	  -Bitstream '$(DAVINCI_FPGA_BUILD_DIR)\sap_vpu_davinci_hello.bit' \
+	  -SerialPort '$(DAVINCI_UART_PORT)' \
+	  -CaptureSeconds $(DAVINCI_CAPTURE_SECONDS)
+
+fpga-davinci-vpu-board-smoke:
+	$(POWERSHELL) -NoProfile -ExecutionPolicy Bypass \
+	  -File scripts/run_vivado_davinci_board_smoke.ps1 \
+	  -VivadoRoot '$(VIVADO_ROOT_WINDOWS)' \
+	  -Bitstream '$(DAVINCI_VPU_FPGA_BUILD_DIR)\sap_vpu_davinci_vpu.bit' \
+	  -SerialPort '$(DAVINCI_UART_PORT)' \
+	  -CaptureSeconds $(DAVINCI_CAPTURE_SECONDS) \
+	  -ExpectedText 'SF' \
+	  -DiscardAfterProgram
+
+fpga-davinci-tiled-gemm-dma-board-smoke:
+	$(POWERSHELL) -NoProfile -ExecutionPolicy Bypass \
+	  -File scripts/run_vivado_davinci_board_smoke.ps1 \
+	  -VivadoRoot '$(VIVADO_ROOT_WINDOWS)' \
+	  -Bitstream '$(DAVINCI_TILED_GEMM_DMA_FPGA_BUILD_DIR)\sap_vpu_davinci_tiled_gemm_dma.bit' \
+	  -SerialPort '$(DAVINCI_UART_PORT)' \
+	  -CaptureSeconds $(DAVINCI_CAPTURE_SECONDS) \
+	  -ExpectedText 'SF' \
+	  -DiscardAfterProgram
+
+fpga-davinci-deit-tile-board-smoke:
+	$(POWERSHELL) -NoProfile -ExecutionPolicy Bypass \
+	  -File scripts/run_vivado_davinci_board_smoke.ps1 \
+	  -VivadoRoot '$(VIVADO_ROOT_WINDOWS)' \
+	  -Bitstream '$(DAVINCI_DEIT_TILE_FPGA_BUILD_DIR)\sap_vpu_davinci_deit_tile.bit' \
+	  -SerialPort '$(DAVINCI_UART_PORT)' \
+	  -CaptureSeconds $(DAVINCI_CAPTURE_SECONDS) \
+	  -ExpectedText ',0000009E,00000013'
+
+fpga-davinci-tinyvit-tile-board-smoke:
+	$(POWERSHELL) -NoProfile -ExecutionPolicy Bypass \
+	  -File scripts/run_vivado_davinci_board_smoke.ps1 \
+	  -VivadoRoot '$(VIVADO_ROOT_WINDOWS)' \
+	  -Bitstream '$(DAVINCI_TINYVIT_TILE_FPGA_BUILD_DIR)\sap_vpu_davinci_tinyvit_tile.bit' \
+	  -SerialPort '$(DAVINCI_UART_PORT)' \
+	  -CaptureSeconds $(DAVINCI_CAPTURE_SECONDS) \
+	  -ExpectedText ',000001C0,00000020'
+
+fpga-davinci-model-tile-summary:
+	$(PYTHON) scripts/summarize_davinci_model_tiles.py \
+	  --deit-dir work/fpga/davinci_deit_fc1_k192_sparse_uart_70 \
+	  --tinyvit-dir work/fpga/davinci_tinyvit_fc2_k512_sparse_uart_70 \
+	  --markdown "$(DAVINCI_MODEL_TILE_SUMMARY_MD)" \
+	  --csv "$(DAVINCI_MODEL_TILE_SUMMARY_CSV)"
+	test -s "$(DAVINCI_MODEL_TILE_SUMMARY_MD)"
+	test -s "$(DAVINCI_MODEL_TILE_SUMMARY_CSV)"
 
 fpga-vpu-funcsim-netlist:
 	test -s "$(FPGA_FUNCSIM_DCP)"
@@ -766,6 +1163,47 @@ fpga-vpu-subsystem-k512-stream-policy-power-matrix: tinyvit-fixture tinyvit-fc1-
 	    -Policy $$policy; \
 	done
 
+fpga-vpu-subsystem-deit-policy-power-matrix: tinyvit-fixture tinyvit-fc1-k128-fixture tinyvit-fc2-k512-fixture transformer-stream-fixture
+	set -e; for policy in deit_tiny_stream_dense deit_tiny_stream_global_l1_12p5 deit_tiny_stream_l1_budget_5; do \
+	  $(POWERSHELL) -NoProfile -ExecutionPolicy Bypass \
+	    -File scripts/run_fpga_vpu_subsystem_power.ps1 \
+	    -VivadoRoot '$(VIVADO_ROOT_WINDOWS)' \
+	    -OutDir '$(FPGA_SUBSYSTEM_DEIT_POLICY_POWER_DIR)'/$$policy \
+	    -PostSynthDcp '$(FPGA_SUBSYSTEM_POST_SYNTH_DCP)' \
+	    -PostRouteDcp '$(FPGA_SUBSYSTEM_POST_ROUTE_DCP)' \
+	    -DeitFixtureDir 'work\transformer_fixture' \
+	    -DeitFixtureJson 'work\model_generalization\transformer_linear_fixtures.json' \
+	    -ClockMhz '$(FPGA_SUBSYSTEM_CLOCK_MHZ)' \
+	    -Iterations '$(FPGA_SUBSYSTEM_DEIT_POLICY_ITERATIONS)' \
+	    -Policy $$policy; \
+	done
+
+fpga-vpu-subsystem-deit-full-output-power-matrix: tinyvit-fixture tinyvit-fc1-k128-fixture tinyvit-fc2-k512-fixture transformer-deit-full-output-fixture
+	set -e; for policy in deit_tiny_stream_dense deit_tiny_stream_global_l1_12p5 deit_tiny_stream_l1_budget_5; do \
+	  $(POWERSHELL) -NoProfile -ExecutionPolicy Bypass \
+	    -File scripts/run_fpga_vpu_subsystem_power.ps1 \
+	    -VivadoRoot '$(VIVADO_ROOT_WINDOWS)' \
+	    -OutDir '$(FPGA_SUBSYSTEM_DEIT_FULL_OUTPUT_POWER_DIR)'/$$policy \
+	    -PostSynthDcp '$(FPGA_SUBSYSTEM_POST_SYNTH_DCP)' \
+	    -PostRouteDcp '$(FPGA_SUBSYSTEM_POST_ROUTE_DCP)' \
+	    -DeitFixtureDir 'work\transformer_fixture\deit_full_output' \
+	    -DeitFixtureJson 'work\model_generalization\transformer_deit_full_output.json' \
+	    -ClockMhz '$(FPGA_SUBSYSTEM_CLOCK_MHZ)' \
+	    -Iterations '$(FPGA_SUBSYSTEM_DEIT_FULL_OUTPUT_ITERATIONS)' \
+	    -Policy $$policy; \
+	done
+
+fpga-vpu-subsystem-cross-model-energy-summary:
+	$(PYTHON) scripts/summarize_fpga_gate_energy.py \
+	  --tinyvit-dir work/fpga/vpu_subsystem_140_current_k512_stream_policy_power \
+	  --deit-dir work/fpga/vpu_subsystem_140_current_deit_full_output_power \
+	  --post-synth-dcp work/fpga/vpu_subsystem_140_current/checkpoints/post_synth.dcp \
+	  --post-route-dcp work/fpga/vpu_subsystem_140_current/checkpoints/post_route.dcp \
+	  --markdown "$(FPGA_SUBSYSTEM_CROSS_MODEL_ENERGY_MD)" \
+	  --csv "$(FPGA_SUBSYSTEM_CROSS_MODEL_ENERGY_CSV)"
+	test -s "$(FPGA_SUBSYSTEM_CROSS_MODEL_ENERGY_MD)"
+	test -s "$(FPGA_SUBSYSTEM_CROSS_MODEL_ENERGY_CSV)"
+
 fpga-vpu-saif-power: sim-core-vcd
 	$(VCD2SAIF) -input "$(VPU_CORE_VCD)" -output "$(VPU_CORE_SAIF)"
 	test -s "$(VPU_CORE_SAIF)"
@@ -858,3 +1296,10 @@ dc-vpu-policy-power-matrix:
 
 dc-vpu-summary:
 	$(PYTHON) scripts/summarize_dc_reports.py "$(DC_WORK_DIR)" "$(DC_REPORT_DIR)"
+
+pt-vpu-analyze:
+	PT_SHELL="$(PT_SHELL)" DESIGN_NAME="$(PT_DESIGN_NAME)" \
+	  STD_CELL_DB="$(PT_STD_CELL_DB)" PROCESS_CORNER="$(PT_PROCESS_CORNER)" \
+	  NETLIST_FILE="$(PT_NETLIST_FILE)" SDC_FILE="$(PT_SDC_FILE)" \
+	  REPORT_DIR="$(PT_REPORT_DIR)" SAIF_FILE="$(PT_SAIF_FILE)" \
+	  SAIF_STRIP_PATH="$(PT_SAIF_STRIP_PATH)" scripts/run_pt_vpu_analyze.sh

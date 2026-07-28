@@ -25,14 +25,31 @@ The paper must keep these boundaries explicit:
 | CV-X-IF attachment | `corev_min_soc` enables `X_EXT` and connects SAP-VPU through the flattened adapter. | `make lint-corev-soc`, `make hello-smoke` |
 | VPU instruction path | Bare-metal custom-0 smoke covers base, precision, sparse, lane, and counter ops. The core now returns an all-zero effective-bitmap VDOT without entering its multiply/reduction pipeline and exposes a group-skip counter. | `make sim-core`, `make vpu-smoke` |
 | Tiled GEMM path | A bounded M<=2, N<=2, K<=8 scheduler remains the compute tile. `VTDMA` and `VTSTORE` retain explicit tile control. `VTSTREAM` autonomously executes up to 64 K8 tiles, caches packed per-block metadata, skips invalid payload reads/VDOTs, accumulates four INT32 outputs, and writes only the final tile. Across four representative K=512 output pairs, dense/global-12.5%/budget-13.40% streams pass at `2048/1740/1730` VDOTs, `2064/1970/1965` reads, and 16 writes. | `make tiled-gemm-rtl-check`, `make tiled-gemm-dma-soc-smoke`, `make sim-subsystem-k512-stream` |
-| Paper workload | TinyViT policy smokes cover INT8/INT4/INT2, bitmap and software-scheduled sparsity, ablations, counters, reuse, and RAM traffic. The host policy study covers all 512 inputs and 128 outputs for 6,272 tokens from eight images. It now injects the target FC2's emulated INT8/sparse output into the remaining float network: 12.5% global and 13.40% L1-budget policies retain 8/8 top-1 agreement, while 25% policies do not. Four evenly spaced output pairs carry full-layer masks through exact K=512 subsystem RTL and gate-SAIF checks. Runtime window swapping, labeled ImageNet accuracy, all-layer sparsity, and end-to-end inference power remain outside the claim; GELU is not claimed as VPU hardware. | `make tinyvit-fc1-k128-smoke`, `make sim-subsystem-k512-pair-policies`, `make tinyvit-sparsity-study`, `docs/SAP_VPU_MODEL_MAPPING_CONTRACT.md` |
-| FPGA evidence | The current stream-enabled `sap_vpu_subsystem` passes Artix-7 OOC implementation at 140 MHz using 3067 LUTs/1656 FFs with +0.021 ns WNS and no DSP/BRAM. The selected four-output-pair stream matrix annotates 7167/7230 routed nets with High confidence. Global-12.5% and budget-13.40% reduce VDOTs by 15.04%/15.53%, total reads by 4.55%/4.80%, and reported dynamic energy per set by 10.58%/10.94%. Vivado rounds all policy dynamic power to 0.015 W, so no average-power delta is claimed. External RAM, CPU, full SoC, and board power remain outside the claim. | `make fpga-vpu-synth`, `make fpga-vpu-subsystem-k512-stream-policy-power-matrix`, `docs/SAP_VPU_FPGA_FLOW.md` |
-| ASIC evidence | The accepted TSMC28 `tt0p9v85c`, 10 ns gate/SAIF checkpoint remains historical standalone-core evidence. A July 24 audit found no newer DC/PrimeTime or Library Compiler; Nangate Liberty cannot be compiled locally, and current core mapping also crashes DC L-2016.03-SP1 during Pass 1. No current core or subsystem ASIC PPA is claimed. | `docs/SAP_VPU_ASIC_FLOW.md` |
+| Paper workload | TinyViT policy smokes cover INT8/INT4/INT2, bitmap and software-scheduled sparsity, ablations, counters, reuse, and RAM traffic. The host policy study covers all 512 inputs and 128 outputs for 6,272 tokens from eight images. Four evenly spaced output pairs carry full-layer masks through exact K=512 subsystem RTL and gate-SAIF checks. DeiT-Tiny independently passes all 197 tokens x 768 FC1 outputs plus one zero-padded row through dense/global/budget `VTSTREAM` RTL at `7299072/6386688/6422526` VDOTs and `7451136/7203636/7225911` reads. On all 3,925 labeled Imagenette validation images, single-layer INT8 sparse emulation changes TinyViT top-1 from 77.20% to 77.02%/76.94% and DeiT from 70.47% to 70.78%/70.83%; the positive DeiT deltas are not claimed as improvement. Runtime window swapping, all-layer sparsity, end-to-end RTL accuracy, and end-to-end inference power remain outside the claim; bias and GELU are not claimed as VPU hardware. | `make sim-subsystem-k512-pair-policies`, `make tinyvit-sparsity-study`, `make sim-subsystem-deit-all-tokens`, `make transformer-imagenette-full`, `docs/SAP_VPU_MODEL_MAPPING_CONTRACT.md` |
+| FPGA evidence | The current shared-multiplier `sap_vpu_subsystem` checkpoint passes Artix-7 OOC implementation at 140 MHz using 3037 LUTs/1761 FFs with +0.061 ns WNS and no DSP/BRAM. Its full-output DeiT gate-SAIF matrix checks two tokens x 768 outputs on the same DCP with 99.72% net annotation and High confidence; global/budget sparse policies reduce matched-workload dynamic energy by 8.66%/8.29% while resolved dynamic power remains 0.016 W. Davinci A7-200T full-SoC hello, VPU instruction, and tiled-GEMM DMA images passed real JTAG/COM5 testing. A model-derived DeiT-Tiny `M=2,N=2,K=192` image executes dense/global/budget 24-block `VTSTREAM` operations for output channels 510/511. Exact outputs pass with `192/154/158` active VDOTs, `196/182/184` total DMA reads, and `0/21/19` operand reads saved. RTL and real-board UART report identical bounded policy intervals of `2507/2158/2196` cycles; at 70 MHz the sparse policies reduce cycles by 13.92%/12.41%. The instrumented image passes with 8087 LUTs, 4635 FFs, one RAMB36, three CPU DSPs, and +0.025 ns WNS; it covers two tokens and two outputs, not full-model inference. The same full-SoC configuration fails 80 MHz timing at -1.499 ns, so 100 MHz is not claimed. Default-activity board power is not a paper result. | `make fpga-vpu-subsystem-deit-full-output-power-matrix`, `make fpga-davinci-deit-tile-board-smoke DAVINCI_CLOCK_MHZ=70`, `docs/SAP_VPU_FPGA_FLOW.md` |
+| ASIC evidence | The school server provides DC `T-2022.03-SP5-2` and PrimeTime `W-2024.09-SP4-1`. Current core and subsystem RTL map successfully with the installed STMicroelectronics CMOS065 `CORE65LPSVT` library, proving the new toolchain works, but this is not a TSMC library and the results are excluded from paper PPA. The server has TSMC65 PDK/SPICE views but no verified TSMC standard-cell timing `.db` has been found. Historical TSMC28 evidence remains non-current. | `docs/SAP_VPU_ASIC_FLOW.md`, `docs/records/2026-07-25.md` |
+
+The cross-model board path also covers TinyViT FC2 `M=2,N=2,K=512` output
+channels 0/1. RTL and board UART match at `6628/6149/6052` cycles with
+`512/458/448` active VDOTs and `0/27/32` operand reads saved. At 70 MHz the
+sparse policies reduce the bounded kernel interval by 7.23%/8.69%. The image
+passes at +0.054 ns WNS; this is a second model/layer kernel, not end-to-end
+TinyViT inference.
+
+Matched current-DCP gate-SAIF evidence now covers both models. TinyViT's two
+tokens x eight representative FC2 outputs reduce dynamic energy by
+10.58%/10.94% under global/budget policies; DeiT's two tokens x all 768 FC1
+outputs reduce it by 8.66%/8.29%. All six rows use the same checkpoint, report
+7203/7223 annotated nets and High confidence, and are generated by
+`make fpga-vpu-subsystem-cross-model-energy-summary`. These are within-model
+policy comparisons, not absolute cross-model energy comparisons.
 
 The complete stream-enabled `sap_vpu_subsystem`, including the tiled scheduler,
 bounded scratchpads, OBI data mover, packed metadata, and final writeback, now
-has matched FPGA OOC and gate-SAIF evidence. ASIC front-end checks pass, but
-complete mapping is blocked by the local DC/library combination. Larger SRAM
+has matched FPGA OOC and gate-SAIF evidence. The newer school-server DC removes
+the compiler blocker and maps the complete subsystem with a non-paper ST 65 nm
+diagnostic library. A verified TSMC standard-cell timing library and
+activity-based power are still pending. Larger SRAM
 banks and double buffering remain later work rather than current claims.
 Software bias/GELU execution, FC2 window partials, and their checked host-side
 sum are now covered for the K=128, 128-output slice. One executable runs against
@@ -73,14 +90,17 @@ custom instruction, TinyML, and edge-AI accelerator work.
 
 ## Next Engineering Sequence
 
-1. Move current core/subsystem ASIC mapping to a compatible DC plus validated
-   timing-library installation before publishing any new ASIC area delta.
-2. Run labeled validation and at least one additional Transformer model before
-   generalizing the selected single-layer TinyViT policy.
-3. Replace register scratchpads with explicit SRAM-macro assumptions only after
+1. Commit the intended source snapshot and rerun both FPGA summary targets;
+   the artifact-level reproducibility manifest is complete, but the current
+   modified worktree is not yet a clean source-level freeze.
+2. When authorized TSMC standard-cell timing-library access becomes available,
+   repeat core/subsystem mapping, corner timing, and matched SAIF power.
+3. Extend labeled accuracy beyond one selected linear layer only after an
+   explicit all-layer quantization policy and calibration flow exist.
+4. Replace register scratchpads with explicit SRAM-macro assumptions only after
    capacity and traffic experiments justify the change.
-4. Add a constrained board top after the internal-IP timing result remains
-   reproducible.
+5. Retain 80 MHz as a failed RV32IMC timing point; do not overclock the passing
+   70 MHz model-derived board image without new timing and board evidence.
 
 ## TinyViT Kernel Plan
 

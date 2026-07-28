@@ -100,6 +100,19 @@ This uses the same four pairs and 512-tile capture size, but each pair is one
 12.5% layer-global L1, and the 5% L1-budget policy that produces 13.40% full-
 layer group sparsity in the host study.
 
+Run the DeiT-Tiny FC1 stream policies first on four representative output pairs,
+then on all 768 output channels for two image-derived tokens:
+
+```sh
+make fpga-vpu-subsystem-deit-policy-power-matrix
+make fpga-vpu-subsystem-deit-full-output-power-matrix
+```
+
+The full-output target uses runtime-loaded hex memories instead of expanding the
+36,864-word weight fixture as SystemVerilog constants. This avoids an XSim
+2023.2 LLVM elaboration crash without changing the synthesized subsystem or
+the measured routed checkpoint.
+
 Run power from an existing routed checkpoint with VPU smoke SAIF activity:
 
 ```sh
@@ -176,6 +189,8 @@ The flow writes:
 - `work/fpga/vpu_subsystem_140_policy_power/<policy>/fpga_vpu_subsystem_power.csv`
 - `work/fpga/vpu_subsystem_140_k512_policy_power/<policy>/fpga_vpu_subsystem_power.csv`
 - `work/fpga/vpu_subsystem_140_k512_pair_policy_power/<policy>/fpga_vpu_subsystem_power.csv`
+- `work/fpga/vpu_subsystem_140_deit_policy_power/<policy>/fpga_vpu_subsystem_power.csv`
+- `work/fpga/vpu_subsystem_140_current_deit_full_output_power/<policy>/fpga_vpu_subsystem_power.csv`
 - `work/fpga/vpu_core/checkpoints/post_synth.dcp`
 - `work/fpga/vpu_core/checkpoints/post_route.dcp`
 
@@ -227,6 +242,11 @@ The flow writes:
   GELU generation, output bias, CPU, and external memory energy are excluded.
 - The runner requires a passing RAM read/write/result check, at least 99% routed
   net annotation, High confidence, and no Vivado clock/reset activity warning.
+- The full-output DeiT matrix uses the current July 27 shared-multiplier
+  checkpoint at `work/fpga/vpu_subsystem_140_current`: 3037 LUTs, 1761 FFs,
+  no DSP/BRAM, and +0.061 ns WNS. It annotates 7203/7223 nets with High
+  confidence, so the area, timing, and workload activity evidence refer to the
+  same implementation.
 - Generated reports remain under ignored `work/` and must not be committed.
 - These are standalone VPU-core or VPU-subsystem reports, not board-validated
   or full-SoC reports.
@@ -363,6 +383,28 @@ matched-workload latency and dynamic-energy reduction, not lower resolved
 average power. The four pairs and single modified FC2 layer remain the claim
 boundary.
 
+DeiT-Tiny `blocks.5.mlp.fc1` full-output autonomous-stream matrix on the current
+July 27 140 MHz shared-multiplier checkpoint (3037 LUTs, 1761 FFs, +0.061 ns
+WNS, post-route DCP SHA-256
+`e95e3a8c9feae3bfd90069c0f309ee39533ed1424f06586ec0b643d0168c5027`).
+Each row covers two image-derived tokens and all 768 output channels, executes
+9,216 K8 tiles, maps 7203/7223 nets (99.72%), and reports High confidence:
+
+| Policy | VDOTs | RAM reads | RAM writes | Duration ps | Dynamic W | Dynamic energy uJ | Reduction |
+| --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
+| Dense stream | 73,728 | 75,264 | 1,536 | 6,828,891,149 | 0.016 | 109.262 | baseline |
+| Global L1 12.5% | 64,512 | 72,764 | 1,536 | 6,237,847,797 | 0.016 | 99.806 | 8.66% |
+| L1 budget 5% (12.01% sparse) | 64,874 | 72,989 | 1,536 | 6,262,723,383 | 0.016 | 100.204 | 8.29% |
+
+Global and budget reduce VDOTs by 12.50%/12.01% and total reads by
+3.32%/3.02%. On this image, global L1 consumes 0.40% less measured dynamic
+energy than the budget policy; budget-policy value therefore comes from its
+cross-sample error guardrail, not a single-sample energy advantage. Vivado
+rounds all dynamic-power values to 0.016 W, so the supported claim is lower
+matched-workload latency and energy, not resolved average-power reduction.
+The result excludes the other 196 tokens, bias, GELU, later layers, external
+RAM, CPU, interconnect, and board power.
+
 Current local SAIF power-flow smoke on the 140 MHz checkpoint:
 
 | Source | Activity file | Nets matched | Confidence | Total power W | Dynamic W | Static W | Status |
@@ -405,10 +447,188 @@ confidence, and no consistent policy-level dynamic-power reduction at Vivado's
 0.001 W reporting resolution. It is not part of the current design or a
 paper-facing result.
 
+## Davinci A7-200T Board Bring-up
+
+The board target is the ALINX Davinci Pro Artix-7 board used by the legacy
+`nutvpu` project:
+
+| Signal | Pin | I/O standard |
+| --- | --- | --- |
+| 50 MHz clock | R4 | LVCMOS15 |
+| Active-low reset | U7 | LVCMOS15 |
+| LEDs 0..3 | V9, Y8, Y7, W7 | LVCMOS15 |
+| UART RX/TX | E14, D17 | LVCMOS33 |
+
+Build and run the board smoke with:
+
+```bash
+make fpga-davinci-hello
+make fpga-davinci-board-smoke DAVINCI_UART_PORT=COM5
+make fpga-davinci-vpu
+make fpga-davinci-vpu-board-smoke DAVINCI_UART_PORT=COM5
+make fpga-davinci-tiled-gemm-dma
+make fpga-davinci-tiled-gemm-dma-board-smoke DAVINCI_UART_PORT=COM5
+make fpga-davinci-tiled-gemm-dma DAVINCI_CLOCK_MHZ=70
+make fpga-davinci-tiled-gemm-dma-board-smoke DAVINCI_CLOCK_MHZ=70 DAVINCI_UART_PORT=COM5
+make fpga-davinci-deit-tile DAVINCI_CLOCK_MHZ=70
+make fpga-davinci-deit-tile-board-smoke DAVINCI_CLOCK_MHZ=70 DAVINCI_UART_PORT=COM5
+```
+
+The first July 27 implementations target `xc7a200tfbg484-2` and use the
+board's 50 MHz input directly. These results precede the registered CV-X-IF
+command buffer added during the later clock sweep:
+
+| ROM image | WNS ns | LUT | FF | RAMB36 | DSP48E1 | Board result |
+| --- | ---: | ---: | ---: | ---: | ---: | --- |
+| Hello | +0.168 | 7601 | 4555 | 1 | 3 | `SAP-VPU hello\n` |
+| VPU instruction smoke | +0.507 | 7660 | 4558 | 1 | 3 | `P000000E4I02B7BFF5SF` |
+| Tiled-GEMM DMA smoke | +0.965 | 7799 | 4558 | 1 | 3 | `P00000280IBFF51050SF` |
+
+The different WNS and LUT values include ROM-content optimization and should
+not be interpreted as workload-dependent hardware PPA. The DSPs belong to the
+complete CV32E40X SoC; the standalone SAP-VPU OOC checkpoint remains a 0-DSP
+implementation. Vivado default-activity power is 0.162-0.163 W total and
+0.016-0.017 W dynamic with Medium confidence. These estimates are not
+workload-annotated and are not paper power results.
+
+The later current-RTL clock sweep registers one accepted CV-X-IF command in the
+adapter before dispatching it to SAP-VPU. This adds one launch cycle while
+preserving the one-in-flight contract and removes a 16.501 ns CPU-to-VPU
+combinational path. The full RV32IMC SoC then reaches the following boundary:
+
+| Core clock | WNS ns | LUT | FF | RAMB36 | DSP48E1 | Board result |
+| ---: | ---: | ---: | ---: | ---: | ---: | --- |
+| 70 MHz | +0.142 | 7936 | 4646 | 1 | 3 | Pass: `P00000280IBFF51050SF` |
+| 80 MHz | -1.499 | - | - | - | - | Not programmed; timing failed |
+
+The 70 MHz implementation required post-route `AggressiveExplore`; its initial
+route WNS was -0.351 ns. At 80 MHz the remaining 13.931 ns path is inside the
+CV32E40X load/store/multiply forwarding network and ends at the adapter operand
+register. No false path or multicycle exception is applied. The 70 MHz Vivado
+default-activity estimate is 0.287 W total and 0.140 W dynamic with Medium
+confidence; it is not workload-annotated and is not a paper power result.
+
+A model-derived bring-up image first checked one `M=2, N=2, K=8` tile from the
+DeiT-Tiny `blocks.5.mlp.fc1` fixture and exposed the shared-RAM arbitration
+deadlock described below. A dense-only image then covered the complete K=192
+input dimension for two tokens and output channels 0/1. The current image uses
+representative channels 510/511, where global-L1 and budget metadata differ,
+and executes dense plus both sparse policies on the same operands:
+
+| Policy | Exact INT32 outputs | Active VDOTs | Total DMA reads | Operand reads saved |
+| --- | --- | ---: | ---: | ---: |
+| Dense | `-1248, 265, -2325, 407` | 192 | 196 | 0 |
+| Global L1 12.5% | `-1086, 239, -2144, 305` | 154 | 182 | 21 |
+| L1 budget 5% | `-1086, 356, -2144, 484` | 158 | 184 | 19 |
+
+The firmware checks every output and counter; the SoC RTL smoke also checks
+562 aggregate DMA reads. Sparse metadata costs seven reads per operation, so
+21/19 avoided operand reads produce net reductions of 14/12 total reads. The
+three-policy image passes the real board at 70 MHz:
+
+| Item | Result |
+| --- | --- |
+| Fixture source | `timm/deit_tiny_patch16_224.fb_in1k`, checkpoint SHA-256 `a1311bcf4f24e3c95adaa75535db67bc4412d95535b98f7c1dfd1164dda41c97` |
+| Timing / utilization | +0.107 ns WNS; 8070 LUT, 4635 FF, 1 RAMB36, 3 DSP48E1 |
+| JTAG / UART | `xc7a200t_0` startup HIGH; COM5 status `P000001FCI02B7BFF5SF` |
+| Default-activity power | 0.273 W total / 0.134 W dynamic, Medium confidence; not a paper power result |
+| Artifacts | `work/fpga/davinci_deit_fc1_k192_sparse_70/` |
+
+This test exposed a real shared-RAM arbitration deadlock: a speculative CPU
+load following `VTSTORE` could permanently block the older VPU result write.
+The SoC now gives bounded VPU DMA requests priority over CPU data requests.
+Both the full-K model-derived image and the original tiled-GEMM DMA regression
+pass after the fix. This evidence proves the complete K=192 input dimension for
+two FC1 outputs, not all 768 outputs or end-to-end DeiT inference.
+
+The follow-up instrumented image emits cycle, active-VDOT, and DMA-saved
+counters in fixed-width hexadecimal after each policy. RTL and real-board UART
+match exactly:
+
+| Policy | UART counters `(cycles, active, saved)` | Time at 70 MHz | Cycle reduction |
+| --- | --- | ---: | ---: |
+| Dense | `000009CB,000000C0,00000000` | 35.81 us | baseline |
+| Global L1 12.5% | `0000086E,0000009A,00000015` | 30.83 us | 13.92% |
+| L1 budget 5% | `00000894,0000009E,00000013` | 31.37 us | 12.41% |
+
+The cycle interval starts immediately before `VTSTREAM` and ends after four
+CPU output checks; it is a controlled kernel interval rather than end-to-end
+inference latency. The image passes at +0.025 ns WNS with 8087 LUTs, 4635 FFs,
+one RAMB36, three CPU DSPs, and 0 DRC errors. Its ignored artifacts are in
+`work/fpga/davinci_deit_fc1_k192_sparse_uart_70/`.
+
+The same generated `TILE_*` fixture contract also runs TinyViT FC2 output
+channels 0/1 over the complete K=512 dimension. RTL and real-board UART again
+match exactly:
+
+| Policy | UART counters `(cycles, active, saved)` | Time at 70 MHz | Cycle reduction |
+| --- | --- | ---: | ---: |
+| Dense | `000019E4,00000200,00000000` | 94.69 us | baseline |
+| Global L1 12.5% | `00001805,000001CA,0000001B` | 87.84 us | 7.23% |
+| L1 budget 5% | `000017A4,000001C0,00000020` | 86.46 us | 8.69% |
+
+The image passes at +0.054 ns WNS with 8512 LUTs, 4641 FFs, one RAMB36,
+three CPU DSPs, and 0 DRC errors. Its 3,308-byte ROM image and generated RAM
+layout fit the existing 4 KiB memories. Artifacts are in
+`work/fpga/davinci_tinyvit_fc2_k512_sparse_uart_70/`. Resource differences
+between the DeiT and TinyViT images include ROM-content optimization and are
+not a model-dependent accelerator-area claim.
+
+The board-smoke targets program `xc7a200t_0` over JTAG and open the CH340
+`COM5` UART at 115200 baud. Hello requires `SAP-VPU hello\n`; basic non-UART
+workloads discard pre-program capture and require a post-program diagnostic
+packet ending in `SF`. The instrumented model-tile targets instead retain bytes
+that arrive during JTAG completion and require the unique final budget-counter
+fields, because discarding after programming would erase the one-shot report.
+Each ignored build directory stores
+`board_smoke_summary.csv` and `board_smoke_uart.txt`.
+The runner stages only the bitstream and programming Tcl in Windows `%TEMP%`
+so LabTools does not initialize from a WSL UNC working directory.
+
+The VPU image validates `VSET`, `VMOV`, INT8/INT4 `VDOT`, sparse bitmap, lane
+control, and readable/clearable counters. The tiled-GEMM DMA image additionally
+validates CPU RAM initialization, autonomous input/weight reads, K5/K8/tail and
+sparse tiles, result writes, and instruction/MAC/DMA skip counters.
+
+The first implementation exposed two synthesis-specific issues that RTL
+simulation did not reveal. The 4 KiB SoC RAM initially became 32768 FFs and a
+large asynchronous read mux, exceeding the A200T LUT budget; CPU and VPU data
+requests are mutually exclusive, so a shared synchronous port now infers one
+RAMB36. Vivado also lost initialization on automatically duplicated multi-read
+ROM ports. Explicit instruction/data ROM copies plus removal of the invalid
+VPU-to-ROM error path make both required ROM ports deterministic.
+
+Vivado reports 32 non-fatal DRC warnings, including `REQP-1839` on asynchronous
+reset sources feeding inferred BRAM address logic. There are zero DRC errors,
+the bitstream is generated, and the board smoke passes, but this warning should
+be reviewed before treating the board implementation as signoff-quality.
+
+## Cross-Model Current-DCP Gate-SAIF
+
+`make fpga-vpu-subsystem-cross-model-energy-summary` validates and combines the
+current TinyViT and DeiT power matrices. Every row uses the same current
+post-synth/post-route subsystem checkpoints, reports 7203/7223 annotated nets
+(99.72%) with High confidence, passes gate simulation, and has clean power logs.
+
+| Model | Workload | Policy | VDOTs | Reads | Duration us | Dynamic energy uJ | Reduction |
+| --- | --- | --- | ---: | ---: | ---: | ---: | ---: |
+| TinyViT-5M | 2 tokens x 8 outputs x K=512 | Dense | 2,048 | 2,064 | 188.833 | 3.021323 | baseline |
+| TinyViT-5M | 2 tokens x 8 outputs x K=512 | Global L1 12.5% | 1,740 | 1,970 | 168.849 | 2.701590 | 10.58% |
+| TinyViT-5M | 2 tokens x 8 outputs x K=512 | L1 budget 5% | 1,730 | 1,965 | 168.171 | 2.690734 | 10.94% |
+| DeiT-Tiny | 2 tokens x 768 outputs x K=192 | Dense | 73,728 | 75,264 | 6,828.891 | 109.262258 | baseline |
+| DeiT-Tiny | 2 tokens x 768 outputs x K=192 | Global L1 12.5% | 64,512 | 72,764 | 6,237.848 | 99.805565 | 8.66% |
+| DeiT-Tiny | 2 tokens x 768 outputs x K=192 | L1 budget 5% | 64,874 | 72,989 | 6,262.723 | 100.203574 | 8.29% |
+
+Vivado resolves 0.016 W dynamic power for every row, so the supported result is
+matched-workload energy reduction, not resolved average-power reduction. Compare
+policies within one model only because TinyViT and DeiT cover different output
+counts. Generated Markdown and CSV are under ignored
+`work/fpga/vpu_subsystem_140_current_cross_model_energy/`.
+
 ## Next FPGA Steps
 
-1. Re-run both 140 MHz OOC checkpoints after any RTL datapath change.
-2. Add a board-level top and constraints only after the subsystem report remains
-   reproducible.
-3. Do not expand the stream engine until labeled accuracy or a broader model
+1. Commit the intended source snapshot and rerun both FPGA summary targets;
+   artifact hashes and commands are frozen in
+   `docs/records/SAP_VPU_FPGA_EVIDENCE_MANIFEST.md`.
+2. Do not expand the stream engine until labeled accuracy or a broader model
    suite shows that the selected policy generalizes beyond the current guardrail.

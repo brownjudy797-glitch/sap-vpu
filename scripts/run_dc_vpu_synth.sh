@@ -12,6 +12,8 @@ TSMC28_ROOT="${TSMC28_ROOT:-/opt/pdk/tsmc28hpcplus/tcbn28hpcplusbwp7t40p140_180b
 TSMC28_NLDM_DIR="${TSMC28_NLDM_DIR:-$TSMC28_ROOT/Front_End/timing_power_noise/NLDM/tcbn28hpcplusbwp7t40p140_180a}"
 TSMC28_DB="${TSMC28_DB:-$TSMC28_NLDM_DIR/tcbn28hpcplusbwp7t40p140tt0p9v85c.db}"
 TSMC28_CORNER="${TSMC28_CORNER:-tt0p9v85c}"
+STD_CELL_DB="${STD_CELL_DB:-$TSMC28_DB}"
+PROCESS_CORNER="${PROCESS_CORNER:-$TSMC28_CORNER}"
 
 CLOCK_PERIOD="${CLOCK_PERIOD:-10.0}"
 CLOCK_UNCERTAINTY="${CLOCK_UNCERTAINTY:-0.20}"
@@ -39,9 +41,9 @@ test -x "$DC_SHELL" || {
   exit 4
 }
 
-test -s "$TSMC28_DB" || {
-  echo "TSMC28 DB not found: $TSMC28_DB" >&2
-  echo "Set TSMC28_DB to a valid compiled TSMC28 .db file." >&2
+test -s "$STD_CELL_DB" || {
+  echo "Standard-cell DB not found: $STD_CELL_DB" >&2
+  echo "Set STD_CELL_DB to a valid compiled Synopsys .db file." >&2
   exit 6
 }
 
@@ -61,8 +63,8 @@ mkdir -p "$WORK_DIR" "$REPORT_DIR" "$NETLIST_DIR"
 
   REPO_ROOT="$ROOT_DIR" \
     DESIGN_NAME="$DESIGN_NAME" \
-    STD_CELL_DB="$TSMC28_DB" \
-    TSMC28_CORNER="$TSMC28_CORNER" \
+    STD_CELL_DB="$STD_CELL_DB" \
+    PROCESS_CORNER="$PROCESS_CORNER" \
     WORK_DIR="$WORK_DIR" \
     REPORT_DIR="$REPORT_DIR" \
     NETLIST_DIR="$NETLIST_DIR" \
